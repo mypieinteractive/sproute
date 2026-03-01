@@ -75,19 +75,24 @@
             </div>
         </div>
 
-        <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-top:15px;">Priority Weighting</label>
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
-            <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
-            <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
+        <div style="display:flex; align-items:flex-end; gap:15px; margin-top:15px;">
+            <div id="priority-container" style="flex:1; display:flex; flex-direction:column;">
+                <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:6px;">Priority Weighting</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
+                    <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
+                    <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
+                </div>
+            </div>
+            
+            <button id="btn-generate-route" class="btn-generate" onclick="handleGenerateRoute()">
+                <i class="fa-solid fa-route"></i> Generate Route(s)
+            </button>
         </div>
     </div>
 
     <div id="route-summary">
         <div class="summary-left">
-            <button id="btn-reoptimize" class="btn-reoptimize" onclick="handleOptimize()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
-            </button>
             <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
         </div>
         <div class="summary-right">
@@ -110,11 +115,14 @@
     <div id="controls">
         <div style="text-align: center; font-weight: bold; color: var(--red); font-size: 12px; margin-bottom: 4px;">CHANGES MADE - SYNC REQUIRED</div>
         <div class="ctrl-row">
+            <button id="btn-reoptimize" class="btn-glide" onclick="handleOptimize()" style="background:var(--blue); color:white; font-weight:bold;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
+            </button>
             <button id="btn-recalc" class="btn-glide" style="background:#444; color:white;" onclick="handleCalculate()">
                 <i class="fa-solid fa-calculator"></i> Re-Calculate
             </button>
             <button class="btn-glide" style="background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-color);" onclick="handleUndo()">
-                <i class="fa-solid fa-rotate-left"></i> Undo Changes
+                <i class="fa-solid fa-rotate-left"></i> Undo
             </button>
         </div>
     </div>
