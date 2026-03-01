@@ -361,7 +361,9 @@ async function handleGenerateRoute() {
             method: 'POST',
             body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id })
         });
-        alert("Route Generation Requested.");
+        
+        // Fetch fresh data and re-render the UI with the newly generated route
+        await loadData();
     } catch (e) {
         alert("Failed to request route generation. Check logs.");
     } finally {
