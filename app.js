@@ -121,6 +121,7 @@ function isActiveStop(s) {
     if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
         if (s.driverId !== currentInspectorFilter) active = false;
     }
+    
     return active;
 }
 
@@ -286,6 +287,7 @@ function setRoutes(num) {
         if(btn) btn.classList.toggle('active', i === num);
     }
     stops.forEach(s => s.manualCluster = false); 
+    
     liveClusterUpdate();
     updateSelectionUI(); 
 }
@@ -421,63 +423,65 @@ function updateMarkerColors() {
 
 // Bulk Actions Logic
 async function triggerBulkDelete() { 
-    if(confirm("Delete selected orders?")) { 
+    if(!confirm("Delete selected orders?")) return;
+    
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
+
+    try {
         let affectedRouted = false;
         selectedIds.forEach(id => {
             const s = stops.find(st => st.id === id);
             if (s && (s.status || '').toLowerCase() === 'routed') affectedRouted = true;
         });
 
-        const overlay = document.getElementById('processing-overlay');
-        if(overlay) overlay.style.display = 'flex';
-
-        try {
-            const deletePromises = Array.from(selectedIds).map(id => {
-                const idx = stops.findIndex(s => s.id === id);
-                if (idx > -1) stops[idx].status = 'Deleted';
-                return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', rowId: id }) });
-            });
-            
-            await Promise.all(deletePromises);
-        } catch (err) {
-            alert("A network or server error occurred. Please check the Google Apps Script Execution Log.");
-            console.error("Bulk Delete Error:", err);
-        }
+        const deletePromises = Array.from(selectedIds).map(id => {
+            const idx = stops.findIndex(s => s.id === id);
+            if (idx > -1) stops[idx].status = 'Deleted';
+            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', rowId: id }) });
+        });
+        
+        await Promise.all(deletePromises);
         
         selectedIds.clear(); 
         updateInspectorDropdown(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
         
-        if (affectedRouted) document.getElementById('controls').style.display = 'flex'; 
-
-        setTimeout(() => { if(overlay) overlay.style.display = 'none'; }, 2000);
-    } 
+        if (affectedRouted) {
+            document.getElementById('controls').style.display = 'flex'; 
+        }
+    } catch (err) {
+        alert("A network or server error occurred. Please check the Google Apps Script Execution Log.");
+        console.error("Bulk Delete Error:", err);
+    } finally {
+        if(overlay) overlay.style.display = 'none';
+    }
 }
 
 async function triggerBulkUnroute() { 
-    if(confirm("Remove selected orders from route?")) { 
-        const overlay = document.getElementById('processing-overlay');
-        if(overlay) overlay.style.display = 'flex';
+    if(!confirm("Remove selected orders from route?")) return;
+    
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
 
-        try {
-            const unroutePromises = Array.from(selectedIds).map(id => {
-                const idx = stops.findIndex(s => s.id === id);
-                if (idx > -1) stops[idx].status = '';
-                return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
-            });
-            
-            await Promise.all(unroutePromises);
-        } catch (err) {
-            alert("A network or server error occurred.");
-            console.error("Bulk Unroute Error:", err);
-        }
+    try {
+        const unroutePromises = Array.from(selectedIds).map(id => {
+            const idx = stops.findIndex(s => s.id === id);
+            if (idx > -1) stops[idx].status = '';
+            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
+        });
+        
+        await Promise.all(unroutePromises);
         
         selectedIds.clear(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
         document.getElementById('controls').style.display = 'flex'; 
-
-        setTimeout(() => { if(overlay) overlay.style.display = 'none'; }, 2000);
-    } 
+    } catch (err) {
+        alert("A network or server error occurred.");
+        console.error("Bulk Unroute Error:", err);
+    } finally {
+        if(overlay) overlay.style.display = 'none';
+    }
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
@@ -498,24 +502,30 @@ async function handleInspectorChange(e, rowId, selectEl) {
         else { render(); return; }
     }
     
-    let affectedRouted = false;
-    idsToUpdate.forEach(id => {
-        const s = stops.find(st => st.id === id);
-        if (s && (s.status || '').toLowerCase() === 'routed') affectedRouted = true;
-    });
-    
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
     
     try { 
+        let affectedRouted = false;
+        idsToUpdate.forEach(id => {
+            const s = stops.find(st => st.id === id);
+            if (s && (s.status || '').toLowerCase() === 'routed') affectedRouted = true;
+        });
+
         for (const id of idsToUpdate) await processReassignDriver(id, newDriverName, newDriverId); 
-    } catch (err) { alert("Network error: Failed to update some orders."); }
-    
-    updateInspectorDropdown(); 
-    render(); 
-    
-    if (affectedRouted) document.getElementById('controls').style.display = 'flex'; 
-    if(overlay) overlay.style.display = 'none';
+        
+        updateInspectorDropdown(); 
+        render(); drawRoute(); updateSummary(); updateRouteTimes();
+        
+        if (affectedRouted) {
+            document.getElementById('controls').style.display = 'flex'; 
+        }
+    } catch (err) { 
+        alert("Network error: Failed to update some orders."); 
+        console.error(err);
+    } finally {
+        if(overlay) overlay.style.display = 'none';
+    }
 }
 
 function sortTable(col) {
@@ -862,36 +872,41 @@ async function handleCalculate() {
         originalStops = JSON.parse(JSON.stringify(stops)); 
         render(); drawRoute(); updateSummary();
 
-    } catch (e) { alert("Calculation failed: " + e.message); } 
-    finally { if (overlay) overlay.style.display = 'none'; }
+    } catch (e) { 
+        alert("Calculation failed: " + e.message); 
+        console.error(e);
+    } finally { 
+        if (overlay) overlay.style.display = 'none'; 
+    }
 }
 
 function handleOptimize() { showSyncOptions('optimize'); }
 
 async function handleUndo() {
-    if(confirm("Discard all changes and revert to original route?")) {
-        const overlay = document.getElementById('processing-overlay');
-        
+    if(!confirm("Discard all changes and revert to original route?")) return;
+    
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
+    
+    try {
         if (viewMode === 'manager') {
-            if(overlay) overlay.style.display = 'flex';
-            try {
-                const payload = { action: 'undoManagerChanges', originalStops: originalStops };
-                await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-                stops = JSON.parse(JSON.stringify(originalStops));
-                
-                updateInspectorDropdown(); 
-                document.getElementById('controls').style.display = 'none';
-                render(); drawRoute(); updateSummary();
-            } catch(e) { 
-                alert("Failed to undo changes on server."); 
-            } finally { 
-                if(overlay) overlay.style.display = 'none'; 
-            }
+            const payload = { action: 'undoManagerChanges', originalStops: originalStops };
+            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+            stops = JSON.parse(JSON.stringify(originalStops));
+            
+            updateInspectorDropdown(); 
+            document.getElementById('controls').style.display = 'none';
+            render(); drawRoute(); updateSummary();
         } else {
             stops = JSON.parse(JSON.stringify(originalStops));
             document.getElementById('controls').style.display = 'none';
             render(); drawRoute(); updateSummary();
         }
+    } catch(e) { 
+        alert("Failed to undo changes on server."); 
+        console.error(e);
+    } finally { 
+        if(overlay) overlay.style.display = 'none'; 
     }
 }
 
@@ -993,13 +1008,17 @@ function drawRoute() {
     routedStops.sort((a,b) => parseEtaToMinutes(a.eta) - parseEtaToMinutes(b.eta));
     const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))];
 
-    const features = uniqueClusters.map(cId => {
+    const features = [];
+    uniqueClusters.forEach(cId => {
         const cStops = routedStops.filter(s => (s.cluster || 0) === cId);
-        return {
-            "type": "Feature",
-            "properties": { "cluster": cId },
-            "geometry": { "type": "LineString", "coordinates": cStops.map(s => [s.lng, s.lat]) }
-        };
+        // Mapbox requires at least 2 points to draw a LineString. This prevents the crash.
+        if (cStops.length > 1) {
+            features.push({
+                "type": "Feature",
+                "properties": { "cluster": cId },
+                "geometry": { "type": "LineString", "coordinates": cStops.map(s => [s.lng, s.lat]) }
+            });
+        }
     });
 
     if (map.getSource('route')) {
@@ -1131,7 +1150,7 @@ function initSortable() {
                         try {
                             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: stopId }) });
                         } catch (e) { console.error(e); }
-                        if(overlay) overlay.style.display = 'none';
+                        finally { if(overlay) overlay.style.display = 'none'; }
                     }
                     
                     reorderStopsFromDOM();
