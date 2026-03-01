@@ -73,7 +73,7 @@ function updateInspectorDropdown() {
 
     const validInspectorIds = new Set();
     stops.forEach(s => {
-        const status = (s.status || '').toLowerCase();
+        const status = (s.s || '').toLowerCase();
         if (status !== 'cancelled' && status !== 'deleted' && s.driverId) {
             validInspectorIds.add(s.driverId);
         }
@@ -110,7 +110,7 @@ function handleInspectorFilterChange(val) {
 
 function isActiveStop(s) {
     let active = true;
-    const status = (s.status || '').toLowerCase();
+    const status = (s.s || '').toLowerCase();
     
     if (viewMode === 'manager') {
         active = (status === '' || status === 'routed' || status === 'completed');
@@ -126,8 +126,8 @@ function isActiveStop(s) {
 }
 
 function getVisualStyle(stopData) {
-    if (viewMode === 'manager' && currentInspectorFilter !== 'all' && stopData.hasOwnProperty('cluster')) {
-        return INSPECTOR_PALETTE[stopData.cluster % INSPECTOR_PALETTE.length];
+    if (viewMode === 'manager' && currentInspectorFilter !== 'all' && stopData.hasOwnProperty('R')) {
+        return INSPECTOR_PALETTE[stopData.R % INSPECTOR_PALETTE.length];
     } else {
         if (!stopData.driverId) return { bg: 'var(--red)', text: '#ffffff' };
         const index = inspectors.findIndex(i => i.id === stopData.driverId);
@@ -185,13 +185,13 @@ async function loadData() {
         
         stops = rawStops.map(s => ({
             ...s,
-            id: s.rowId || s.id,
-            cluster: s.cluster || 0, 
+            i: s.r || s.i,
+            R: s.R || 0, 
             manualCluster: false 
         }));
 
         originalStops = JSON.parse(JSON.stringify(stops)); 
-        if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
+        if (stops.length > 0 && stops[0].e) currentStartTime = stops[0].e;
 
         if (!Array.isArray(data)) {
             inspectors = data.inspectors || []; 
@@ -231,7 +231,7 @@ async function loadData() {
                 if (sidebarDriverEl) sidebarDriverEl.innerText = displayName;
             }
             
-            let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
+            let hasValidStops = stops.filter(s => isActiveStop(s) && s.g !== undefined && s.l !== undefined).length > 0;
             if (!hasValidStops && data.companyAddress) {
                 const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.companyAddress)}.json?access_token=${MAPBOX_TOKEN}`;
                 fetch(geoUrl).then(r => r.json()).then(geo => {
@@ -261,7 +261,7 @@ function updateRoutingUI() {
     if(viewMode !== 'manager') return;
 
     const activeStops = stops.filter(s => isActiveStop(s));
-    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed').length;
+    const routedCount = activeStops.filter(s => (s.s||'').toLowerCase() === 'routed').length;
     const dividerGroup = document.getElementById('route-divider-group');
     const priorityCont = document.getElementById('priority-container');
     const btnGen = document.getElementById('btn-generate-route');
@@ -277,7 +277,7 @@ function updateRoutingUI() {
 
         let showHint = false;
         const allValidStops = stops.filter(s => {
-            const status = (s.status || '').toLowerCase();
+            const status = (s.s || '').toLowerCase();
             return status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
         });
 
@@ -323,9 +323,9 @@ function setRoutes(num) {
 
 function moveSelectedToRoute(cIdx) {
     selectedIds.forEach(id => {
-        const s = stops.find(st => st.id === id);
+        const s = stops.find(st => st.i === id);
         if (s) {
-            s.cluster = cIdx;
+            s.R = cIdx;
             s.manualCluster = true; 
         }
     });
@@ -337,9 +337,9 @@ function moveSelectedToRoute(cIdx) {
 
 function updateRouteTimes() {
     if(viewMode !== 'manager' || currentInspectorFilter === 'all') return;
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    const activeStops = stops.filter(s => isActiveStop(s) && s.g !== undefined && s.l !== undefined);
     for(let i=0; i<3; i++) {
-        const count = activeStops.filter(s => s.cluster === i).length;
+        const count = activeStops.filter(s => s.R === i).length;
         const hrs = Math.ceil(count * 0.4);
         const timeEl = document.getElementById(`rtime-${i+1}`);
         if(timeEl) {
@@ -377,11 +377,11 @@ function liveClusterUpdate() {
     const k = currentRouteCount;
     const w = parseInt(document.getElementById('slider-priority').value) / 100;
     
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    const activeStops = stops.filter(s => isActiveStop(s) && s.g !== undefined && s.l !== undefined);
     if(activeStops.length === 0) return;
 
     if(k === 1) {
-        activeStops.forEach(s => { s.cluster = 0; s.manualCluster = false; });
+        activeStops.forEach(s => { s.R = 0; s.manualCluster = false; });
         updateMarkerColors();
         updateRouteTimes();
         return;
@@ -390,7 +390,7 @@ function liveClusterUpdate() {
     let centroids = [];
     for(let i=0; i<k; i++) {
         let idx = Math.floor(i * activeStops.length / k);
-        centroids.push({ lat: activeStops[idx].lat, lng: activeStops[idx].lng });
+        centroids.push({ lat: activeStops[idx].l, lng: activeStops[idx].g });
     }
 
     let today = new Date(); 
@@ -402,16 +402,16 @@ function liveClusterUpdate() {
 
             let bestD = Infinity;
             let bestC = 0;
-            let dueTime = s.dueDate ? new Date(s.dueDate).getTime() : Infinity;
+            let dueTime = s.d ? new Date(s.d).getTime() : Infinity;
             let daysUntilDue = Math.floor((dueTime - today.getTime()) / (1000*3600*24));
 
             centroids.forEach((c, cIdx) => {
-                let dLat = s.lat - c.lat;
-                let dLng = s.lng - c.lng;
+                let dLat = s.l - c.lat;
+                let dLng = s.g - c.lng;
                 let geoDist = Math.sqrt(dLat*dLat + dLng*dLng);
 
                 let timePenalty = 0;
-                if(w > 0 && s.dueDate) {
+                if(w > 0 && s.d) {
                     if(daysUntilDue < cIdx) {
                         timePenalty = (cIdx - Math.max(0, daysUntilDue)) * 0.2; 
                     }
@@ -420,14 +420,14 @@ function liveClusterUpdate() {
                 let totalDist = geoDist + (timePenalty * w);
                 if(totalDist < bestD) { bestD = totalDist; bestC = cIdx; }
             });
-            s.cluster = bestC;
+            s.R = bestC;
         });
 
         for(let i=0; i<k; i++) {
-            let clusterStops = activeStops.filter(s => s.cluster === i);
+            let clusterStops = activeStops.filter(s => s.R === i);
             if(clusterStops.length > 0) {
                 let sumLat = 0, sumLng = 0;
-                clusterStops.forEach(s => { sumLat+=s.lat; sumLng+=s.lng; });
+                clusterStops.forEach(s => { sumLat+=s.l; sumLng+=s.g; });
                 centroids[i].lat = sumLat / clusterStops.length;
                 centroids[i].lng = sumLng / clusterStops.length;
             }
@@ -440,7 +440,7 @@ function liveClusterUpdate() {
 
 function updateMarkerColors() {
     markers.forEach(m => {
-        const stopData = stops.find(st => st.id === m._stopId);
+        const stopData = stops.find(st => st.i === m._stopId);
         if (stopData) {
             const visualStyle = getVisualStyle(stopData);
             const pin = m.getElement().querySelector('.pin-visual');
@@ -462,14 +462,14 @@ async function triggerBulkDelete() {
     try {
         let affectedRouted = false;
         selectedIds.forEach(id => {
-            const s = stops.find(st => st.id === id);
-            if (s && (s.status || '').toLowerCase() === 'routed') affectedRouted = true;
+            const s = stops.find(st => st.i === id);
+            if (s && (s.s || '').toLowerCase() === 'routed') affectedRouted = true;
         });
 
         const deletePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => s.id === id);
-            if (idx > -1) stops[idx].status = 'Deleted';
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', rowId: id }) });
+            const idx = stops.findIndex(s => s.i === id);
+            if (idx > -1) stops[idx].s = 'Deleted';
+            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', r: id }) });
         });
         
         await Promise.all(deletePromises);
@@ -497,9 +497,9 @@ async function triggerBulkUnroute() {
 
     try {
         const unroutePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => s.id === id);
-            if (idx > -1) stops[idx].status = '';
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
+            const idx = stops.findIndex(s => s.i === id);
+            if (idx > -1) stops[idx].s = '';
+            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', r: id }) });
         });
         
         await Promise.all(unroutePromises);
@@ -516,9 +516,9 @@ async function triggerBulkUnroute() {
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
-    const stopIdx = stops.findIndex(s => s.id === rowId);
+    const stopIdx = stops.findIndex(s => s.i === rowId);
     if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
-    const payload = { action: 'updateOrder', rowId: rowId, updates: { "HKAwZ": newDriverName, "xuPjx": newDriverId } };
+    const payload = { action: 'updateOrder', r: rowId, updates: { "HKAwZ": newDriverName, "xuPjx": newDriverId } };
     return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
 }
 
@@ -539,8 +539,8 @@ async function handleInspectorChange(e, rowId, selectEl) {
     try { 
         let affectedRouted = false;
         idsToUpdate.forEach(id => {
-            const s = stops.find(st => st.id === id);
-            if (s && (s.status || '').toLowerCase() === 'routed') affectedRouted = true;
+            const s = stops.find(st => st.i === id);
+            if (s && (s.s || '').toLowerCase() === 'routed') affectedRouted = true;
         });
 
         for (const id of idsToUpdate) await processReassignDriver(id, newDriverName, newDriverId); 
@@ -565,7 +565,7 @@ function sortTable(col) {
 
     stops.sort((a, b) => {
         let valA = a[col] || ''; let valB = b[col] || '';
-        if (col === 'dueDate') {
+        if (col === 'd') {
             valA = valA ? new Date(valA).getTime() : Number.MAX_SAFE_INTEGER;
             valB = valB ? new Date(valB).getTime() : Number.MAX_SAFE_INTEGER;
         } else {
@@ -597,9 +597,9 @@ function createRouteSubheading(clusterNum, clusterStops) {
     const today = new Date(); today.setHours(0,0,0,0);
 
     clusterStops.forEach(s => {
-        totalMi += parseFloat(s.dist || 0);
-        if(s.dueDate) {
-            const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
+        totalMi += parseFloat(s.D || 0);
+        if(s.d) {
+            const dueTime = new Date(s.d); dueTime.setHours(0, 0, 0, 0);
             if(dueTime < today) pastDue++;
             else if(dueTime.getTime() === today.getTime()) dueToday++;
         }
@@ -633,12 +633,12 @@ function render(isDraft = false) {
         header.innerHTML = `
             ${handleHeaderHtml}
             <div class="col-num"></div>
-            <div class="col-due sortable" onclick="sortTable('dueDate')">Due ${getSortIcon('dueDate')}</div>
+            <div class="col-due sortable" onclick="sortTable('d')">Due ${getSortIcon('d')}</div>
             <div class="col-insp sortable" onclick="sortTable('driverName')">Inspector ${getSortIcon('driverName')}</div>
-            <div class="col-addr sortable" onclick="sortTable('address')">Address ${getSortIcon('address')}</div>
+            <div class="col-addr sortable" onclick="sortTable('a')">Address ${getSortIcon('a')}</div>
             <div class="col-app">App</div>
-            <div class="col-client sortable" onclick="sortTable('client')">Client ${getSortIcon('client')}</div>
-            <div class="col-type sortable" onclick="sortTable('type')">Order type ${getSortIcon('type')}</div>
+            <div class="col-client sortable" onclick="sortTable('c')">Client ${getSortIcon('c')}</div>
+            <div class="col-type sortable" onclick="sortTable('t')">Order type ${getSortIcon('t')}</div>
         `;
         listContainer.appendChild(header);
     }
@@ -647,10 +647,10 @@ function render(isDraft = false) {
     
     const processStop = (s, i, showHandle) => {
         const item = document.createElement('div');
-        item.id = `item-${s.id}`;
-        item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
+        item.id = `item-${s.i}`;
+        item.setAttribute('data-search', `${(s.a||'').toLowerCase()} ${(s.c||'').toLowerCase()}`);
         
-        const due = s.dueDate ? new Date(s.dueDate) : null;
+        const due = s.d ? new Date(s.d) : null;
         let urgencyClass = '';
         
         if (due) {
@@ -663,7 +663,7 @@ function render(isDraft = false) {
         const dueFmt = due ? `${due.getMonth()+1}/${due.getDate()}` : "N/A";
 
         if (viewMode === 'list' || viewMode === 'manager') {
-            item.className = `glide-row ${s.status}`;
+            item.className = `glide-row ${s.s}`;
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (viewMode === 'manager' && inspectors.length > 0) {
@@ -673,7 +673,7 @@ function render(isDraft = false) {
 
                 inspectorHtml = `
                     <div class="col-insp" onclick="event.stopPropagation()">
-                        <select class="insp-select" onchange="handleInspectorChange(event, '${s.id}', this)" ${disableSelectAttr}>
+                        <select class="insp-select" onchange="handleInspectorChange(event, '${s.i}', this)" ${disableSelectAttr}>
                             ${defaultPlaceholder}
                             ${optionsHtml}
                         </select>
@@ -689,42 +689,42 @@ function render(isDraft = false) {
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; color: ${style.text};">${i + 1}</div></div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 ${inspectorHtml}
-                <div class="col-addr">${(s.address||'').split(',')[0]}</div>
-                <div class="col-app">${s.app || '--'}</div>
-                <div class="col-client">${s.client || '--'}</div>
-                <div class="col-type">${s.type || '--'}</div>
+                <div class="col-addr">${(s.a||'').split(',')[0]}</div>
+                <div class="col-app">${s.p || '--'}</div>
+                <div class="col-client">${s.c || '--'}</div>
+                <div class="col-type">${s.t || '--'}</div>
             `;
         } else {
-            item.className = `stop-item ${s.status} ${currentDisplayMode}`;
-            const metaDisplay = isDraft ? '-- | --' : `${s.eta || '--'} | ${s.dist || '--'}`;
+            item.className = `stop-item ${s.s} ${currentDisplayMode}`;
+            const metaDisplay = isDraft ? '-- | --' : `${s.e || '--'} | ${s.D || '--'}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
                 <div class="stop-sidebar ${urgencyClass}">${i + 1}</div>
                 ${handleHtml}
-                <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
+                <div class="csv-box">${(s.p || "--").substring(0,2).toUpperCase()}</div>
                 <div class="stop-content">
-                    <b>${(s.address||'').split(',')[0]}</b>
+                    <b>${(s.a||'').split(',')[0]}</b>
                     <div class="row-meta">${metaDisplay}</div>
-                    <div class="row-details">${s.type || ''}</div>
+                    <div class="row-details">${s.t || ''}</div>
                 </div>
                 <div class="due-date-container ${urgencyClass}">${dueFmt}</div>
                 <div class="stop-actions">
-                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>
-                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.lat}','${s.lng}')"></i>
+                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.i}')"></i>
+                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.l}','${s.g}')"></i>
                 </div>
             `;
         }
         
         item.onclick = (e) => {
             if (!e.shiftKey) selectedIds.clear();
-            selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
-            updateSelectionUI(); focusPin(s.id);
+            selectedIds.has(s.i) ? selectedIds.delete(s.i) : selectedIds.add(s.i);
+            updateSelectionUI(); focusPin(s.i);
         };
 
-        if(s.lng && s.lat) {
+        if(s.g !== undefined && s.l !== undefined) {
             const el = document.createElement('div');
-            el.className = `marker ${s.status}`; 
+            el.className = `marker ${s.s}`; 
             
             const style = getVisualStyle(s);
             el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; color: ${style.text};"><span>${i + 1}</span></div>`;
@@ -738,20 +738,20 @@ function render(isDraft = false) {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (!e.shiftKey) selectedIds.clear();
-                selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
-                updateSelectionUI(); focusTile(s.id);
+                selectedIds.has(s.i) ? selectedIds.delete(s.i) : selectedIds.add(s.i);
+                updateSelectionUI(); focusTile(s.i);
             });
             
-            const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lng, s.lat]).addTo(map);
-            m._stopId = s.id; markers.push(m); bounds.extend([s.lng, s.lat]);
+            const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([s.g, s.l]).addTo(map);
+            m._stopId = s.i; markers.push(m); bounds.extend([s.g, s.l]);
         }
         return item;
     };
 
     if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
-        const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
-        const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
-        routedStops.sort((a,b) => parseEtaToMinutes(a.eta) - parseEtaToMinutes(b.eta));
+        const unroutedStops = activeStops.filter(s => (s.s||'').toLowerCase() !== 'routed' && (s.s||'').toLowerCase() !== 'completed');
+        const routedStops = activeStops.filter(s => (s.s||'').toLowerCase() === 'routed' || (s.s||'').toLowerCase() === 'completed');
+        routedStops.sort((a,b) => parseEtaToMinutes(a.e) - parseEtaToMinutes(b.e));
 
         if (unroutedStops.length > 0) {
             const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
@@ -764,9 +764,9 @@ function render(isDraft = false) {
         }
         
         if (routedStops.length > 0) {
-            const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))].sort();
+            const uniqueClusters = [...new Set(routedStops.map(s => s.R || 0))].sort();
             uniqueClusters.forEach(clusterId => {
-                const cStops = routedStops.filter(s => (s.cluster || 0) === clusterId);
+                const cStops = routedStops.filter(s => (s.R || 0) === clusterId);
                 if (cStops.length > 0) {
                     listContainer.appendChild(createRouteSubheading(clusterId, cStops));
                     const routedDiv = document.createElement('div');
@@ -780,12 +780,12 @@ function render(isDraft = false) {
         }
         
     } else if (viewMode === 'driver' || viewMode === 'routing') {
-        const activeStopsCopy = [...activeStops].sort((a,b) => parseEtaToMinutes(a.eta) - parseEtaToMinutes(b.eta));
-        const uniqueClusters = [...new Set(activeStopsCopy.map(s => s.cluster || 0))].sort();
+        const activeStopsCopy = [...activeStops].sort((a,b) => parseEtaToMinutes(a.e) - parseEtaToMinutes(b.e));
+        const uniqueClusters = [...new Set(activeStopsCopy.map(s => s.R || 0))].sort();
         
         if (uniqueClusters.length > 1) {
             uniqueClusters.forEach(clusterId => {
-                const cStops = activeStopsCopy.filter(s => (s.cluster || 0) === clusterId);
+                const cStops = activeStopsCopy.filter(s => (s.R || 0) === clusterId);
                 if (cStops.length > 0) {
                     listContainer.appendChild(createRouteSubheading(clusterId, cStops));
                     const routedDiv = document.createElement('div');
@@ -808,7 +808,7 @@ function render(isDraft = false) {
         activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i, false)));
     }
 
-    if (activeStops.filter(s => s.lng && s.lat).length > 0) { 
+    if (activeStops.filter(s => s.g !== undefined && s.l !== undefined).length > 0) { 
         initialBounds = bounds; map.fitBounds(bounds, { padding: 50, maxZoom: 15 }); 
     }
     
@@ -817,9 +817,9 @@ function render(isDraft = false) {
 }
 
 function updateSummary() {
-    const active = stops.filter(s => isActiveStop(s) && s.status !== 'completed');
+    const active = stops.filter(s => isActiveStop(s) && (s.s || '').toLowerCase() !== 'completed');
     let totalMi = 0;
-    active.forEach(s => totalMi += parseFloat(s.dist || 0));
+    active.forEach(s => totalMi += parseFloat(s.D || 0));
     document.getElementById('sum-dist').innerText = `${totalMi.toFixed(1)} mi`;
     document.getElementById('sum-time').innerText = `${Math.ceil(active.length * 0.4)} hrs`;
     
@@ -831,8 +831,8 @@ function updateSummary() {
     today.setHours(0, 0, 0, 0);
 
     active.forEach(s => {
-        if(s.dueDate) {
-            const dueTime = new Date(s.dueDate);
+        if(s.d) {
+            const dueTime = new Date(s.d);
             dueTime.setHours(0, 0, 0, 0);
             if(dueTime < today) pastDue++;
             else if(dueTime.getTime() === today.getTime()) dueToday++;
@@ -853,7 +853,7 @@ async function handleCalculate() {
     if (overlay) overlay.style.display = 'flex';
 
     try {
-        const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+        const activeStops = stops.filter(s => isActiveStop(s) && s.g !== undefined && s.l !== undefined);
         if (activeStops.length < 2) { alert("Not enough valid stops."); return; }
 
         const MAX_WAYPOINTS = 25; 
@@ -861,7 +861,7 @@ async function handleCalculate() {
 
         for (let i = 0; i < activeStops.length - 1; i += (MAX_WAYPOINTS - 1)) {
             const chunk = activeStops.slice(i, i + MAX_WAYPOINTS);
-            const coords = chunk.map(s => `${s.lng},${s.lat}`).join(';');
+            const coords = chunk.map(s => `${s.g},${s.l}`).join(';');
             const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?access_token=${MAPBOX_TOKEN}`;
             const response = await fetch(url);
             const data = await response.json();
@@ -878,17 +878,24 @@ async function handleCalculate() {
             time.setHours(hours, mins, 0, 0);
         } else { time.setHours(8, 0, 0, 0); }
 
+        function formatTime(dateObj) {
+            let h = dateObj.getHours(), m = dateObj.getMinutes();
+            let ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12; h = h ? h : 12; m = m < 10 ? '0'+m : m;
+            return h + ':' + m + ' ' + ampm;
+        }
+
         let totalMeters = 0;
         activeStops.forEach((stop, index) => {
             if (index === 0) {
-                stop.eta = formatTime(time); stop.dist = "0.0 mi"; stop.durationSecs = 0;
+                stop.e = formatTime(time); stop.D = "0.0 mi"; stop.u = 0;
             } else {
                 let leg = legs[index - 1];
                 time = new Date(time.getTime() + (COMPANY_SERVICE_DELAY * 60 * 1000) + (leg.duration * 1000));
-                stop.eta = formatTime(time);
+                stop.e = formatTime(time);
                 totalMeters += leg.distance;
-                stop.dist = (totalMeters * 0.000621371).toFixed(1) + " mi";
-                stop.durationSecs = leg.duration;
+                stop.D = (totalMeters * 0.000621371).toFixed(1) + " mi";
+                stop.u = leg.duration;
             }
         });
 
@@ -943,8 +950,8 @@ async function handleUndo() {
 
 function toggleComplete(e, id) {
     e.stopPropagation();
-    const idx = stops.findIndex(s => s.id == id);
-    stops[idx].status = (stops[idx].status === 'completed') ? '' : 'completed';
+    const idx = stops.findIndex(s => s.i == id);
+    stops[idx].s = ((stops[idx].s || '').toLowerCase() === 'completed') ? '' : 'completed';
     render(); drawRoute(); updateSummary();
 }
 
@@ -993,8 +1000,8 @@ function updateSelectionUI() {
     let hasRouted = false;
     
     selectedIds.forEach(id => {
-        const s = stops.find(st => st.id === id);
-        if (s && (s.status || '').toLowerCase() === 'routed') hasRouted = true;
+        const s = stops.find(st => st.i === id);
+        if (s && (s.s || '').toLowerCase() === 'routed') hasRouted = true;
     });
     
     document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY) ? 'block' : 'none'; 
@@ -1017,7 +1024,7 @@ function updateSelectionUI() {
     }
 }
 
-function focusPin(id) { const tgt = stops.find(s=>s.id==id); if(tgt && tgt.lng && tgt.lat) map.flyTo({ center: [tgt.lng, tgt.lat] }); }
+function focusPin(id) { const tgt = stops.find(s=>s.i==id); if(tgt && tgt.g !== undefined && tgt.l !== undefined) map.flyTo({ center: [tgt.g, tgt.l] }); }
 function focusTile(id) { document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
@@ -1025,29 +1032,28 @@ function filterList() { const q = document.getElementById('search-input').value.
 function drawRoute() { 
     if (map.getSource('route')) map.getSource('route').setData({ "type": "FeatureCollection", "features": [] });
 
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    const activeStops = stops.filter(s => isActiveStop(s) && s.g !== undefined && s.l !== undefined);
     let routedStops = [];
     
     if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
-        routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+        routedStops = activeStops.filter(s => (s.s||'').toLowerCase() === 'routed' || (s.s||'').toLowerCase() === 'completed');
     } else if (viewMode !== 'manager') {
         routedStops = activeStops;
     }
     
     if (routedStops.length < 2) return; 
 
-    routedStops.sort((a,b) => parseEtaToMinutes(a.eta) - parseEtaToMinutes(b.eta));
-    const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))];
+    routedStops.sort((a,b) => parseEtaToMinutes(a.e) - parseEtaToMinutes(b.e));
+    const uniqueClusters = [...new Set(routedStops.map(s => s.R || 0))];
 
     const features = [];
     uniqueClusters.forEach(cId => {
-        const cStops = routedStops.filter(s => (s.cluster || 0) === cId);
-        // Mapbox requires at least 2 points to draw a LineString. This prevents the crash.
+        const cStops = routedStops.filter(s => (s.R || 0) === cId);
         if (cStops.length > 1) {
             features.push({
                 "type": "Feature",
-                "properties": { "cluster": cId },
-                "geometry": { "type": "LineString", "coordinates": cStops.map(s => [s.lng, s.lat]) }
+                "properties": { "R": cId },
+                "geometry": { "type": "LineString", "coordinates": cStops.map(s => [s.g, s.l]) }
             });
         }
     });
@@ -1063,7 +1069,7 @@ function drawRoute() {
             "layout": { "line-join": "round", "line-cap": "round" }, 
             "paint": { 
                 "line-color": [
-                    "match", ["get", "cluster"],
+                    "match", ["get", "R"],
                     0, INSPECTOR_PALETTE[0].bg,
                     1, INSPECTOR_PALETTE[1].bg,
                     2, INSPECTOR_PALETTE[2].bg,
@@ -1083,7 +1089,7 @@ function launchMaps(p, la, ln) { window.location.href = p === 'google' ? `comgoo
 
 function showSyncOptions(type) {
     const modal = document.getElementById('modal-overlay'); modal.style.display = 'flex';
-    const defS = stops.length ? stops[0].address : "", defE = stops.length ? stops[stops.length-1].address : "";
+    const defS = stops.length ? stops[0].a : "", defE = stops.length ? stops[stops.length-1].a : "";
     document.getElementById('modal-content').innerHTML = `
         <h3 style="margin:0">Update Locations</h3>
         <p style="font-size:12px; color:var(--text-muted);">Start Time: ${currentStartTime}</p>
@@ -1107,7 +1113,7 @@ async function finalizeSync(type) {
     if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
         let clusteredArrays = [];
         for(let i = 0; i < currentRouteCount; i++) {
-            let itemsInCluster = stops.filter(s => s.cluster === i);
+            let itemsInCluster = stops.filter(s => s.R === i);
             if (itemsInCluster.length > 0) clusteredArrays.push(itemsInCluster);
         }
         payload.routeClusters = clusteredArrays;
@@ -1144,10 +1150,10 @@ function reorderStopsFromDOM() {
     }
     
     const visibleIds = new Set([...unroutedIds, ...routedIds]);
-    const otherStops = stops.filter(s => !visibleIds.has(s.id));
+    const otherStops = stops.filter(s => !visibleIds.has(s.i.toString()));
     
-    const newUnrouted = unroutedIds.map(id => stops.find(s => s.id === id)).filter(Boolean);
-    const newRouted = routedIds.map(id => stops.find(s => s.id === id)).filter(Boolean);
+    const newUnrouted = unroutedIds.map(id => stops.find(s => s.i.toString() === id.toString())).filter(Boolean);
+    const newRouted = routedIds.map(id => stops.find(s => s.i.toString() === id.toString())).filter(Boolean);
     
     stops = [...otherStops, ...newUnrouted, ...newRouted];
 }
@@ -1173,13 +1179,13 @@ function initSortable() {
                     if (evt.to.id === 'unrouted-list') {
                         isMovedToUnrouted = true;
                         const stopId = evt.item.id.replace('item-', '');
-                        const idx = stops.findIndex(s => s.id === stopId);
-                        if (idx > -1) stops[idx].status = ''; 
+                        const idx = stops.findIndex(s => s.i.toString() === stopId);
+                        if (idx > -1) stops[idx].s = ''; 
                         
                         const overlay = document.getElementById('processing-overlay');
                         if(overlay) overlay.style.display = 'flex';
                         try {
-                            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: stopId }) });
+                            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', r: stopId }) });
                         } catch (e) { console.error(e); }
                         finally { if(overlay) overlay.style.display = 'none'; }
                     }
