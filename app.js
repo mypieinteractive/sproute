@@ -220,10 +220,11 @@ async function loadData() {
             if (mapDriverEl) mapDriverEl.innerText = displayName;
             
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
-            const filterSelect = document.getElementById('inspector-filter');
+            const filterSelect = document.getElementById('inspector-dropdown-wrapper');
 
             if (viewMode === 'manager' && data.tier && data.tier.toLowerCase() !== 'individual') {
                 if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
+                if (sidebarLogo) sidebarLogo.style.display = 'none'; 
                 if (filterSelect) filterSelect.style.display = 'block';
                 updateInspectorDropdown(); 
             } else {
@@ -257,26 +258,54 @@ async function loadData() {
 
 // --- ROUTING UI BINDINGS ---
 function updateRoutingUI() {
-    if(viewMode !== 'manager' || currentInspectorFilter === 'all') return;
-    
+    if(viewMode !== 'manager') return;
+
     const activeStops = stops.filter(s => isActiveStop(s));
     const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed').length;
     const dividerGroup = document.getElementById('route-divider-group');
     const priorityCont = document.getElementById('priority-container');
     const btnGen = document.getElementById('btn-generate-route');
+    
+    const hintEl = document.getElementById('inspector-select-hint');
+    const headerOptBtn = document.getElementById('btn-header-optimize');
 
-    if (activeStops.length <= 25) {
+    if (currentInspectorFilter === 'all') {
         if(dividerGroup) dividerGroup.style.display = 'none';
         if(priorityCont) priorityCont.style.display = 'none';
-    } else {
-        if(dividerGroup) dividerGroup.style.display = 'flex';
-        if(priorityCont) priorityCont.style.display = 'flex';
-    }
+        if(btnGen) btnGen.style.display = 'none';
+        if(headerOptBtn) headerOptBtn.style.display = 'none';
 
-    if (routedCount > 0) {
-        if (btnGen) btnGen.style.display = 'none';
+        let showHint = false;
+        const allValidStops = stops.filter(s => {
+            const status = (s.status || '').toLowerCase();
+            return status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
+        });
+
+        for (const insp of inspectors) {
+            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) {
+                showHint = true; 
+                break;
+            }
+        }
+        if (hintEl) hintEl.style.display = showHint ? 'block' : 'none';
+
     } else {
-        if (btnGen) btnGen.style.display = 'flex';
+        if (hintEl) hintEl.style.display = 'none';
+        if (headerOptBtn) headerOptBtn.style.display = 'flex';
+
+        if (activeStops.length <= 25) {
+            if(dividerGroup) dividerGroup.style.display = 'none';
+            if(priorityCont) priorityCont.style.display = 'none';
+        } else {
+            if(dividerGroup) dividerGroup.style.display = 'flex';
+            if(priorityCont) priorityCont.style.display = 'flex';
+        }
+
+        if (routedCount > 0) {
+            if (btnGen) btnGen.style.display = 'none';
+        } else {
+            if (btnGen) btnGen.style.display = 'flex';
+        }
     }
 }
 
@@ -332,7 +361,9 @@ async function handleGenerateRoute() {
             method: 'POST',
             body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id })
         });
-        alert("Route Generation Requested.");
+        
+        // Fetch fresh data and re-render the UI with the newly generated route
+        await loadData();
     } catch (e) {
         alert("Failed to request route generation. Check logs.");
     } finally {
