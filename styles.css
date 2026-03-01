@@ -19,6 +19,15 @@ body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; backgr
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
+/* Added missing sidebar header CSS */
+.sidebar-header { 
+    display: flex; align-items: center; justify-content: space-between; 
+    padding: 15px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); 
+    min-height: 60px; 
+}
+.sidebar-header img { max-height: 30px; object-fit: contain; }
+.sidebar-header span { font-size: 18px; font-weight: bold; color: var(--text-main); }
+
 /* VIEW MODES */
 body.view-driver { flex-direction: column; }
 .view-driver #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
