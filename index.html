@@ -1,118 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sproute Route Optimization</title>
+    <meta charset="utf-8">
+    <title>Sproute Dashboard</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
     
-    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="view-driver">
 
-    <div id="processing-overlay" style="display: flex;">
-        <div class="spinner"></div>
-        <span>Loading Data...</span>
+<div id="processing-overlay">Processing...</div>
+
+<div id="map-wrapper">
+    <div id="map-brand" class="floating-brand">
+        <span id="map-driver-name" style="font-size: 18px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
+        <img id="brand-logo-map" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 28px; width: auto;" alt="Brand Logo">
     </div>
 
-    <div id="map-wrapper">
-        <div id="map-brand" class="floating-brand">
-            <img id="brand-logo-map" src="" alt="Sproute Logo" style="height: 30px; object-fit: contain;">
-            <span id="map-driver-name">Loading...</span>
-        </div>
-        <div id="map"></div>
-    </div>
-
-    <div id="resizer"></div>
-
-    <div id="sidebar">
+    <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
+    <div class="map-overlay-btns">
+        <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()">
+            <i class="fa-solid fa-expand"></i> Reset View
+        </button>
+        <button id="bulk-complete-btn" class="floating-btn" onclick="triggerBulkComplete()">
+            <i class="fa-solid fa-circle-check"></i> Mark selected as completed
+        </button>
+        <button id="bulk-remove-btn" class="floating-btn" onclick="triggerBulkDelete()">
+            <i class="fa-solid fa-trash-can"></i> Remove selected from route
+        </button>
         
-        <div class="sidebar-header">
-            <img id="brand-logo-sidebar" src="" alt="Sproute Logo">
-            <span id="sidebar-driver-name">Loading...</span>
-            
-            <div id="inspector-dropdown-wrapper" style="display: none; width: 100%;">
-                <select id="inspector-filter" onchange="handleInspectorFilterChange(this.value)" style="width: 100%; max-width: 100%;">
-                    <option value="all">All Inspectors</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="sidebar-toolbar">
-            <input type="text" id="search-input" placeholder="Search orders..." onkeyup="filterList()">
-            <div class="view-toggles">
-                <button id="btn-detailed" class="active" onclick="setDisplayMode('detailed')"><i class="fa-solid fa-list"></i></button>
-                <button id="btn-compact" onclick="setDisplayMode('compact')"><i class="fa-solid fa-bars"></i></button>
-            </div>
-        </div>
+        <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)" style="border-left: 4px solid #2563eb;">
+            Move to Route 1
+        </button>
+        <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)" style="border-left: 4px solid #10b981;">
+            Move to Route 2
+        </button>
+        <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)" style="border-left: 4px solid #f1c40f;">
+            Move to Route 3
+        </button>
+    </div>
+    <div id="map"></div>
+</div>
 
-        <div class="manager-controls" id="manager-tools" style="display: flex; flex-direction: column; gap: 10px; padding: 10px;">
-            <p id="inspector-select-hint" style="display: none; font-size: 12px; color: var(--text-muted);">Select an inspector to generate or edit routes.</p>
-            <button id="btn-header-optimize" style="display: none;" onclick="handleOptimize()">Optimize Route</button>
-            
-            <div id="route-divider-group" style="display: none; gap: 5px;">
-                <button id="rbtn-1" class="active" onclick="setRoutes(1)">1 Route</button>
-                <button id="rbtn-2" onclick="setRoutes(2)">2 Routes</button>
-                <button id="rbtn-3" onclick="setRoutes(3)">3 Routes</button>
-            </div>
-            
-            <div id="priority-container" style="display: none; flex-direction: column;">
-                <label for="slider-priority" style="font-size: 12px;">Routing Priority (Distance vs Due Date)</label>
-                <input type="range" id="slider-priority" min="0" max="100" value="50" onchange="liveClusterUpdate()">
-            </div>
-            
-            <button id="btn-generate-route" style="display: none;" onclick="handleGenerateRoute()">Generate Route</button>
-        </div>
+<div id="resizer"></div>
 
-        <div class="summary-dashboard" style="padding: 10px; border-bottom: 1px solid #333;">
-            <div class="stat-row" style="display: flex; justify-content: space-between;">
-                <span id="sum-dist">0.0 mi</span>
-                <span id="sum-time">0 hrs</span>
+<div id="sidebar">
+    <div id="sidebar-brand" style="padding: 12px 15px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+        <span id="sidebar-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
+        <img id="brand-logo-sidebar" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
+    </div>
+
+    <div id="routing-controls">
+        <label style="font-size:13px; font-weight:bold; color:var(--text-main);">Route Divider</label>
+        <div id="route-divider-group" style="display:flex; gap:8px; margin-top:8px;">
+            <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1" style="--route-color: #2563eb;">
+                <div class="rbtn-title">1 Route</div>
+                <div class="rbtn-time" id="rtime-1">-- hrs</div>
             </div>
-            <div class="stat-row" style="display: flex; justify-content: space-between; font-size: 12px;">
-                <span id="stat-total">0 Orders</span>
-                <span id="stat-due">0 Due Today</span>
-                <span id="stat-past">0 Past Due</span>
+            <div class="route-btn" onclick="setRoutes(2)" id="rbtn-2" style="--route-color: #10b981;">
+                <div class="rbtn-title">2 Routes</div>
+                <div class="rbtn-time" id="rtime-2">-- hrs</div>
             </div>
-            <div class="route-times-row" style="display: flex; justify-content: space-between; font-size: 12px;">
-                <span id="rtime-1">-- hrs</span>
-                <span id="rtime-2">-- hrs</span>
-                <span id="rtime-3">-- hrs</span>
+            <div class="route-btn" onclick="setRoutes(3)" id="rbtn-3" style="--route-color: #f1c40f;">
+                <div class="rbtn-title">3 Routes</div>
+                <div class="rbtn-time" id="rtime-3">-- hrs</div>
             </div>
         </div>
 
-        <div class="bulk-actions" style="padding: 10px; display: flex; gap: 5px; flex-wrap: wrap;">
-            <button id="bulk-delete-btn" style="display: none; background: var(--red);" onclick="triggerBulkDelete()">Delete Selected</button>
-            <button id="bulk-unroute-btn" style="display: none; background: var(--orange);" onclick="triggerBulkUnroute()">Unroute Selected</button>
-            <button id="bulk-complete-btn" style="display: none; background: var(--green);" onclick="toggleComplete(event, null)">Mark Complete</button>
-            
-            <button id="move-r1-btn" style="display: none;" onclick="moveSelectedToRoute(0)">Move to R1</button>
-            <button id="move-r2-btn" style="display: none;" onclick="moveSelectedToRoute(1)">Move to R2</button>
-            <button id="move-r3-btn" style="display: none;" onclick="moveSelectedToRoute(2)">Move to R3</button>
-        </div>
-
-        <div id="stop-list" class="stop-list-container" style="flex: 1; overflow-y: auto;">
-            </div>
-
-        <div id="controls" class="floating-controls" style="display: none; padding: 10px; gap: 10px;">
-            <button onclick="handleUndo()" style="background: #444;">Undo</button>
-            <button onclick="handleCalculate()" style="background: var(--blue);">Calculate & Save</button>
+        <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-top:15px;">Priority Weighting</label>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
+            <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
+            <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
         </div>
     </div>
 
-    <div class="rocker"></div>
-
-    <div id="modal-overlay" style="display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.7); z-index: 9999; justify-content: center; align-items: center;">
-        <div id="modal-content" style="background: #222; padding: 20px; border-radius: 8px; width: 300px; max-width: 90%;">
+    <div id="route-summary">
+        <div class="summary-left">
+            <button id="btn-reoptimize" class="btn-reoptimize" onclick="handleOptimize()">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
+            </button>
+            <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+        </div>
+        <div class="summary-right">
+            <div id="order-stats">
+                <span id="stat-total">0 Orders</span> | 
+                <span id="stat-due" style="color:var(--orange)">0 Due Today</span> | 
+                <span id="stat-past" style="color:var(--red)">0 Past Due</span>
             </div>
+            <div class="rocker">
+                <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
+                <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
+            </div>
+        </div>
     </div>
-
-    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <div id="search-container"><input type="text" id="search-input" placeholder="Search address or client..." onkeyup="filterList()"></div>
     
-    <script src="app.js"></script>
+    <div id="controls">
+        <div style="text-align: center; font-weight: bold; color: var(--red); font-size: 12px; margin-bottom: 4px;">CHANGES MADE - SYNC REQUIRED</div>
+        <div class="ctrl-row">
+            <button class="btn-glide" style="background:#444; color:white;" onclick="handleCalculate()">
+                <i class="fa-solid fa-calculator"></i> Re-Calculate
+            </button>
+            <button class="btn-glide" style="background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-color);" onclick="handleUndo()">
+                <i class="fa-solid fa-rotate-left"></i> Undo Changes
+            </button>
+        </div>
+    </div>
+    
+    <div id="stop-list"></div>
+</div>
 
+<div id="modal-overlay"><div class="modal-box" id="modal-content"></div></div>
+
+<script src="app.js"></script>
 </body>
 </html>
