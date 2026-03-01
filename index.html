@@ -18,15 +18,9 @@
     </div>
 
     <div id="map-wrapper">
-        <div id="map-header" class="map-overlay-header">
-            <img id="brand-logo-map" src="" alt="Sproute Logo">
+        <div id="map-brand" class="floating-brand">
+            <img id="brand-logo-map" src="" alt="Sproute Logo" style="height: 30px; object-fit: contain;">
             <span id="map-driver-name">Loading...</span>
-            
-            <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" onchange="handleInspectorFilterChange(this.value)">
-                    <option value="all">All Inspectors</option>
-                </select>
-            </div>
         </div>
         <div id="map"></div>
     </div>
@@ -38,6 +32,12 @@
         <div class="sidebar-header">
             <img id="brand-logo-sidebar" src="" alt="Sproute Logo">
             <span id="sidebar-driver-name">Loading...</span>
+            
+            <div id="inspector-dropdown-wrapper" style="display: none; width: 100%;">
+                <select id="inspector-filter" onchange="handleInspectorFilterChange(this.value)" style="width: 100%; max-width: 100%;">
+                    <option value="all">All Inspectors</option>
+                </select>
+            </div>
         </div>
         
         <div class="sidebar-toolbar">
