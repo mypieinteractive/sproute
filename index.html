@@ -12,7 +12,7 @@
     
     <link rel="stylesheet" href="styles.css">
 </head>
-<body class="view-driver">
+<body class="view-driver manager-all-inspectors">
 
 <div id="processing-overlay">Processing...</div>
 
@@ -30,8 +30,11 @@
         <button id="bulk-complete-btn" class="floating-btn" onclick="triggerBulkComplete()">
             <i class="fa-solid fa-circle-check"></i> Mark selected as completed
         </button>
-        <button id="bulk-remove-btn" class="floating-btn" onclick="triggerBulkDelete()">
-            <i class="fa-solid fa-trash-can"></i> Remove selected from route
+        <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()">
+            <i class="fa-solid fa-route"></i> Remove selected from route
+        </button>
+        <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()">
+            <i class="fa-solid fa-trash-can"></i> Delete selected
         </button>
         
         <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)" style="border-left: 4px solid #2563eb;">
@@ -52,12 +55,24 @@
 <div id="sidebar">
     <div id="sidebar-brand" style="padding: 12px 15px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
         <span id="sidebar-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
+        
+        <div style="display:flex; align-items:center;">
+            <div id="inspector-dropdown-wrapper" style="position: relative; display: none;">
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 15px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; background-image: none; appearance: none;"></select>
+                <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-main); pointer-events: none; font-size: 13px;"></i>
+            </div>
+            <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 12px; white-space: nowrap;">&lt;- Select an Inspector to Route</span>
+        </div>
+
         <img id="brand-logo-sidebar" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
+        
+        <button id="btn-header-optimize" class="btn-generate" onclick="handleOptimize()" style="display:none; background:#2E4053; color:white; border:none; border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Optimize
+        </button>
     </div>
 
     <div id="routing-controls">
-        <label style="font-size:13px; font-weight:bold; color:var(--text-main);">Route Divider</label>
-        <div id="route-divider-group" style="display:flex; gap:8px; margin-top:8px;">
+        <div id="route-divider-group" style="display:flex; gap:8px;">
             <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1" style="--route-color: #2563eb;">
                 <div class="rbtn-title">1 Route</div>
                 <div class="rbtn-time" id="rtime-1">-- hrs</div>
@@ -72,19 +87,24 @@
             </div>
         </div>
 
-        <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-top:15px;">Priority Weighting</label>
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
-            <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
-            <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
+        <div style="display:flex; align-items:flex-end; gap:15px; margin-top:15px;">
+            <div id="priority-container" style="flex:1; display:flex; flex-direction:column;">
+                <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:6px;">Priority Weighting</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
+                    <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
+                    <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
+                </div>
+            </div>
+            
+            <button id="btn-generate-route" class="btn-generate" onclick="handleGenerateRoute()">
+                <i class="fa-solid fa-route"></i> Generate Route(s)
+            </button>
         </div>
     </div>
 
     <div id="route-summary">
         <div class="summary-left">
-            <button id="btn-reoptimize" class="btn-reoptimize" onclick="handleOptimize()">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
-            </button>
             <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
         </div>
         <div class="summary-right">
@@ -93,22 +113,28 @@
                 <span id="stat-due" style="color:var(--orange)">0 Due Today</span> | 
                 <span id="stat-past" style="color:var(--red)">0 Past Due</span>
             </div>
-            <div class="rocker">
-                <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
-                <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
-            </div>
         </div>
     </div>
-    <div id="search-container"><input type="text" id="search-input" placeholder="Search address or client..." onkeyup="filterList()"></div>
+    
+    <div id="search-container">
+        <input type="text" id="search-input" placeholder="Search address or client..." onkeyup="filterList()">
+        <div class="rocker">
+            <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
+            <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
+        </div>
+    </div>
     
     <div id="controls">
         <div style="text-align: center; font-weight: bold; color: var(--red); font-size: 12px; margin-bottom: 4px;">CHANGES MADE - SYNC REQUIRED</div>
         <div class="ctrl-row">
-            <button class="btn-glide" style="background:#444; color:white;" onclick="handleCalculate()">
+            <button id="btn-reoptimize" class="btn-glide" onclick="handleOptimize()" style="background:var(--blue); color:white; font-weight:bold;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
+            </button>
+            <button id="btn-recalc" class="btn-glide" style="background:#444; color:white;" onclick="handleCalculate()">
                 <i class="fa-solid fa-calculator"></i> Re-Calculate
             </button>
             <button class="btn-glide" style="background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-color);" onclick="handleUndo()">
-                <i class="fa-solid fa-rotate-left"></i> Undo Changes
+                <i class="fa-solid fa-rotate-left"></i> Undo
             </button>
         </div>
     </div>
