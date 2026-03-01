@@ -204,12 +204,13 @@ async function loadData() {
                 if (typeof data.permissions.reoptimize !== 'undefined') PERMISSION_REOPTIMIZE = data.permissions.reoptimize;
             }
             
-            document.body.classList.add('tier-' + (data.tier ? data.tier.toLowerCase() : 'individual'));
+            const userTier = (data.tier || data.Tier || 'individual').toLowerCase();
+            document.body.classList.add('tier-' + userTier);
 
             const mapLogo = document.getElementById('brand-logo-map');
             const sidebarLogo = document.getElementById('brand-logo-sidebar');
 
-            if (data.tier && data.companyLogo && (data.tier.toLowerCase() === 'company')) {
+            if (data.companyLogo && userTier === 'company') {
                 if (mapLogo) mapLogo.src = data.companyLogo;
                 if (sidebarLogo) sidebarLogo.src = data.companyLogo;
             } else {
@@ -225,11 +226,16 @@ async function loadData() {
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
             const filterSelect = document.getElementById('inspector-dropdown-wrapper');
 
-            if (viewMode === 'manager' && data.tier && data.tier.toLowerCase() !== 'individual') {
-                if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
-                if (sidebarLogo) sidebarLogo.style.display = 'none'; 
-                if (filterSelect) filterSelect.style.display = 'block';
-                updateInspectorDropdown(); 
+            if (viewMode === 'manager' && userTier !== 'individual') {
+                if (filterSelect) {
+                    if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
+                    if (sidebarLogo) sidebarLogo.style.display = 'none'; 
+                    filterSelect.style.display = 'block';
+                    updateInspectorDropdown(); 
+                } else {
+                    // Failsafe: keep header elements visible if wrapper is missing in DOM
+                    if (sidebarDriverEl) sidebarDriverEl.innerText = displayName;
+                }
             } else {
                 if (sidebarDriverEl) sidebarDriverEl.innerText = displayName;
             }
