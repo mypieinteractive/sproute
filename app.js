@@ -69,7 +69,7 @@ function parseEtaToMinutes(etaStr) {
 
 function updateInspectorDropdown() {
     const filterSelect = document.getElementById('inspector-filter');
-    if (!filterSelect || viewMode !== 'manager' || inspectors.length === 0) return;
+    if (!filterSelect || viewMode !== 'manager') return;
 
     const validInspectorIds = new Set();
     stops.forEach(s => {
@@ -82,13 +82,16 @@ function updateInspectorDropdown() {
     const currentVal = filterSelect.value || 'all';
     let filterHtml = '<option value="all">All Inspectors</option>';
     
-    inspectors.forEach(i => { 
-        if (validInspectorIds.has(i.id)) {
-            filterHtml += `<option value="${i.id}">${i.name}</option>`; 
-        }
-    });
+    if (inspectors && inspectors.length > 0) {
+        inspectors.forEach(i => { 
+            if (validInspectorIds.has(i.id)) {
+                filterHtml += `<option value="${i.id}">${i.name}</option>`; 
+            }
+        });
+    }
     
     filterSelect.innerHTML = filterHtml;
+    
     if (currentVal !== 'all' && !validInspectorIds.has(currentVal)) {
         filterSelect.value = 'all';
         handleInspectorFilterChange('all');
@@ -362,7 +365,6 @@ async function handleGenerateRoute() {
             body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id })
         });
         
-        // Fetch fresh data and re-render the UI with the newly generated route
         await loadData();
     } catch (e) {
         alert("Failed to request route generation. Check logs.");
