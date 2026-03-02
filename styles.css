@@ -1,8 +1,8 @@
-/* */
-/* Dashboard - V3.2 */
-/* FILE: styles.css */
-/* Changes: V3.2 - Maintained structure for new header-based route generation layout. */
-/* */
+/* * */
+/* * Dashboard - V3.1 */
+/* * FILE: styles.css */
+/* * Changes: V3.1 - Changed Generate Route button color to #2E4053. Added .col-eta class for Manager List View. */
+/* * */
 
 :root { 
     --blue: #2563eb; 
@@ -104,6 +104,8 @@ body:not(.view-map) #map-brand { display: none; }
 .btn-generate { background: var(--green); color: white; border: none; border-radius: 6px; padding: 10px 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; }
 .btn-generate:active { opacity: 0.7; }
 
+#btn-generate-route { background-color: #2E4053; }
+
 #search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
 #search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
 #search-input::placeholder { color: var(--text-muted); }
@@ -184,6 +186,7 @@ body.view-map .map-overlay-btns { top: 60px; }
 }
 .glide-row.completed .num-badge { background-color: #555 !important; color: white !important; }
 
+.col-eta { width: 75px; font-weight: 500; color: var(--text-main); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-due { width: 65px; display: flex; align-items: center; justify-content: center; gap: 2px; font-weight: 500; flex-shrink: 0;}
 .col-due.due-today { color: var(--orange); }
 .col-due.past-due { color: var(--red); font-weight: bold; }
