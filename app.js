@@ -1,8 +1,9 @@
 // *
-// * Dashboard - V3.1
+// * Dashboard - V3.2
 // * FILE: App.js
-// * Changes: V3.1 - Implemented end-to-end payload minification and coordinate truncation to 5 decimals. 
-// * Added explicit "R:x" multi-route indexing.
+// * Changes: V3.2 - Orchestrated UI state logic for dynamic 'Generate Routes' and 'Start Over' buttons. 
+// * Routing parameters automatically hide when routes are active. Sync Required UI responds to manual edits.
+// * Includes V3.1 payload minification and explicit route indexing mapping.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -64,9 +65,9 @@ const INSPECTOR_PALETTE = [
     { bg: '#3f51b5', text: '#ffffff' }  
 ];
 
-// --- PAYLOAD MAPPING UTILITIES ---
+// --- PAYLOAD MAPPING UTILITIES (V3.1) ---
 function expandStop(minStop) {
-    if (minStop.address) return minStop; // Already expanded standard order
+    if (minStop.address) return minStop; 
     let rawCluster = minStop.R;
     let clusterIdx = 0;
     if (typeof rawCluster === 'string' && rawCluster.startsWith('R:')) {
@@ -311,18 +312,21 @@ function updateRoutingUI() {
 
     const activeStops = stops.filter(s => isActiveStop(s));
     const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed').length;
+    
+    const routingControls = document.getElementById('routing-controls');
     const dividerGroup = document.getElementById('route-divider-group');
     const priorityCont = document.getElementById('priority-container');
-    const btnGen = document.getElementById('btn-generate-route');
-    
     const hintEl = document.getElementById('inspector-select-hint');
     const headerOptBtn = document.getElementById('btn-header-optimize');
+    const headerGenBtn = document.getElementById('btn-header-generate');
+    const headerGenBtnText = document.getElementById('btn-header-generate-text');
+    const headerStartBtn = document.getElementById('btn-header-start-over');
 
     if (currentInspectorFilter === 'all') {
-        if(dividerGroup) dividerGroup.style.display = 'none';
-        if(priorityCont) priorityCont.style.display = 'none';
-        if(btnGen) btnGen.style.display = 'none';
+        if(routingControls) routingControls.style.display = 'none';
         if(headerOptBtn) headerOptBtn.style.display = 'none';
+        if(headerGenBtn) headerGenBtn.style.display = 'none';
+        if(headerStartBtn) headerStartBtn.style.display = 'none';
 
         let showHint = false;
         const allValidStops = stops.filter(s => {
@@ -340,20 +344,32 @@ function updateRoutingUI() {
 
     } else {
         if (hintEl) hintEl.style.display = 'none';
-        if (headerOptBtn) headerOptBtn.style.display = 'flex';
-
-        if (activeStops.length <= 25) {
-            if(dividerGroup) dividerGroup.style.display = 'none';
-            if(priorityCont) priorityCont.style.display = 'none';
-        } else {
-            if(dividerGroup) dividerGroup.style.display = 'flex';
-            if(priorityCont) priorityCont.style.display = 'flex';
-        }
 
         if (routedCount > 0) {
-            if (btnGen) btnGen.style.display = 'none';
+            // Display active route mode
+            if(routingControls) routingControls.style.display = 'none';
+            if(headerGenBtn) headerGenBtn.style.display = 'none';
+            if(headerStartBtn) headerStartBtn.style.display = 'flex';
+            if(headerOptBtn) headerOptBtn.style.display = 'flex';
         } else {
-            if (btnGen) btnGen.style.display = 'flex';
+            // Initial generation mode
+            if(routingControls) routingControls.style.display = 'flex';
+            
+            if (activeStops.length <= 25) {
+                if(dividerGroup) dividerGroup.style.display = 'none';
+                if(priorityCont) priorityCont.style.display = 'none';
+            } else {
+                if(dividerGroup) dividerGroup.style.display = 'flex';
+                if(priorityCont) priorityCont.style.display = 'flex';
+            }
+            
+            if(headerGenBtn) headerGenBtn.style.display = 'flex';
+            if(headerStartBtn) headerStartBtn.style.display = 'none';
+            if(headerOptBtn) headerOptBtn.style.display = 'none';
+            
+            if (headerGenBtnText) {
+                headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
+            }
         }
     }
 }
@@ -364,6 +380,9 @@ function setRoutes(num) {
         const btn = document.getElementById(`rbtn-${i}`);
         if(btn) btn.classList.toggle('active', i === num);
     }
+    const headerGenBtnText = document.getElementById('btn-header-generate-text');
+    if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
+    
     stops.forEach(s => s.manualCluster = false); 
     
     liveClusterUpdate();
@@ -411,12 +430,44 @@ async function handleGenerateRoute() {
             body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id })
         });
         
-        // Fetch fresh data and re-render the UI with the newly generated route
         await loadData();
     } catch (e) {
         alert("Failed to request route generation. Check logs.");
     } finally {
         if(overlay) overlay.style.display = 'none';
+    }
+}
+
+async function handleStartOver() {
+    if(!confirm("Clear the current route and start over?")) return;
+    
+    const insp = inspectors.find(i => i.id === currentInspectorFilter);
+    if (!insp) return;
+
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
+    
+    try {
+        await fetch(WEB_APP_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({ action: 'resetRoute', driverId: insp.id, routeId: routeId }) 
+        });
+        
+        stops.forEach(s => {
+            if (s.driverId === insp.id && (s.status||'').toLowerCase() === 'routed') {
+                s.eta = '';
+                s.dist = '';
+                s.status = '';
+            }
+        });
+        
+        document.getElementById('controls').style.display = 'none'; 
+        render(); drawRoute(); updateSummary();
+    } catch(e) { 
+        alert("Failed to reset route."); 
+        console.error(e);
+    } finally { 
+        if(overlay) overlay.style.display = 'none'; 
     }
 }
 
