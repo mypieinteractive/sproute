@@ -1,7 +1,8 @@
 // *
-// * Dashboard - V3.0
+// * Dashboard - V3.1
 // * FILE: App.js
-// * Changes: New Version
+// * Changes: V3.1 - Implemented end-to-end payload minification and coordinate truncation to 5 decimals. 
+// * Added explicit "R:x" multi-route indexing.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -62,6 +63,45 @@ const INSPECTOR_PALETTE = [
     { bg: '#bcf60c', text: '#000000' }, 
     { bg: '#3f51b5', text: '#ffffff' }  
 ];
+
+// --- PAYLOAD MAPPING UTILITIES ---
+function expandStop(minStop) {
+    if (minStop.address) return minStop; // Already expanded standard order
+    let rawCluster = minStop.R;
+    let clusterIdx = 0;
+    if (typeof rawCluster === 'string' && rawCluster.startsWith('R:')) {
+        clusterIdx = parseInt(rawCluster.split(':')[1]) - 1;
+    } else if (!isNaN(parseInt(rawCluster))) {
+        clusterIdx = parseInt(rawCluster) - 1;
+    }
+    return {
+        id: minStop.r || minStop.i,
+        cluster: Math.max(0, clusterIdx),
+        address: minStop.a, client: minStop.c, app: minStop.p, dueDate: minStop.d, type: minStop.t,
+        eta: minStop.e, dist: minStop.D, lat: minStop.l, lng: minStop.g, status: minStop.s, 
+        durationSecs: minStop.u, rowId: minStop.r
+    };
+}
+
+function minifyStop(s, routeNum) {
+    return {
+        i: s.id || s.rowId, 
+        R: 'R:' + routeNum, 
+        a: s.address, 
+        c: s.client, 
+        p: s.app, 
+        d: s.dueDate, 
+        t: s.type, 
+        e: s.eta, 
+        D: s.dist, 
+        l: s.lat ? parseFloat(s.lat).toFixed(5) : 0, 
+        g: s.lng ? parseFloat(s.lng).toFixed(5) : 0, 
+        s: s.status, 
+        u: s.durationSecs, 
+        r: s.rowId || s.id
+    };
+}
+// ----------------------------------
 
 function parseEtaToMinutes(etaStr) {
     if (!etaStr || etaStr === '--') return 99999;
@@ -189,12 +229,15 @@ async function loadData() {
         const data = await res.json();
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         
-        stops = rawStops.map(s => ({
-            ...s,
-            id: s.rowId || s.id,
-            cluster: s.cluster || 0, 
-            manualCluster: false 
-        }));
+        stops = rawStops.map(s => {
+            let exp = expandStop(s);
+            return {
+                ...exp,
+                id: exp.rowId || exp.id,
+                cluster: exp.cluster || 0,
+                manualCluster: false
+            };
+        });
 
         originalStops = JSON.parse(JSON.stringify(stops)); 
         if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
@@ -899,9 +942,10 @@ async function handleCalculate() {
         });
 
         if (routeId) {
+            let minifiedStopsForSave = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
             await fetch(WEB_APP_URL, {
                 method: 'POST',
-                body: JSON.stringify({ action: 'saveRoute', routeId: routeId, driver: driverParam, stops: stops })
+                body: JSON.stringify({ action: 'saveRoute', routeId: routeId, driver: driverParam, stops: minifiedStopsForSave })
             });
         }
 
@@ -1114,18 +1158,23 @@ async function finalizeSync(type) {
         let clusteredArrays = [];
         for(let i = 0; i < currentRouteCount; i++) {
             let itemsInCluster = stops.filter(s => s.cluster === i);
-            if (itemsInCluster.length > 0) clusteredArrays.push(itemsInCluster);
+            if (itemsInCluster.length > 0) {
+                clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
+            }
         }
         payload.routeClusters = clusteredArrays;
         payload.priorityLevel = document.getElementById('slider-priority').value;
     } else {
-        payload.stops = stops;
+        payload.stops = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
     }
 
     try {
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json(); 
-        stops = data.updatedStops;
+        stops = data.updatedStops.map(s => {
+            let exp = expandStop(s);
+            return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false };
+        });
         
         document.getElementById('controls').style.display = 'none'; 
         render(); drawRoute(); updateSummary();
