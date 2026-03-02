@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V3.8 */
+/* * Dashboard - V3.9 */
 /* * FILE: styles.css */
-/* * Changes: V3.8 - Adjusted .num-badge and .pin-visual to support dynamically applied borders for unrouted/transparent modes. */
+/* * Changes: V3.9 - Added .view-managermobile styling, vertical flexbox orientation, horizontal drag handle, and element hiding rules for mobile setup. */
 /* * */
 
 :root { 
@@ -48,6 +48,22 @@ body.view-manager #map-wrapper { flex: 1; height: 100vh; width: auto; }
 body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100vh; border-left: none; flex: none; }
 body.view-manager #bulk-complete-btn { display: none !important; }
 body.view-manager #summary-metrics { display: none !important; } 
+
+/* MANAGER MOBILE VIEW */
+body.view-managermobile { flex-direction: column; }
+body.view-managermobile #map-wrapper { height: 40vh; width: 100vw; flex: none; }
+body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); }
+body.view-managermobile #bulk-complete-btn { display: none !important; }
+body.view-managermobile #summary-metrics { display: none !important; } 
+body.view-managermobile #resizer { 
+    display: block; width: 100vw; height: 16px; cursor: row-resize; 
+    flex: none; background-color: var(--border-color); margin: 0; padding: 0; 
+    position: relative; z-index: 100; border-top: 1px solid #111; border-bottom: 1px solid #111;
+}
+body.view-managermobile #resizer::after {
+    content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    width: 35px; height: 3px; background: #777; border-radius: 3px;
+}
 
 body.tier-individual .col-insp { display: none !important; }
 
