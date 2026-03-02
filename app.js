@@ -1,3 +1,9 @@
+// *
+// * Front End - V3.0
+// * FILE: App.js (JavaScript)
+// * Changes: New Version
+// *
+
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
     if (wrap) {
