@@ -1,9 +1,8 @@
 // *
-// * Dashboard - V3.2
+// * Dashboard - V3.3
 // * FILE: App.js
-// * Changes: V3.2 - Orchestrated UI state logic for dynamic 'Generate Routes' and 'Start Over' buttons. 
-// * Routing parameters automatically hide when routes are active. Sync Required UI responds to manual edits.
-// * Includes V3.1 payload minification and explicit route indexing mapping.
+// * Changes: V3.3 - Swapped time-only ETA parser for full Date comparison to support multi-day route sorting.
+// * Added clustered array payload to handleGenerateRoute(). Added sequential global mapping for list/map badges.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -65,7 +64,6 @@ const INSPECTOR_PALETTE = [
     { bg: '#3f51b5', text: '#ffffff' }  
 ];
 
-// --- PAYLOAD MAPPING UTILITIES (V3.1) ---
 function expandStop(minStop) {
     if (minStop.address) return minStop; 
     let rawCluster = minStop.R;
@@ -77,6 +75,7 @@ function expandStop(minStop) {
     }
     return {
         id: minStop.r || minStop.i,
+        seq: minStop.i,
         cluster: Math.max(0, clusterIdx),
         address: minStop.a, client: minStop.c, app: minStop.p, dueDate: minStop.d, type: minStop.t,
         eta: minStop.e, dist: minStop.D, lat: minStop.l, lng: minStop.g, status: minStop.s, 
@@ -102,16 +101,12 @@ function minifyStop(s, routeNum) {
         r: s.rowId || s.id
     };
 }
-// ----------------------------------
 
-function parseEtaToMinutes(etaStr) {
-    if (!etaStr || etaStr === '--') return 99999;
-    let match = String(etaStr).match(/(\d+):(\d+)\s*(AM|PM)?/i);
-    if (!match) return 99999;
-    let h = parseInt(match[1]), m = parseInt(match[2]), ampm = (match[3]||'').toUpperCase();
-    if (ampm === 'PM' && h < 12) h += 12;
-    if (ampm === 'AM' && h === 12) h = 0;
-    return h * 60 + m;
+// V3.3 - Sorting strictly by Date objects for multi-day route correctness
+function sortByEta(a, b) {
+    let tA = a.eta ? new Date(a.eta).getTime() : 0;
+    let tB = b.eta ? new Date(b.eta).getTime() : 0;
+    return tA - tB;
 }
 
 function updateInspectorDropdown() {
@@ -173,7 +168,8 @@ function isActiveStop(s) {
 }
 
 function getVisualStyle(stopData) {
-    if (viewMode === 'manager' && currentInspectorFilter !== 'all' && stopData.hasOwnProperty('cluster')) {
+    // Colors orders strictly by their Route Cluster whenever actively viewing a driver's routes
+    if ((currentInspectorFilter !== 'all' || viewMode !== 'manager') && stopData.hasOwnProperty('cluster')) {
         return INSPECTOR_PALETTE[stopData.cluster % INSPECTOR_PALETTE.length];
     } else {
         if (!stopData.driverId) return { bg: 'var(--red)', text: '#ffffff' };
@@ -306,7 +302,6 @@ async function loadData() {
     }
 }
 
-// --- ROUTING UI BINDINGS ---
 function updateRoutingUI() {
     if(viewMode !== 'manager') return;
 
@@ -346,13 +341,11 @@ function updateRoutingUI() {
         if (hintEl) hintEl.style.display = 'none';
 
         if (routedCount > 0) {
-            // Display active route mode
             if(routingControls) routingControls.style.display = 'none';
             if(headerGenBtn) headerGenBtn.style.display = 'none';
             if(headerStartBtn) headerStartBtn.style.display = 'flex';
             if(headerOptBtn) headerOptBtn.style.display = 'flex';
         } else {
-            // Initial generation mode
             if(routingControls) routingControls.style.display = 'flex';
             
             if (activeStops.length <= 25) {
@@ -424,10 +417,18 @@ async function handleGenerateRoute() {
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
+    let clusteredArrays = [];
+    for(let i = 0; i < currentRouteCount; i++) {
+        let itemsInCluster = stops.filter(s => isActiveStop(s) && s.lng && s.lat && s.cluster === i && (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
+        if (itemsInCluster.length > 0) {
+            clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
+        }
+    }
+
     try {
         await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id })
+            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays })
         });
         
         await loadData();
@@ -552,7 +553,6 @@ function updateMarkerColors() {
     });
 }
 
-// Bulk Actions Logic
 async function triggerBulkDelete() { 
     if(!confirm("Delete selected orders?")) return;
     
@@ -745,7 +745,7 @@ function render(isDraft = false) {
 
     const activeStops = stops.filter(s => isActiveStop(s));
     
-    const processStop = (s, i, showHandle) => {
+    const processStop = (s, displayIndex, showHandle) => {
         const item = document.createElement('div');
         item.id = `item-${s.id}`;
         item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
@@ -786,7 +786,7 @@ function render(isDraft = false) {
 
             item.innerHTML = `
                 ${handleHtml}
-                <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; color: ${style.text};">${i + 1}</div></div>
+                <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 ${inspectorHtml}
                 <div class="col-addr">${(s.address||'').split(',')[0]}</div>
@@ -800,7 +800,7 @@ function render(isDraft = false) {
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
-                <div class="stop-sidebar ${urgencyClass}">${i + 1}</div>
+                <div class="stop-sidebar ${urgencyClass}">${displayIndex}</div>
                 ${handleHtml}
                 <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
                 <div class="stop-content">
@@ -827,7 +827,7 @@ function render(isDraft = false) {
             el.className = `marker ${s.status}`; 
             
             const style = getVisualStyle(s);
-            el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; color: ${style.text};"><span>${i + 1}</span></div>`;
+            el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; color: ${style.text};"><span>${displayIndex}</span></div>`;
 
             if (urgencyClass) {
                 const w = document.createElement('div'); w.className = 'marker-warning'; 
@@ -848,10 +848,12 @@ function render(isDraft = false) {
         return item;
     };
 
+    let globalSeq = 1;
+
     if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
-        routedStops.sort((a,b) => parseEtaToMinutes(a.eta) - parseEtaToMinutes(b.eta));
+        routedStops.sort(sortByEta);
 
         if (unroutedStops.length > 0) {
             const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
@@ -860,7 +862,7 @@ function render(isDraft = false) {
             unroutedDiv.id = 'unrouted-list';
             unroutedDiv.style.minHeight = '30px'; 
             listContainer.appendChild(unroutedDiv);
-            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i, false)); });
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, false)); });
         }
         
         if (routedStops.length > 0) {
@@ -874,13 +876,13 @@ function render(isDraft = false) {
                     routedDiv.className = 'routed-group-container';
                     routedDiv.style.minHeight = '30px';
                     listContainer.appendChild(routedDiv);
-                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i, true)); });
+                    cStops.forEach(s => { routedDiv.appendChild(processStop(s, globalSeq++, true)); });
                 }
             });
         }
         
     } else if (viewMode === 'driver' || viewMode === 'routing') {
-        const activeStopsCopy = [...activeStops].sort((a,b) => parseEtaToMinutes(a.eta) - parseEtaToMinutes(b.eta));
+        const activeStopsCopy = [...activeStops].sort(sortByEta);
         const uniqueClusters = [...new Set(activeStopsCopy.map(s => s.cluster || 0))].sort();
         
         if (uniqueClusters.length > 1) {
@@ -892,20 +894,20 @@ function render(isDraft = false) {
                     routedDiv.id = `driver-list-${clusterId}`;
                     routedDiv.className = 'routed-group-container';
                     listContainer.appendChild(routedDiv);
-                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i, true)); });
+                    cStops.forEach(s => { routedDiv.appendChild(processStop(s, globalSeq++, true)); });
                 }
             });
         } else {
             const mainDiv = document.createElement('div');
             mainDiv.id = 'main-list-container';
             listContainer.appendChild(mainDiv);
-            activeStopsCopy.forEach((s, i) => mainDiv.appendChild(processStop(s, i, false)));
+            activeStopsCopy.forEach(s => mainDiv.appendChild(processStop(s, globalSeq++, false)));
         }
     } else {
         const mainDiv = document.createElement('div');
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
-        activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i, false)));
+        activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
     }
 
     if (activeStops.filter(s => s.lng && s.lat).length > 0) { 
@@ -1137,13 +1139,12 @@ function drawRoute() {
     
     if (routedStops.length < 2) return; 
 
-    routedStops.sort((a,b) => parseEtaToMinutes(a.eta) - parseEtaToMinutes(b.eta));
+    routedStops.sort(sortByEta);
     const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))];
 
     const features = [];
     uniqueClusters.forEach(cId => {
         const cStops = routedStops.filter(s => (s.cluster || 0) === cId);
-        // Mapbox requires at least 2 points to draw a LineString. This prevents the crash.
         if (cStops.length > 1) {
             features.push({
                 "type": "Feature",
