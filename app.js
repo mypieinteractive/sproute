@@ -1,8 +1,8 @@
 // *
-// * Dashboard - V3.9
+// * Dashboard - V3.10
 // * FILE: App.js
-// * Changes: V3.9 - Added support for "managermobile" view mode. Consolidated isManagerView checks.
-// * Added vertical dragging calculations and touch-event compatibility to the resizer logic for mobile screens.
+// * Changes: V3.10 - Updated all error alert messages to be user-friendly, 
+// * removing code-level and server-side technical jargon.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -40,7 +40,7 @@ const routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const viewMode = params.get('view') || 'driver'; 
-const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); // Unified check
+const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
 
 document.body.className = `view-${viewMode} manager-all-inspectors`;
 
@@ -210,7 +210,6 @@ const sidebarEl = document.getElementById('sidebar');
 const mapWrapEl = document.getElementById('map-wrapper');
 let isResizing = false;
 
-// V3.9 - Re-engineered resizer to support both Mouse and Touch for Y and X axis resizing
 function startResize(e) {
     if(!isManagerView) return;
     isResizing = true;
@@ -516,7 +515,7 @@ async function handleGenerateRoute() {
         
         await loadData();
     } catch (e) {
-        alert("Failed to request route generation. Check logs.");
+        alert("Error requesting route generation. Please try again.");
     } finally {
         if(overlay) overlay.style.display = 'none';
     }
@@ -549,7 +548,7 @@ async function handleStartOver() {
         document.getElementById('controls').style.display = 'none'; 
         render(); drawRoute(); updateSummary();
     } catch(e) { 
-        alert("Failed to reset route."); 
+        alert("Error resetting the route. Please try again."); 
         console.error(e);
     } finally { 
         if(overlay) overlay.style.display = 'none'; 
@@ -672,7 +671,7 @@ async function triggerBulkDelete() {
         render(); drawRoute(); updateSummary(); updateRouteTimes();
 
     } catch (err) {
-        alert("A network or server error occurred. Please check the Google Apps Script Execution Log.");
+        alert("Error deleting orders. Please try again.");
         console.error("Bulk Delete Error:", err);
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -703,7 +702,7 @@ async function triggerBulkUnroute() {
         render(); drawRoute(); updateSummary(); updateRouteTimes();
         document.getElementById('controls').style.display = 'flex'; 
     } catch (err) {
-        alert("A network or server error occurred.");
+        alert("Error removing orders from the route. Please try again.");
         console.error("Bulk Unroute Error:", err);
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -751,7 +750,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
         updateInspectorDropdown(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
     } catch (err) { 
-        alert("Network error: Failed to update some orders."); 
+        alert("Error reassigning orders. Please try again."); 
         console.error(err);
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -1077,7 +1076,10 @@ async function handleCalculate() {
 
     try {
         const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-        if (activeStops.length < 2) { alert("Not enough valid stops."); return; }
+        if (activeStops.length < 2) { 
+            alert("Please select at least two stops to calculate a route."); 
+            return; 
+        }
 
         const MAX_WAYPOINTS = 25; 
         let legs = []; 
@@ -1129,7 +1131,7 @@ async function handleCalculate() {
         render(); drawRoute(); updateSummary();
 
     } catch (e) { 
-        alert("Calculation failed: " + e.message); 
+        alert("Error calculating the route. Please try again."); 
         console.error(e);
     } finally { 
         if (overlay) overlay.style.display = 'none'; 
@@ -1161,7 +1163,7 @@ async function handleUndo() {
             render(); drawRoute(); updateSummary();
         }
     } catch(e) { 
-        alert("Failed to undo changes on server."); 
+        alert("Error undoing changes. Please try again."); 
         console.error(e);
     } finally { 
         if(overlay) overlay.style.display = 'none'; 
@@ -1363,7 +1365,7 @@ async function finalizeSync(type) {
         dirtyRoutes.clear();
         document.getElementById('controls').style.display = 'none'; 
         render(); drawRoute(); updateSummary();
-    } catch (e) { alert("Sync Failed."); }
+    } catch (e) { alert("Error updating locations. Please try again."); }
 }
 
 function reorderStopsFromDOM() {
