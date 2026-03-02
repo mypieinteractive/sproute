@@ -1,8 +1,8 @@
 // *
-// * Dashboard - V3.3
+// * Dashboard - V3.4
 // * FILE: App.js
-// * Changes: V3.3 - Swapped time-only ETA parser for full Date comparison to support multi-day route sorting.
-// * Added clustered array payload to handleGenerateRoute(). Added sequential global mapping for list/map badges.
+// * Changes: V3.4 - Replaced global sequencing with cluster-specific indexing so route pins restart at 1.
+// * Added ETA date inference during loadData to rebuild route clusters when reading from the main database.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -102,7 +102,6 @@ function minifyStop(s, routeNum) {
     };
 }
 
-// V3.3 - Sorting strictly by Date objects for multi-day route correctness
 function sortByEta(a, b) {
     let tA = a.eta ? new Date(a.eta).getTime() : 0;
     let tB = b.eta ? new Date(b.eta).getTime() : 0;
@@ -168,7 +167,6 @@ function isActiveStop(s) {
 }
 
 function getVisualStyle(stopData) {
-    // Colors orders strictly by their Route Cluster whenever actively viewing a driver's routes
     if ((currentInspectorFilter !== 'all' || viewMode !== 'manager') && stopData.hasOwnProperty('cluster')) {
         return INSPECTOR_PALETTE[stopData.cluster % INSPECTOR_PALETTE.length];
     } else {
@@ -232,9 +230,29 @@ async function loadData() {
                 ...exp,
                 id: exp.rowId || exp.id,
                 cluster: exp.cluster || 0,
-                manualCluster: false
+                manualCluster: false,
+                _hasExplicitCluster: s.R !== undefined
             };
         });
+
+        // V3.4 - Reverse engineer missing route clusters from DB loads based on unique ETA dates
+        let activeDates = [...new Set(stops.filter(s => s.eta && (s.status||'').toLowerCase() === 'routed').map(s => String(s.eta).split(' ')[0]))];
+        activeDates.sort((a, b) => new Date(a) - new Date(b));
+
+        stops.forEach(s => {
+            if (!s._hasExplicitCluster && s.eta && (s.status||'').toLowerCase() === 'routed') {
+                s.cluster = Math.max(0, activeDates.indexOf(String(s.eta).split(' ')[0]));
+            }
+        });
+
+        if (activeDates.length > 0) {
+            currentRouteCount = activeDates.length;
+            const cappedCount = Math.min(3, activeDates.length);
+            for(let i=1; i<=3; i++) {
+                const btn = document.getElementById(`rbtn-${i}`);
+                if(btn) btn.classList.toggle('active', i === cappedCount);
+            }
+        }
 
         originalStops = JSON.parse(JSON.stringify(stops)); 
         if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
@@ -848,8 +866,6 @@ function render(isDraft = false) {
         return item;
     };
 
-    let globalSeq = 1;
-
     if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
@@ -876,7 +892,8 @@ function render(isDraft = false) {
                     routedDiv.className = 'routed-group-container';
                     routedDiv.style.minHeight = '30px';
                     listContainer.appendChild(routedDiv);
-                    cStops.forEach(s => { routedDiv.appendChild(processStop(s, globalSeq++, true)); });
+                    // V3.4 - Reset display index per cluster
+                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
         }
@@ -894,14 +911,15 @@ function render(isDraft = false) {
                     routedDiv.id = `driver-list-${clusterId}`;
                     routedDiv.className = 'routed-group-container';
                     listContainer.appendChild(routedDiv);
-                    cStops.forEach(s => { routedDiv.appendChild(processStop(s, globalSeq++, true)); });
+                    // V3.4 - Reset display index per cluster
+                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
         } else {
             const mainDiv = document.createElement('div');
             mainDiv.id = 'main-list-container';
             listContainer.appendChild(mainDiv);
-            activeStopsCopy.forEach(s => mainDiv.appendChild(processStop(s, globalSeq++, false)));
+            activeStopsCopy.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
         }
     } else {
         const mainDiv = document.createElement('div');
