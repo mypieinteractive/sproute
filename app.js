@@ -1,9 +1,8 @@
 // *
-// * Dashboard - V3.8
+// * Dashboard - V3.9
 // * FILE: App.js
-// * Changes: V3.8 - Standardized 20-inspector hardcoded color palette (MASTER_PALETTE).
-// * Unrouted items now use a transparent background with borders matching their Route 1 identity.
-// * Dirty route tracking now isolates the ETA reset ("--") ONLY to modified routes (dirtyRoutes set).
+// * Changes: V3.9 - Added support for "managermobile" view mode. Consolidated isManagerView checks.
+// * Added vertical dragging calculations and touch-event compatibility to the resizer logic for mobile screens.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -31,7 +30,6 @@ let sortableUnrouted = null;
 let currentRouteCount = 1; 
 let currentInspectorFilter = 'all';
 
-// V3.8 Tracking isolated dirty routes
 let dirtyRoutes = new Set(); 
 function markRouteDirty(driverId, clusterIdx) {
     dirtyRoutes.add(`${driverId || 'unassigned'}_${clusterIdx || 0}`);
@@ -42,6 +40,7 @@ const routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const viewMode = params.get('view') || 'driver'; 
+const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); // Unified check
 
 document.body.className = `view-${viewMode} manager-all-inspectors`;
 
@@ -58,7 +57,6 @@ const map = new mapboxgl.Map({
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
 
-// V3.8 - Pre-set 20 complementary/distinct palettes
 const MASTER_PALETTE = [
     { r1: '#2563eb', r2: '#60a5fa', r3: '#93c5fd', text: '#ffffff', unroutedText: '#60a5fa' }, // 1. Blues
     { r1: '#10b981', r2: '#34d399', r3: '#6ee7b7', text: '#ffffff', unroutedText: '#34d399' }, // 2. Emeralds
@@ -128,7 +126,7 @@ function sortByEta(a, b) {
 
 function updateInspectorDropdown() {
     const filterSelect = document.getElementById('inspector-filter');
-    if (!filterSelect || viewMode !== 'manager' || inspectors.length === 0) return;
+    if (!filterSelect || !isManagerView || inspectors.length === 0) return;
 
     const validInspectorIds = new Set();
     stops.forEach(s => {
@@ -171,13 +169,13 @@ function isActiveStop(s) {
     let active = true;
     const status = (s.status || '').toLowerCase();
     
-    if (viewMode === 'manager') {
+    if (isManagerView) {
         active = (status === '' || status === 'routed' || status === 'completed');
     } else {
         active = status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
     }
     
-    if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
+    if (isManagerView && currentInspectorFilter !== 'all') {
         if (s.driverId !== currentInspectorFilter) active = false;
     }
     
@@ -212,23 +210,43 @@ const sidebarEl = document.getElementById('sidebar');
 const mapWrapEl = document.getElementById('map-wrapper');
 let isResizing = false;
 
-resizerEl.addEventListener('mousedown', (e) => {
-    if(viewMode !== 'manager') return;
+// V3.9 - Re-engineered resizer to support both Mouse and Touch for Y and X axis resizing
+function startResize(e) {
+    if(!isManagerView) return;
     isResizing = true;
     resizerEl.classList.add('active');
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = viewMode === 'managermobile' ? 'row-resize' : 'col-resize';
     mapWrapEl.style.pointerEvents = 'none'; 
-});
+}
 
-document.addEventListener('mousemove', (e) => {
+resizerEl.addEventListener('mousedown', startResize);
+resizerEl.addEventListener('touchstart', (e) => { startResize(e.touches[0]); }, {passive: false});
+
+function performResize(e) {
     if (!isResizing) return;
-    let newWidth = window.innerWidth - e.clientX;
-    if (newWidth < 300) newWidth = 300;
-    if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
-    sidebarEl.style.width = newWidth + 'px';
-});
+    let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
+    let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
+    
+    if (viewMode === 'managermobile') {
+        let newHeight = window.innerHeight - clientY;
+        if (newHeight < 200) newHeight = 200;
+        if (newHeight > window.innerHeight - 200) newHeight = window.innerHeight - 200;
+        sidebarEl.style.height = newHeight + 'px';
+        sidebarEl.style.flex = 'none';
+        mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px';
+        mapWrapEl.style.flex = 'none';
+    } else {
+        let newWidth = window.innerWidth - clientX;
+        if (newWidth < 300) newWidth = 300;
+        if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
+        sidebarEl.style.width = newWidth + 'px';
+    }
+}
 
-document.addEventListener('mouseup', () => {
+document.addEventListener('mousemove', performResize);
+document.addEventListener('touchmove', performResize, {passive: false});
+
+function stopResize() {
     if (isResizing) {
         isResizing = false;
         document.body.style.cursor = '';
@@ -236,7 +254,10 @@ document.addEventListener('mouseup', () => {
         mapWrapEl.style.pointerEvents = 'auto';
         if(map) map.resize(); 
     }
-});
+}
+
+document.addEventListener('mouseup', stopResize);
+document.addEventListener('touchend', stopResize);
 
 async function loadData() {
     let queryParams = '';
@@ -324,7 +345,7 @@ async function loadData() {
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
             const filterSelect = document.getElementById('inspector-dropdown-wrapper');
 
-            if (viewMode === 'manager' && data.tier && data.tier.toLowerCase() !== 'individual') {
+            if (isManagerView && data.tier && data.tier.toLowerCase() !== 'individual') {
                 if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
                 if (sidebarLogo) sidebarLogo.style.display = 'none'; 
                 if (filterSelect) filterSelect.style.display = 'block';
@@ -344,7 +365,7 @@ async function loadData() {
             }
         }
         
-        if(viewMode === 'map' || viewMode === 'list' || viewMode === 'manager') {
+        if(viewMode === 'map' || viewMode === 'list' || isManagerView) {
             document.querySelector('.rocker').style.display = 'none';
         }
 
@@ -359,7 +380,7 @@ async function loadData() {
 }
 
 function updateRoutingUI() {
-    if(viewMode !== 'manager') return;
+    if(!isManagerView) return;
 
     const activeStops = stops.filter(s => isActiveStop(s));
     const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed').length;
@@ -400,7 +421,7 @@ function updateRoutingUI() {
             if(routingControls) routingControls.style.display = 'none';
             if(headerGenBtn) headerGenBtn.style.display = 'none';
             if(headerStartBtn) headerStartBtn.style.display = 'flex';
-            if(headerOptBtn) headerOptBtn.style.display = viewMode === 'manager' ? 'none' : 'flex';
+            if(headerOptBtn) headerOptBtn.style.display = isManagerView ? 'none' : 'flex';
         } else {
             if(routingControls) routingControls.style.display = 'flex';
             
@@ -459,7 +480,7 @@ function moveSelectedToRoute(cIdx) {
 }
 
 function updateRouteTimes() {
-    if(viewMode !== 'manager' || currentInspectorFilter === 'all') return;
+    if(!isManagerView || currentInspectorFilter === 'all') return;
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     for(let i=0; i<3; i++) {
         const count = activeStops.filter(s => s.cluster === i).length;
@@ -536,7 +557,7 @@ async function handleStartOver() {
 }
 
 function liveClusterUpdate() {
-    if(viewMode !== 'manager' || currentInspectorFilter === 'all') return;
+    if(!isManagerView || currentInspectorFilter === 'all') return;
     
     const k = currentRouteCount;
     const w = parseInt(document.getElementById('slider-priority').value) / 100;
@@ -806,11 +827,11 @@ function render() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (viewMode === 'list' || viewMode === 'manager') {
+    if (viewMode === 'list' || isManagerView) {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
         
-        const handleHeaderHtml = (viewMode === 'manager') ? `<div class="col-handle"></div>` : ``;
+        const handleHeaderHtml = (isManagerView) ? `<div class="col-handle"></div>` : ``;
         header.innerHTML = `
             ${handleHeaderHtml}
             <div class="col-num"></div>
@@ -860,11 +881,11 @@ function render() {
             etaTime = '--';
         }
 
-        if (viewMode === 'list' || viewMode === 'manager') {
+        if (viewMode === 'list' || isManagerView) {
             item.className = `glide-row ${s.status}`;
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
-            if (viewMode === 'manager' && inspectors.length > 0) {
+            if (isManagerView && inspectors.length > 0) {
                 const optionsHtml = inspectors.map(insp => `<option value="${insp.id}" ${s.driverId === insp.id ? 'selected' : ''}>${insp.name}</option>`).join('');
                 const defaultPlaceholder = !s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : '';
                 const disableSelectAttr = !PERMISSION_MODIFY ? 'disabled' : '';
@@ -880,7 +901,7 @@ function render() {
             }
 
             const style = getVisualStyle(s);
-            const handleHtml = viewMode === 'manager' ? `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>` : ``;
+            const handleHtml = isManagerView ? `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>` : ``;
 
             item.innerHTML = `
                 ${handleHtml}
@@ -947,7 +968,7 @@ function render() {
         return item;
     };
 
-    if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
+    if (isManagerView && currentInspectorFilter !== 'all') {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
         routedStops.sort(sortByEta);
@@ -1124,7 +1145,7 @@ async function handleUndo() {
     if(overlay) overlay.style.display = 'flex';
     
     try {
-        if (viewMode === 'manager') {
+        if (isManagerView) {
             const payload = { action: 'undoManagerChanges', originalStops: originalStops };
             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
             stops = JSON.parse(JSON.stringify(originalStops));
@@ -1208,13 +1229,13 @@ function updateSelectionUI() {
     
     const completeBtn = document.getElementById('bulk-complete-btn');
     if (completeBtn) {
-        completeBtn.style.display = (has && viewMode !== 'manager') ? 'block' : 'none'; 
+        completeBtn.style.display = (has && !isManagerView) ? 'block' : 'none'; 
     }
     
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`move-r${i}-btn`);
         if(btn) {
-            if(viewMode === 'manager' && currentInspectorFilter !== 'all' && has && i <= currentRouteCount && currentRouteCount > 1) {
+            if(isManagerView && currentInspectorFilter !== 'all' && has && i <= currentRouteCount && currentRouteCount > 1) {
                 let allInTargetRoute = true;
                 selectedIds.forEach(id => {
                     const s = stops.find(st => st.id === id);
@@ -1241,7 +1262,7 @@ function drawRoute() {
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     let routedStops = [];
     
-    if (viewMode === 'manager') {
+    if (isManagerView) {
         routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
     } else {
         routedStops = activeStops;
@@ -1317,7 +1338,7 @@ async function finalizeSync(type) {
         startTime: currentStartTime, startAddr: startAddr, endAddr: endAddr 
     };
 
-    if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
+    if (isManagerView && currentInspectorFilter !== 'all') {
         let clusteredArrays = [];
         for(let i = 0; i < currentRouteCount; i++) {
             let itemsInCluster = stops.filter(s => s.cluster === i);
@@ -1378,7 +1399,7 @@ function initSortable() {
 
     if (!PERMISSION_MODIFY) return;
 
-    if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
+    if (isManagerView && currentInspectorFilter !== 'all') {
         const unroutedEl = document.getElementById('unrouted-list');
 
         document.querySelectorAll('.routed-group-container').forEach(routedEl => {
@@ -1432,7 +1453,7 @@ function initSortable() {
                 animation: 150
             });
         }
-    } else if (viewMode !== 'list' && viewMode !== 'manager') {
+    } else if (viewMode !== 'list' && !isManagerView) {
         document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
             const inst = Sortable.create(el, {
                 handle: '.handle',
