@@ -1,7 +1,10 @@
 // *
-// * Dashboard - V3.5
+// * Dashboard - V3.6
 // * FILE: App.js
-// * Changes: V3.5 - Fixed ISO date string parsing bug in loadData() that was assigning every order to its own route.
+// * Changes: V3.6 - Hidden Optimize Route button in Manager view.
+// * Updated estimated timing to use correct stop delay and calculate proper durations.
+// * Added safe parseFloat checks so the distance summation correctly reads data from the DB.
+// * Added ETA Time column to the list view in manager mode.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -21,7 +24,7 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
-let COMPANY_SERVICE_DELAY = 1; 
+let COMPANY_SERVICE_DELAY = 15; 
 let PERMISSION_MODIFY = true;
 let PERMISSION_REOPTIMIZE = true;
 let sortableInstances = [];
@@ -234,7 +237,6 @@ async function loadData() {
             };
         });
 
-        // V3.5 - Safely extract the calendar date to group multi-day routes, handling ISO strings
         const getLocalDateStr = (etaStr) => {
             if (!etaStr) return "";
             const d = new Date(etaStr);
@@ -368,7 +370,7 @@ function updateRoutingUI() {
             if(routingControls) routingControls.style.display = 'none';
             if(headerGenBtn) headerGenBtn.style.display = 'none';
             if(headerStartBtn) headerStartBtn.style.display = 'flex';
-            if(headerOptBtn) headerOptBtn.style.display = 'flex';
+            if(headerOptBtn) headerOptBtn.style.display = viewMode === 'manager' ? 'none' : 'flex';
         } else {
             if(routingControls) routingControls.style.display = 'flex';
             
@@ -425,7 +427,7 @@ function updateRouteTimes() {
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     for(let i=0; i<3; i++) {
         const count = activeStops.filter(s => s.cluster === i).length;
-        const hrs = Math.ceil(count * 0.4);
+        const hrs = Math.ceil(count * ((COMPANY_SERVICE_DELAY + 15) / 60));
         const timeEl = document.getElementById(`rtime-${i+1}`);
         if(timeEl) {
             timeEl.innerText = count > 0 ? `${hrs} hrs` : '-- hrs';
@@ -721,7 +723,10 @@ function createRouteSubheading(clusterNum, clusterStops) {
     const today = new Date(); today.setHours(0,0,0,0);
 
     clusterStops.forEach(s => {
-        totalMi += parseFloat(s.dist || 0);
+        const distVal = parseFloat(s.dist);
+        if (!isNaN(distVal)) {
+            totalMi += distVal;
+        }
         if(s.dueDate) {
             const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
             if(dueTime < today) pastDue++;
@@ -729,7 +734,7 @@ function createRouteSubheading(clusterNum, clusterStops) {
         }
     });
 
-    let hrs = Math.ceil(clusterStops.length * 0.4);
+    let hrs = Math.ceil(clusterStops.length * ((COMPANY_SERVICE_DELAY + 15) / 60));
     let dueText = pastDue > 0 ? `<span style="color:var(--red)">${pastDue} Past Due</span>` : (dueToday > 0 ? `<span style="color:var(--orange)">${dueToday} Due Today</span>` : `0 Due`);
     
     const el = document.createElement('div');
@@ -757,6 +762,7 @@ function render(isDraft = false) {
         header.innerHTML = `
             ${handleHeaderHtml}
             <div class="col-num"></div>
+            <div class="col-eta sortable" onclick="sortTable('eta')">ETA ${getSortIcon('eta')}</div>
             <div class="col-due sortable" onclick="sortTable('dueDate')">Due ${getSortIcon('dueDate')}</div>
             <div class="col-insp sortable" onclick="sortTable('driverName')">Inspector ${getSortIcon('driverName')}</div>
             <div class="col-addr sortable" onclick="sortTable('address')">Address ${getSortIcon('address')}</div>
@@ -786,6 +792,17 @@ function render(isDraft = false) {
         
         const dueFmt = due ? `${due.getMonth()+1}/${due.getDate()}` : "N/A";
 
+        const extractTime = (dateStr) => {
+            if (!dateStr) return '--';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) {
+                const match = String(dateStr).match(/\d{1,2}:\d{2}\s*(AM|PM|am|pm)/);
+                return match ? match[0].toUpperCase() : '--';
+            }
+            return d.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+        };
+        const etaTime = extractTime(s.eta);
+
         if (viewMode === 'list' || viewMode === 'manager') {
             item.className = `glide-row ${s.status}`;
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
@@ -811,6 +828,7 @@ function render(isDraft = false) {
             item.innerHTML = `
                 ${handleHtml}
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; color: ${style.text};">${displayIndex}</div></div>
+                <div class="col-eta">${etaTime}</div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 ${inspectorHtml}
                 <div class="col-addr">${(s.address||'').split(',')[0]}</div>
@@ -898,7 +916,6 @@ function render(isDraft = false) {
                     routedDiv.className = 'routed-group-container';
                     routedDiv.style.minHeight = '30px';
                     listContainer.appendChild(routedDiv);
-                    // V3.4 - Reset display index per cluster
                     cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
@@ -917,7 +934,6 @@ function render(isDraft = false) {
                     routedDiv.id = `driver-list-${clusterId}`;
                     routedDiv.className = 'routed-group-container';
                     listContainer.appendChild(routedDiv);
-                    // V3.4 - Reset display index per cluster
                     cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
@@ -945,9 +961,12 @@ function render(isDraft = false) {
 function updateSummary() {
     const active = stops.filter(s => isActiveStop(s) && s.status !== 'completed');
     let totalMi = 0;
-    active.forEach(s => totalMi += parseFloat(s.dist || 0));
+    active.forEach(s => {
+        const distVal = parseFloat(s.dist);
+        if (!isNaN(distVal)) totalMi += distVal;
+    });
     document.getElementById('sum-dist').innerText = `${totalMi.toFixed(1)} mi`;
-    document.getElementById('sum-time').innerText = `${Math.ceil(active.length * 0.4)} hrs`;
+    document.getElementById('sum-time').innerText = `${Math.ceil(active.length * ((COMPANY_SERVICE_DELAY + 15) / 60))} hrs`;
     
     const totalOrders = active.length;
     let dueToday = 0;
