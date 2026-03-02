@@ -1,8 +1,8 @@
 // *
-// * Dashboard - V3.10
+// * Dashboard - V3.11
 // * FILE: App.js
-// * Changes: V3.10 - Updated all error alert messages to be user-friendly, 
-// * removing code-level and server-side technical jargon.
+// * Changes: V3.11 - Updated getVisualStyle to match unrouted pin borders and text to their assigned route cluster color.
+// * Added cooperativeGestures to Mapbox initialization for the managermobile view to require two-finger map panning.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -51,7 +51,8 @@ const map = new mapboxgl.Map({
     center: [-96.797, 32.776],
     zoom: 11, 
     attributionControl: false,
-    boxZoom: false 
+    boxZoom: false,
+    cooperativeGestures: (viewMode === 'managermobile')
 });
 
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
@@ -192,16 +193,16 @@ function getVisualStyle(stopData) {
     }
     
     const p = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
+    const cluster = stopData.cluster || 0;
+    
+    let routeColor = p.r1;
+    if (cluster === 1) routeColor = p.r2;
+    if (cluster === 2) routeColor = p.r3;
     
     if (!isRouted) {
-        return { bg: 'transparent', border: p.r1, text: p.unroutedText };
+        return { bg: 'transparent', border: routeColor, text: routeColor };
     } else {
-        const cluster = stopData.cluster || 0;
-        let bgCol = p.r1;
-        if (cluster === 1) bgCol = p.r2;
-        if (cluster === 2) bgCol = p.r3;
-        
-        return { bg: bgCol, border: bgCol, text: p.text };
+        return { bg: routeColor, border: routeColor, text: p.text };
     }
 }
 
