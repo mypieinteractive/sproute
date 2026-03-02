@@ -1,6 +1,6 @@
 // *
-// * Front End - V3.0
-// * FILE: App.js (JavaScript)
+// * Dashboard - V3.0
+// * FILE: App.js
 // * Changes: New Version
 // *
 
