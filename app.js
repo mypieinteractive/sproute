@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V3.6
+// * Dashboard - V3.7
 // * FILE: App.js
-// * Changes: V3.6 - Hidden Optimize Route button in Manager view.
-// * Updated estimated timing to use correct stop delay and calculate proper durations.
-// * Added safe parseFloat checks so the distance summation correctly reads data from the DB.
-// * Added ETA Time column to the list view in manager mode.
+// * Changes: V3.7 - Hides redundant "Move to Route X" buttons if selection is already in that route.
+// * Converts ETA displays to "--" whenever uncalculated changes occur (isRouteDirty state).
+// * Re-engineered Mapbox lines and pin colors to properly display and isolate multi-route
+// * paths for every inspector simultaneously in "All Inspectors" view via HSL generation.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -31,6 +31,7 @@ let sortableInstances = [];
 let sortableUnrouted = null;
 let currentRouteCount = 1; 
 let currentInspectorFilter = 'all';
+let isRouteDirty = false; // V3.7 Tracking unsaved route modifications
 
 const params = new URLSearchParams(window.location.search);
 const routeId = params.get('id');
@@ -169,13 +170,32 @@ function isActiveStop(s) {
 }
 
 function getVisualStyle(stopData) {
-    if ((currentInspectorFilter !== 'all' || viewMode !== 'manager') && stopData.hasOwnProperty('cluster')) {
-        return INSPECTOR_PALETTE[stopData.cluster % INSPECTOR_PALETTE.length];
-    } else {
+    const isRouted = (stopData.status || '').toLowerCase() === 'routed' || (stopData.status || '').toLowerCase() === 'completed';
+    
+    // V3.7: Dynamically calculate distinct Inspector HSL palette for All Inspector mode map isolation
+    if (viewMode === 'manager' && currentInspectorFilter === 'all') {
         if (!stopData.driverId) return { bg: 'var(--red)', text: '#ffffff' };
         const index = inspectors.findIndex(i => i.id === stopData.driverId);
-        if (index === -1) return { bg: 'var(--red)', text: '#ffffff' };
-        return INSPECTOR_PALETTE[index % INSPECTOR_PALETTE.length];
+        const i = index === -1 ? 0 : index;
+        const h = (i * 137.5) % 360; 
+        
+        if (!isRouted) {
+            return { bg: `hsl(${h}, 70%, 50%)`, text: '#ffffff' };
+        } else {
+            const cluster = stopData.cluster || 0;
+            const l = 50 - (cluster * 15); // Scales down luminosity seamlessly for subsequent routes
+            return { bg: `hsl(${h}, 70%, ${Math.max(20, l)}%)`, text: '#ffffff' };
+        }
+    } else {
+        // Fallback to classic specific colors for single-driver focuses
+        if (stopData.hasOwnProperty('cluster') && isRouted) {
+            return INSPECTOR_PALETTE[stopData.cluster % INSPECTOR_PALETTE.length];
+        } else {
+            if (!stopData.driverId) return { bg: 'var(--red)', text: '#ffffff' };
+            const index = inspectors.findIndex(i => i.id === stopData.driverId);
+            if (index === -1) return { bg: 'var(--red)', text: '#ffffff' };
+            return INSPECTOR_PALETTE[index % INSPECTOR_PALETTE.length];
+        }
     }
 }
 
@@ -264,6 +284,8 @@ async function loadData() {
 
         originalStops = JSON.parse(JSON.stringify(stops)); 
         if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
+        
+        isRouteDirty = false;
 
         if (!Array.isArray(data)) {
             inspectors = data.inspectors || []; 
@@ -417,8 +439,11 @@ function moveSelectedToRoute(cIdx) {
         }
     });
     selectedIds.clear();
-    updateSelectionUI();
-    updateMarkerColors();
+    isRouteDirty = true;
+    document.getElementById('controls').style.display = 'flex';
+    render(); 
+    drawRoute();
+    updateSummary();
     updateRouteTimes();
 }
 
@@ -488,6 +513,7 @@ async function handleStartOver() {
             }
         });
         
+        isRouteDirty = false;
         document.getElementById('controls').style.display = 'none'; 
         render(); drawRoute(); updateSummary();
     } catch(e) { 
@@ -601,12 +627,15 @@ async function triggerBulkDelete() {
         await Promise.all(deletePromises);
         
         selectedIds.clear(); 
-        updateInspectorDropdown(); 
-        render(); drawRoute(); updateSummary(); updateRouteTimes();
         
         if (affectedRouted) {
+            isRouteDirty = true;
             document.getElementById('controls').style.display = 'flex'; 
         }
+
+        updateInspectorDropdown(); 
+        render(); drawRoute(); updateSummary(); updateRouteTimes();
+
     } catch (err) {
         alert("A network or server error occurred. Please check the Google Apps Script Execution Log.");
         console.error("Bulk Delete Error:", err);
@@ -631,6 +660,7 @@ async function triggerBulkUnroute() {
         await Promise.all(unroutePromises);
         
         selectedIds.clear(); 
+        isRouteDirty = true;
         render(); drawRoute(); updateSummary(); updateRouteTimes();
         document.getElementById('controls').style.display = 'flex'; 
     } catch (err) {
@@ -671,12 +701,13 @@ async function handleInspectorChange(e, rowId, selectEl) {
 
         for (const id of idsToUpdate) await processReassignDriver(id, newDriverName, newDriverId); 
         
-        updateInspectorDropdown(); 
-        render(); drawRoute(); updateSummary(); updateRouteTimes();
-        
         if (affectedRouted) {
+            isRouteDirty = true;
             document.getElementById('controls').style.display = 'flex'; 
         }
+
+        updateInspectorDropdown(); 
+        render(); drawRoute(); updateSummary(); updateRouteTimes();
     } catch (err) { 
         alert("Network error: Failed to update some orders."); 
         console.error(err);
@@ -743,7 +774,7 @@ function createRouteSubheading(clusterNum, clusterStops) {
     return el;
 }
 
-function render(isDraft = false) {
+function render() {
     updateRoutingUI();
     const listContainer = document.getElementById('stop-list');
     listContainer.innerHTML = ''; 
@@ -801,7 +832,11 @@ function render(isDraft = false) {
             }
             return d.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
         };
-        const etaTime = extractTime(s.eta);
+        
+        let etaTime = extractTime(s.eta);
+        if (isRouteDirty && s.status && s.status.toLowerCase() === 'routed') {
+            etaTime = '--';
+        }
 
         if (viewMode === 'list' || viewMode === 'manager') {
             item.className = `glide-row ${s.status}`;
@@ -838,7 +873,7 @@ function render(isDraft = false) {
             `;
         } else {
             item.className = `stop-item ${s.status} ${currentDisplayMode}`;
-            const metaDisplay = isDraft ? '-- | --' : `${s.eta || '--'} | ${s.dist || '--'}`;
+            const metaDisplay = isRouteDirty ? '-- | --' : `${s.eta || '--'} | ${s.dist || '--'}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -1045,6 +1080,7 @@ async function handleCalculate() {
             });
         }
 
+        isRouteDirty = false;
         document.getElementById('controls').style.display = 'none';
         originalStops = JSON.parse(JSON.stringify(stops)); 
         render(); drawRoute(); updateSummary();
@@ -1071,11 +1107,13 @@ async function handleUndo() {
             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
             stops = JSON.parse(JSON.stringify(originalStops));
             
+            isRouteDirty = false;
             updateInspectorDropdown(); 
             document.getElementById('controls').style.display = 'none';
             render(); drawRoute(); updateSummary();
         } else {
             stops = JSON.parse(JSON.stringify(originalStops));
+            isRouteDirty = false;
             document.getElementById('controls').style.display = 'none';
             render(); drawRoute(); updateSummary();
         }
@@ -1151,11 +1189,19 @@ function updateSelectionUI() {
         completeBtn.style.display = (has && viewMode !== 'manager') ? 'block' : 'none'; 
     }
     
+    // V3.7: Hide Move to Route buttons if all selected elements are ALREADY in that route.
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`move-r${i}-btn`);
         if(btn) {
             if(viewMode === 'manager' && currentInspectorFilter !== 'all' && has && i <= currentRouteCount && currentRouteCount > 1) {
-                btn.style.display = 'block';
+                let allInTargetRoute = true;
+                selectedIds.forEach(id => {
+                    const s = stops.find(st => st.id === id);
+                    if (s && s.cluster !== (i - 1)) {
+                        allInTargetRoute = false;
+                    }
+                });
+                btn.style.display = allInTargetRoute ? 'none' : 'block';
             } else {
                 btn.style.display = 'none';
             }
@@ -1174,24 +1220,31 @@ function drawRoute() {
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     let routedStops = [];
     
-    if (viewMode === 'manager' && currentInspectorFilter !== 'all') {
+    if (viewMode === 'manager') {
         routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
-    } else if (viewMode !== 'manager') {
+    } else {
         routedStops = activeStops;
     }
     
     if (routedStops.length < 2) return; 
 
     routedStops.sort(sortByEta);
-    const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))];
 
     const features = [];
-    uniqueClusters.forEach(cId => {
-        const cStops = routedStops.filter(s => (s.cluster || 0) === cId);
+    const routesMap = new Map(); // Composite key isolates routes correctly when mapped in 'All Inspectors' view
+
+    routedStops.forEach(s => {
+        const key = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
+        if (!routesMap.has(key)) routesMap.set(key, []);
+        routesMap.get(key).push(s);
+    });
+
+    routesMap.forEach((cStops, key) => {
         if (cStops.length > 1) {
+            const style = getVisualStyle(cStops[0]);
             features.push({
                 "type": "Feature",
-                "properties": { "cluster": cId },
+                "properties": { "color": style.bg }, // Pass dynamically derived color to paint engine
                 "geometry": { "type": "LineString", "coordinates": cStops.map(s => [s.lng, s.lat]) }
             });
         }
@@ -1207,13 +1260,7 @@ function drawRoute() {
             "source": "route", 
             "layout": { "line-join": "round", "line-cap": "round" }, 
             "paint": { 
-                "line-color": [
-                    "match", ["get", "cluster"],
-                    0, INSPECTOR_PALETTE[0].bg,
-                    1, INSPECTOR_PALETTE[1].bg,
-                    2, INSPECTOR_PALETTE[2].bg,
-                    "#2563eb"
-                ], 
+                "line-color": ["get", "color"], // Mapbox native rendering for property injected dynamic palettes
                 "line-width": 4, 
                 "line-opacity": 0.5 
             } 
@@ -1271,6 +1318,7 @@ async function finalizeSync(type) {
             return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false };
         });
         
+        isRouteDirty = false;
         document.getElementById('controls').style.display = 'none'; 
         render(); drawRoute(); updateSummary();
     } catch (e) { alert("Sync Failed."); }
@@ -1335,8 +1383,9 @@ function initSortable() {
                     }
                     
                     reorderStopsFromDOM();
+                    isRouteDirty = true;
                     document.getElementById('controls').style.display = 'flex';
-                    render(true); 
+                    render(); 
                     
                     if (isMovedToUnrouted) {
                         drawRoute(); updateSummary(); updateRouteTimes();
@@ -1359,8 +1408,9 @@ function initSortable() {
                 animation: 150,
                 onEnd: (evt) => {
                     reorderStopsFromDOM();
+                    isRouteDirty = true;
                     document.getElementById('controls').style.display = 'flex';
-                    render(true); 
+                    render(); 
                 }
             });
             sortableInstances.push(inst);
