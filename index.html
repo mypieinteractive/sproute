@@ -17,11 +17,6 @@
 <div id="processing-overlay">Processing...</div>
 
 <div id="map-wrapper">
-    <div id="map-brand" class="floating-brand">
-        <span id="map-driver-name" style="font-size: 18px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
-        <img id="brand-logo-map" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 28px; width: auto;" alt="Brand Logo">
-    </div>
-
     <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
     <div class="map-overlay-btns">
         <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()">
@@ -54,9 +49,11 @@
 
 <div id="sidebar">
     <div id="sidebar-brand" style="padding: 12px 15px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
-        <span id="sidebar-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
         
-        <div style="display:flex; align-items:center;">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <img id="brand-logo-sidebar" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
+            <span id="sidebar-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
+            
             <div id="inspector-dropdown-wrapper" style="position: relative; display: none;">
                 <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 15px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; background-image: none; appearance: none;"></select>
                 <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-main); pointer-events: none; font-size: 13px;"></i>
@@ -64,9 +61,10 @@
             <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 12px; white-space: nowrap;">&lt;- Select an Inspector to Route</span>
         </div>
 
-        <img id="brand-logo-sidebar" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
-        
         <div style="display: flex; gap: 8px;">
+            <button id="btn-header-restore" class="btn-generate" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+                <i class="fa-solid fa-clock-rotate-left"></i> Restore Original Route
+            </button>
             <button id="btn-header-start-over" class="btn-generate" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
                 <i class="fa-solid fa-rotate-left"></i> Undo Routing
             </button>
