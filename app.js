@@ -1,7 +1,9 @@
 // *
-// * Dashboard - V3.17
-// * FILE: App.js
-// * Changes: V3.17 - Rewrote handleCalculate() to construct a payload and securely offload the Re-Calculate routing operation directly to the backend Apps Script API, bypassing browser CORS/Length errors for >25 waypoints.
+// * Dashboard - V3.18
+// * FILE: app.js
+// * Changes: V3.18 - Changed default COMPANY_SERVICE_DELAY to 0. Updated route time calculations 
+// * across the app to calculate actual seconds (Mapbox durationSecs + ServiceDelay) instead 
+// * of the deprecated 15-minute static estimate.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -21,7 +23,7 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
-let COMPANY_SERVICE_DELAY = 15; 
+let COMPANY_SERVICE_DELAY = 0; 
 let PERMISSION_MODIFY = true;
 let PERMISSION_REOPTIMIZE = true;
 let sortableInstances = [];
@@ -325,7 +327,7 @@ async function loadData() {
 
         if (!Array.isArray(data)) {
             inspectors = data.inspectors || []; 
-            if (data.serviceDelay !== undefined) COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay); 
+            if (data.serviceDelay !== undefined) COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
             if (data.permissions) {
                 if (typeof data.permissions.modify !== 'undefined') PERMISSION_MODIFY = data.permissions.modify;
                 if (typeof data.permissions.reoptimize !== 'undefined') PERMISSION_REOPTIMIZE = data.permissions.reoptimize;
@@ -487,8 +489,12 @@ function updateRouteTimes() {
     if(!isManagerView || currentInspectorFilter === 'all') return;
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     for(let i=0; i<3; i++) {
-        const count = activeStops.filter(s => s.cluster === i).length;
-        const hrs = Math.ceil(count * ((COMPANY_SERVICE_DELAY + 15) / 60));
+        const clusterStops = activeStops.filter(s => s.cluster === i);
+        const count = clusterStops.length;
+        let totalSecs = 0;
+        clusterStops.forEach(s => totalSecs += parseFloat(s.durationSecs || 0));
+        
+        const hrs = count > 0 ? ((totalSecs + (count * COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
         const timeEl = document.getElementById(`rtime-${i+1}`);
         if(timeEl) {
             timeEl.innerText = count > 0 ? `${hrs} hrs` : '-- hrs';
@@ -797,6 +803,8 @@ function createRouteSubheading(clusterNum, clusterStops) {
     let totalMi = 0;
     let dueToday = 0;
     let pastDue = 0;
+    let totalSecs = 0;
+    
     const today = new Date(); today.setHours(0,0,0,0);
 
     clusterStops.forEach(s => {
@@ -805,6 +813,9 @@ function createRouteSubheading(clusterNum, clusterStops) {
         if (!isNaN(distVal)) {
             totalMi += distVal;
         }
+        
+        totalSecs += parseFloat(s.durationSecs || 0);
+
         if(s.dueDate) {
             const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
             if(dueTime < today) pastDue++;
@@ -812,7 +823,7 @@ function createRouteSubheading(clusterNum, clusterStops) {
         }
     });
 
-    let hrs = Math.ceil(clusterStops.length * ((COMPANY_SERVICE_DELAY + 15) / 60));
+    let hrs = clusterStops.length > 0 ? ((totalSecs + (clusterStops.length * COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : 0;
     let dueText = pastDue > 0 ? `<span style="color:var(--red)">${pastDue} Past Due</span>` : (dueToday > 0 ? `<span style="color:var(--orange)">${dueToday} Due Today</span>` : `0 Due`);
     
     const el = document.createElement('div');
@@ -1050,13 +1061,20 @@ function render() {
 function updateSummary() {
     const active = stops.filter(s => isActiveStop(s) && s.status !== 'completed');
     let totalMi = 0;
+    let totalSecs = 0;
+    
     active.forEach(s => {
         const rawDist = String(s.dist || '0').replace(/[^0-9.]/g, '');
         const distVal = parseFloat(rawDist);
         if (!isNaN(distVal)) totalMi += distVal;
+        
+        totalSecs += parseFloat(s.durationSecs || 0);
     });
+    
+    let totalHrs = active.length > 0 ? ((totalSecs + (active.length * COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
+    
     document.getElementById('sum-dist').innerText = `${totalMi.toFixed(1)} mi`;
-    document.getElementById('sum-time').innerText = `${Math.ceil(active.length * ((COMPANY_SERVICE_DELAY + 15) / 60))} hrs`;
+    document.getElementById('sum-time').innerText = `${totalHrs} hrs`;
     
     const totalOrders = active.length;
     let dueToday = 0;
