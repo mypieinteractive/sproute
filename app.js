@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V3.18
+// * Dashboard - V3.19
 // * FILE: app.js
-// * Changes: V3.18 - Changed default COMPANY_SERVICE_DELAY to 0. Updated route time calculations 
-// * across the app to calculate actual seconds (Mapbox durationSecs + ServiceDelay) instead 
-// * of the deprecated 15-minute static estimate.
+// * Changes: V3.19 - Split Undo/Restore logic so the bottom bar undoes local drag changes while 
+// * the top button restores the full DB route. Formatted Inspector views to show Client, hide ETA when dirty, 
+// * strictly pull `startHour` natively from the backend payload, and filter unrouted stops from the Inspector list while keeping map pins.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -64,7 +64,7 @@ const map = new mapboxgl.Map({
     boxZoom: false
 });
 
-let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
+let stops = [], originalStops = [], lastSavedStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
 
 const MASTER_PALETTE = [
@@ -321,11 +321,18 @@ async function loadData() {
         }
 
         originalStops = JSON.parse(JSON.stringify(stops)); 
-        if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
+        lastSavedStops = JSON.parse(JSON.stringify(stops)); 
         
-        dirtyRoutes.clear();
-
         if (!Array.isArray(data)) {
+            if (data.startHour !== undefined) {
+                let h = parseInt(data.startHour);
+                let ampm = h >= 12 ? 'PM' : 'AM';
+                let h12 = h % 12 || 12;
+                currentStartTime = `${h12}:00 ${ampm}`;
+            } else if (stops.length > 0 && stops[0].eta) {
+                currentStartTime = stops[0].eta;
+            }
+            
             inspectors = data.inspectors || []; 
             if (data.serviceDelay !== undefined) COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
             if (data.permissions) {
@@ -335,21 +342,16 @@ async function loadData() {
             
             document.body.classList.add('tier-' + (data.tier ? data.tier.toLowerCase() : 'individual'));
 
-            const mapLogo = document.getElementById('brand-logo-map');
             const sidebarLogo = document.getElementById('brand-logo-sidebar');
 
             if (data.tier && data.companyLogo && (data.tier.toLowerCase() === 'company')) {
-                if (mapLogo) mapLogo.src = data.companyLogo;
                 if (sidebarLogo) sidebarLogo.src = data.companyLogo;
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
-                if (mapLogo) mapLogo.src = sprouteLogoUrl;
                 if (sidebarLogo) sidebarLogo.src = sprouteLogoUrl;
             }
             
             let displayName = data.displayName || 'Sproute'; 
-            const mapDriverEl = document.getElementById('map-driver-name');
-            if (mapDriverEl) mapDriverEl.innerText = displayName;
             
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
             const filterSelect = document.getElementById('inspector-dropdown-wrapper');
@@ -374,6 +376,8 @@ async function loadData() {
             }
         }
         
+        dirtyRoutes.clear();
+
         if(isManagerView) {
             document.querySelector('.rocker').style.display = 'none';
         }
@@ -389,6 +393,17 @@ async function loadData() {
 }
 
 function updateRoutingUI() {
+    const isModifiedFromDB = stops.some((s) => {
+        const os = originalStops.find(o => o.id === s.id);
+        if (!os) return true;
+        return s.status !== os.status || s.eta !== os.eta || s.cluster !== os.cluster || s.driverId !== os.driverId;
+    });
+    
+    const restoreBtn = document.getElementById('btn-header-restore');
+    if (restoreBtn) {
+        restoreBtn.style.display = isModifiedFromDB ? 'flex' : 'none';
+    }
+
     if(!isManagerView) return;
 
     const activeStops = stops.filter(s => isActiveStop(s));
@@ -893,7 +908,11 @@ function render() {
         
         let etaTime = extractTime(s.eta);
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
-        if (dirtyRoutes.has(routeKey) && s.status && s.status.toLowerCase() === 'routed') {
+        
+        const isDirtyManager = isManagerView && dirtyRoutes.has(routeKey);
+        const isDirtyInspector = !isManagerView && dirtyRoutes.size > 0;
+
+        if ((isDirtyManager || isDirtyInspector) && s.status && s.status.toLowerCase() === 'routed') {
             etaTime = '--';
         }
 
@@ -933,10 +952,11 @@ function render() {
         } else {
             item.className = `stop-item ${s.status} ${currentDisplayMode}`;
             
-            let distStr = s.dist ? String(s.dist) : '--';
-            if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
+            if ((s.status || '').toLowerCase() !== 'routed' && (s.status || '').toLowerCase() !== 'completed') {
+                item.style.display = 'none';
+            }
             
-            const metaDisplay = dirtyRoutes.has(routeKey) ? '-- | --' : `${etaTime} | ${distStr}`;
+            const metaDisplay = isDirtyInspector ? '-- | --' : `${etaTime} | ${s.client || '--'}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -1115,8 +1135,7 @@ async function handleCalculate() {
         let payload = {
             action: 'calculate',
             routeId: routeId,
-            driver: driverParam,
-            startTime: currentStartTime
+            driver: driverParam
         };
 
         if (isManagerView && currentInspectorFilter !== 'all') {
@@ -1145,7 +1164,10 @@ async function handleCalculate() {
 
         dirtyRoutes.clear();
         document.getElementById('controls').style.display = 'none';
+        
         originalStops = JSON.parse(JSON.stringify(stops)); 
+        lastSavedStops = JSON.parse(JSON.stringify(stops)); 
+        
         render(); drawRoute(); updateSummary();
 
     } catch (e) { 
@@ -1159,7 +1181,14 @@ async function handleCalculate() {
 function handleOptimize() { showSyncOptions('optimize'); }
 
 async function handleUndo() {
-    if(!confirm("Discard all changes and revert to original route?")) return;
+    stops = JSON.parse(JSON.stringify(lastSavedStops));
+    dirtyRoutes.clear();
+    document.getElementById('controls').style.display = 'none';
+    render(); drawRoute(); updateSummary();
+}
+
+async function handleRestoreOriginal() {
+    if(!confirm("Discard all changes and revert to the original database route?")) return;
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
@@ -1168,20 +1197,17 @@ async function handleUndo() {
         if (isManagerView) {
             const payload = { action: 'undoManagerChanges', originalStops: originalStops };
             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-            stops = JSON.parse(JSON.stringify(originalStops));
-            
-            dirtyRoutes.clear();
-            updateInspectorDropdown(); 
-            document.getElementById('controls').style.display = 'none';
-            render(); drawRoute(); updateSummary();
-        } else {
-            stops = JSON.parse(JSON.stringify(originalStops));
-            dirtyRoutes.clear();
-            document.getElementById('controls').style.display = 'none';
-            render(); drawRoute(); updateSummary();
         }
+        
+        stops = JSON.parse(JSON.stringify(originalStops));
+        lastSavedStops = JSON.parse(JSON.stringify(originalStops));
+        
+        dirtyRoutes.clear();
+        updateInspectorDropdown(); 
+        document.getElementById('controls').style.display = 'none';
+        render(); drawRoute(); updateSummary();
     } catch(e) { 
-        alert("Error undoing changes. Please try again."); 
+        alert("Error restoring the original route. Please try again."); 
         console.error(e);
     } finally { 
         if(overlay) overlay.style.display = 'none'; 
@@ -1280,13 +1306,7 @@ function drawRoute() {
     if (map.getSource('route')) map.getSource('route').setData({ "type": "FeatureCollection", "features": [] });
 
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-    let routedStops = [];
-    
-    if (isManagerView) {
-        routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
-    } else {
-        routedStops = activeStops;
-    }
+    const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
     
     if (routedStops.length < 2) return; 
 
@@ -1382,6 +1402,10 @@ async function finalizeSync(type) {
         
         dirtyRoutes.clear();
         document.getElementById('controls').style.display = 'none'; 
+        
+        lastSavedStops = JSON.parse(JSON.stringify(stops)); 
+        originalStops = JSON.parse(JSON.stringify(stops));
+        
         render(); drawRoute(); updateSummary();
     } catch (e) { alert("Error updating locations. Please try again."); }
 }
