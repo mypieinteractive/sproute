@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V3.15
+// * Dashboard - V3.16
 // * FILE: App.js
-// * Changes: V3.15 - Refactored updateRoutingUI to strictly anchor the "Generate Route" button in the header at all times, independent of the 25 order parameter controls.
+// * Changes: V3.16 - Removed old views (driver/admin/map/list). Replaced with a unified Inspector view. Disabled Mapbox cooperative gestures, dynamically set map hint for managermobile, fixed distance regex parsers, and formatted ETAs for Inspector view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -38,10 +38,19 @@ const params = new URLSearchParams(window.location.search);
 const routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
-const viewMode = params.get('view') || 'driver'; 
+const viewMode = params.get('view') || 'inspector'; 
 const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
 
 document.body.className = `view-${viewMode} manager-all-inspectors`;
+
+const mapHintEl = document.getElementById('map-hint');
+if (mapHintEl) {
+    if (viewMode === 'managermobile') {
+        mapHintEl.innerText = 'Two fingers to drag/zoom the map';
+    } else {
+        mapHintEl.innerText = 'Shift-drag or Shift-click to select multiple';
+    }
+}
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 const map = new mapboxgl.Map({ 
@@ -50,8 +59,7 @@ const map = new mapboxgl.Map({
     center: [-96.797, 32.776],
     zoom: 11, 
     attributionControl: false,
-    boxZoom: false,
-    cooperativeGestures: (viewMode === 'managermobile')
+    boxZoom: false
 });
 
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
@@ -364,7 +372,7 @@ async function loadData() {
             }
         }
         
-        if(viewMode === 'map' || viewMode === 'list' || isManagerView) {
+        if(isManagerView) {
             document.querySelector('.rocker').style.display = 'none';
         }
 
@@ -417,10 +425,8 @@ function updateRoutingUI() {
     } else {
         if (hintEl) hintEl.style.display = 'none';
 
-        // 1. Show Start Over if there are any routed orders
         if(headerStartBtn) headerStartBtn.style.display = routedCount > 0 ? 'flex' : 'none';
 
-        // 2. ALWAYS Show Generate Route in header if there are unrouted orders
         if (unroutedCount > 0) {
             if(headerGenBtn) headerGenBtn.style.display = 'flex';
             if (headerGenBtnText) {
@@ -430,7 +436,6 @@ function updateRoutingUI() {
             if(headerGenBtn) headerGenBtn.style.display = 'none';
         }
 
-        // 3. Show the parameter sliders only if > 25 unrouted orders exist
         if (unroutedCount <= 25) {
             if(routingControls) routingControls.style.display = 'none';
         } else {
@@ -439,7 +444,6 @@ function updateRoutingUI() {
             if(priorityCont) priorityCont.style.display = 'flex';
         }
         
-        // 4. Optimize is hidden in Manager View
         if(headerOptBtn) headerOptBtn.style.display = 'none';
     }
 }
@@ -796,7 +800,8 @@ function createRouteSubheading(clusterNum, clusterStops) {
     const today = new Date(); today.setHours(0,0,0,0);
 
     clusterStops.forEach(s => {
-        const distVal = parseFloat(s.dist);
+        const rawDist = String(s.dist || '0').replace(/[^0-9.]/g, '');
+        const distVal = parseFloat(rawDist);
         if (!isNaN(distVal)) {
             totalMi += distVal;
         }
@@ -827,11 +832,11 @@ function render() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (viewMode === 'list' || isManagerView) {
+    if (isManagerView) {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
         
-        const handleHeaderHtml = (isManagerView) ? `<div class="col-handle"></div>` : ``;
+        const handleHeaderHtml = `<div class="col-handle"></div>`;
         header.innerHTML = `
             ${handleHeaderHtml}
             <div class="col-num"></div>
@@ -868,11 +873,11 @@ function render() {
         const extractTime = (dateStr) => {
             if (!dateStr) return '--';
             const d = new Date(dateStr);
-            if (isNaN(d.getTime())) {
-                const match = String(dateStr).match(/\d{1,2}:\d{2}\s*(AM|PM|am|pm)/);
-                return match ? match[0].toUpperCase() : '--';
+            if (!isNaN(d.getTime())) {
+                return d.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
             }
-            return d.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
+            const match = String(dateStr).match(/\d{1,2}:\d{2}\s*(AM|PM|am|pm)/);
+            return match ? match[0].toUpperCase() : '--';
         };
         
         let etaTime = extractTime(s.eta);
@@ -881,11 +886,11 @@ function render() {
             etaTime = '--';
         }
 
-        if (viewMode === 'list' || isManagerView) {
+        if (isManagerView) {
             item.className = `glide-row ${s.status}`;
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
-            if (isManagerView && inspectors.length > 0) {
+            if (inspectors.length > 0) {
                 const optionsHtml = inspectors.map(insp => `<option value="${insp.id}" ${s.driverId === insp.id ? 'selected' : ''}>${insp.name}</option>`).join('');
                 const defaultPlaceholder = !s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : '';
                 const disableSelectAttr = !PERMISSION_MODIFY ? 'disabled' : '';
@@ -901,7 +906,7 @@ function render() {
             }
 
             const style = getVisualStyle(s);
-            const handleHtml = isManagerView ? `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>` : ``;
+            const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             item.innerHTML = `
                 ${handleHtml}
@@ -916,7 +921,11 @@ function render() {
             `;
         } else {
             item.className = `stop-item ${s.status} ${currentDisplayMode}`;
-            const metaDisplay = dirtyRoutes.has(routeKey) ? '-- | --' : `${s.eta || '--'} | ${s.dist || '--'}`;
+            
+            let distStr = s.dist ? String(s.dist) : '--';
+            if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
+            
+            const metaDisplay = dirtyRoutes.has(routeKey) ? '-- | --' : `${etaTime} | ${distStr}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -999,7 +1008,7 @@ function render() {
             });
         }
         
-    } else if (viewMode === 'driver' || viewMode === 'routing') {
+    } else if (viewMode === 'inspector') {
         const activeStopsCopy = [...activeStops].sort(sortByEta);
         const uniqueClusters = [...new Set(activeStopsCopy.map(s => s.cluster || 0))].sort();
         
@@ -1042,7 +1051,8 @@ function updateSummary() {
     const active = stops.filter(s => isActiveStop(s) && s.status !== 'completed');
     let totalMi = 0;
     active.forEach(s => {
-        const distVal = parseFloat(s.dist);
+        const rawDist = String(s.dist || '0').replace(/[^0-9.]/g, '');
+        const distVal = parseFloat(rawDist);
         if (!isNaN(distVal)) totalMi += distVal;
     });
     document.getElementById('sum-dist').innerText = `${totalMi.toFixed(1)} mi`;
@@ -1458,7 +1468,7 @@ function initSortable() {
                 animation: 150
             });
         }
-    } else if (viewMode !== 'list' && !isManagerView) {
+    } else if (!isManagerView) {
         document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
             const inst = Sortable.create(el, {
                 handle: '.handle',
