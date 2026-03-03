@@ -1,9 +1,7 @@
 // *
-// * Dashboard - V3.12
+// * Dashboard - V3.13
 // * FILE: App.js
-// * Changes: V3.12 - Fixed map sizing glitch by triggering map.resize() after rendering.
-// * Hidden the inline routing controls panel entirely when <= 25 unrouted orders exist.
-// * Added dynamic 'Email' button in the header to trigger the backend processQueuedEmails function when no manual changes are active.
+// * Changes: V3.13 - Removed the dynamic header Email button and handleSendEmail function, shifting email triggers back to Glide natively.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -380,35 +378,11 @@ async function loadData() {
     }
 }
 
-async function handleSendEmail() {
-    if(!confirm("Send route emails for this inspector?")) return;
-    
-    const insp = inspectors.find(i => i.id === currentInspectorFilter);
-    if (!insp) return;
-
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    try {
-        await fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'processQueuedEmails', driverId: insp.id })
-        });
-        alert("Emails processed successfully.");
-    } catch (e) {
-        alert("Error sending emails. Please try again.");
-        console.error(e);
-    } finally {
-        if(overlay) overlay.style.display = 'none';
-    }
-}
-
 function updateRoutingUI() {
     if(!isManagerView) return;
 
     const activeStops = stops.filter(s => isActiveStop(s));
     const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed').length;
-    const hasManualChanges = document.getElementById('controls') && document.getElementById('controls').style.display === 'flex';
     
     const routingControls = document.getElementById('routing-controls');
     const dividerGroup = document.getElementById('route-divider-group');
@@ -418,28 +392,12 @@ function updateRoutingUI() {
     const headerGenBtn = document.getElementById('btn-header-generate');
     const headerGenBtnText = document.getElementById('btn-header-generate-text');
     const headerStartBtn = document.getElementById('btn-header-start-over');
-    
-    // Inject Email button if it doesn't exist
-    let emailBtn = document.getElementById('btn-header-email');
-    if (!emailBtn) {
-        emailBtn = document.createElement('button');
-        emailBtn.id = 'btn-header-email';
-        emailBtn.className = 'btn-generate';
-        emailBtn.style.backgroundColor = 'var(--blue)';
-        emailBtn.innerHTML = '<i class="fa-solid fa-envelope"></i> Email';
-        emailBtn.onclick = handleSendEmail;
-        
-        if (headerStartBtn && headerStartBtn.parentNode) {
-            headerStartBtn.parentNode.insertBefore(emailBtn, headerStartBtn.nextSibling);
-        }
-    }
 
     if (currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
         if(headerOptBtn) headerOptBtn.style.display = 'none';
         if(headerGenBtn) headerGenBtn.style.display = 'none';
         if(headerStartBtn) headerStartBtn.style.display = 'none';
-        if(emailBtn) emailBtn.style.display = 'none';
 
         let showHint = false;
         const allValidStops = stops.filter(s => {
@@ -463,14 +421,8 @@ function updateRoutingUI() {
             if(headerGenBtn) headerGenBtn.style.display = 'none';
             if(headerStartBtn) headerStartBtn.style.display = 'flex';
             if(headerOptBtn) headerOptBtn.style.display = isManagerView ? 'none' : 'flex';
-            
-            // Show email button if no manual changes have occurred
-            if (emailBtn) emailBtn.style.display = !hasManualChanges ? 'flex' : 'none';
         } else {
-            if(emailBtn) emailBtn.style.display = 'none';
-            
             if (activeStops.length <= 25) {
-                // Entirely hide inline routing controls when 25 or less, route entirely through the header area
                 if(routingControls) routingControls.style.display = 'none';
             } else {
                 if(routingControls) routingControls.style.display = 'flex';
@@ -1080,7 +1032,6 @@ function render() {
     updateSelectionUI();
     initSortable(); 
     
-    // Ensure map dynamically resizes when flexbox constraints potentially change
     setTimeout(() => { if (map) map.resize(); }, 150);
 }
 
