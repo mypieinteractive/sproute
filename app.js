@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V3.13
+// * Dashboard - V3.15
 // * FILE: App.js
-// * Changes: V3.13 - Removed the dynamic header Email button and handleSendEmail function, shifting email triggers back to Glide natively.
+// * Changes: V3.15 - Refactored updateRoutingUI to strictly anchor the "Generate Route" button in the header at all times, independent of the 25 order parameter controls.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -58,26 +58,26 @@ let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds
 let currentSort = { col: null, asc: true };
 
 const MASTER_PALETTE = [
-    { r1: '#2563eb', r2: '#60a5fa', r3: '#93c5fd', text: '#ffffff', unroutedText: '#60a5fa' }, // 1. Blues
-    { r1: '#10b981', r2: '#34d399', r3: '#6ee7b7', text: '#ffffff', unroutedText: '#34d399' }, // 2. Emeralds
-    { r1: '#f59e0b', r2: '#fbbf24', r3: '#fcd34d', text: '#000000', unroutedText: '#fbbf24' }, // 3. Ambers
-    { r1: '#8b5cf6', r2: '#a78bfa', r3: '#c4b5fd', text: '#ffffff', unroutedText: '#a78bfa' }, // 4. Violets
-    { r1: '#ef4444', r2: '#f87171', r3: '#fca5a5', text: '#ffffff', unroutedText: '#f87171' }, // 5. Reds
-    { r1: '#14b8a6', r2: '#2dd4bf', r3: '#5eead4', text: '#000000', unroutedText: '#2dd4bf' }, // 6. Teals
-    { r1: '#ec4899', r2: '#f472b6', r3: '#f9a8d4', text: '#ffffff', unroutedText: '#f472b6' }, // 7. Pinks
-    { r1: '#06b6d4', r2: '#22d3ee', r3: '#67e8f9', text: '#000000', unroutedText: '#22d3ee' }, // 8. Cyans
-    { r1: '#84cc16', r2: '#a3e635', r3: '#bef264', text: '#000000', unroutedText: '#a3e635' }, // 9. Limes
-    { r1: '#6366f1', r2: '#818cf8', r3: '#a5b4fc', text: '#ffffff', unroutedText: '#818cf8' }, // 10. Indigos
-    { r1: '#f97316', r2: '#fb923c', r3: '#fdba74', text: '#000000', unroutedText: '#fb923c' }, // 11. Oranges
-    { r1: '#d946ef', r2: '#e879f9', r3: '#f0abfc', text: '#ffffff', unroutedText: '#e879f9' }, // 12. Fuchsias
-    { r1: '#0ea5e9', r2: '#38bdf8', r3: '#7dd3fc', text: '#000000', unroutedText: '#38bdf8' }, // 13. Sky Blues
-    { r1: '#f43f5e', r2: '#fb7185', r3: '#fda4af', text: '#ffffff', unroutedText: '#fb7185' }, // 14. Roses
-    { r1: '#78716c', r2: '#a8a29e', r3: '#d6d3d1', text: '#ffffff', unroutedText: '#a8a29e' }, // 15. Stones
-    { r1: '#475569', r2: '#94a3b8', r3: '#cbd5e1', text: '#ffffff', unroutedText: '#94a3b8' }, // 16. Slates
-    { r1: '#059669', r2: '#10b981', r3: '#6ee7b7', text: '#ffffff', unroutedText: '#10b981' }, // 17. Mints
-    { r1: '#7e22ce', r2: '#a855f7', r3: '#d8b4fe', text: '#ffffff', unroutedText: '#a855f7' }, // 18. Purples
-    { r1: '#eab308', r2: '#facc15', r3: '#fef08a', text: '#000000', unroutedText: '#facc15' }, // 19. Yellows
-    { r1: '#047857', r2: '#34d399', r3: '#a7f3d0', text: '#ffffff', unroutedText: '#34d399' }  // 20. Forests
+    { r1: '#2563eb', r2: '#60a5fa', r3: '#93c5fd', text: '#ffffff', unroutedText: '#60a5fa' },
+    { r1: '#10b981', r2: '#34d399', r3: '#6ee7b7', text: '#ffffff', unroutedText: '#34d399' },
+    { r1: '#f59e0b', r2: '#fbbf24', r3: '#fcd34d', text: '#000000', unroutedText: '#fbbf24' },
+    { r1: '#8b5cf6', r2: '#a78bfa', r3: '#c4b5fd', text: '#ffffff', unroutedText: '#a78bfa' },
+    { r1: '#ef4444', r2: '#f87171', r3: '#fca5a5', text: '#ffffff', unroutedText: '#f87171' },
+    { r1: '#14b8a6', r2: '#2dd4bf', r3: '#5eead4', text: '#000000', unroutedText: '#2dd4bf' },
+    { r1: '#ec4899', r2: '#f472b6', r3: '#f9a8d4', text: '#ffffff', unroutedText: '#f472b6' },
+    { r1: '#06b6d4', r2: '#22d3ee', r3: '#67e8f9', text: '#000000', unroutedText: '#22d3ee' },
+    { r1: '#84cc16', r2: '#a3e635', r3: '#bef264', text: '#000000', unroutedText: '#a3e635' },
+    { r1: '#6366f1', r2: '#818cf8', r3: '#a5b4fc', text: '#ffffff', unroutedText: '#818cf8' },
+    { r1: '#f97316', r2: '#fb923c', r3: '#fdba74', text: '#000000', unroutedText: '#fb923c' },
+    { r1: '#d946ef', r2: '#e879f9', r3: '#f0abfc', text: '#ffffff', unroutedText: '#e879f9' },
+    { r1: '#0ea5e9', r2: '#38bdf8', r3: '#7dd3fc', text: '#000000', unroutedText: '#38bdf8' },
+    { r1: '#f43f5e', r2: '#fb7185', r3: '#fda4af', text: '#ffffff', unroutedText: '#fb7185' },
+    { r1: '#78716c', r2: '#a8a29e', r3: '#d6d3d1', text: '#ffffff', unroutedText: '#a8a29e' },
+    { r1: '#475569', r2: '#94a3b8', r3: '#cbd5e1', text: '#ffffff', unroutedText: '#94a3b8' },
+    { r1: '#059669', r2: '#10b981', r3: '#6ee7b7', text: '#ffffff', unroutedText: '#10b981' },
+    { r1: '#7e22ce', r2: '#a855f7', r3: '#d8b4fe', text: '#ffffff', unroutedText: '#a855f7' },
+    { r1: '#eab308', r2: '#facc15', r3: '#fef08a', text: '#000000', unroutedText: '#facc15' },
+    { r1: '#047857', r2: '#34d399', r3: '#a7f3d0', text: '#ffffff', unroutedText: '#34d399' }
 ];
 
 function expandStop(minStop) {
@@ -382,7 +382,8 @@ function updateRoutingUI() {
     if(!isManagerView) return;
 
     const activeStops = stops.filter(s => isActiveStop(s));
-    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed').length;
+    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed').length;
+    const unroutedCount = activeStops.length - routedCount;
     
     const routingControls = document.getElementById('routing-controls');
     const dividerGroup = document.getElementById('route-divider-group');
@@ -416,28 +417,30 @@ function updateRoutingUI() {
     } else {
         if (hintEl) hintEl.style.display = 'none';
 
-        if (routedCount > 0) {
-            if(routingControls) routingControls.style.display = 'none';
-            if(headerGenBtn) headerGenBtn.style.display = 'none';
-            if(headerStartBtn) headerStartBtn.style.display = 'flex';
-            if(headerOptBtn) headerOptBtn.style.display = isManagerView ? 'none' : 'flex';
-        } else {
-            if (activeStops.length <= 25) {
-                if(routingControls) routingControls.style.display = 'none';
-            } else {
-                if(routingControls) routingControls.style.display = 'flex';
-                if(dividerGroup) dividerGroup.style.display = 'flex';
-                if(priorityCont) priorityCont.style.display = 'flex';
-            }
-            
+        // 1. Show Start Over if there are any routed orders
+        if(headerStartBtn) headerStartBtn.style.display = routedCount > 0 ? 'flex' : 'none';
+
+        // 2. ALWAYS Show Generate Route in header if there are unrouted orders
+        if (unroutedCount > 0) {
             if(headerGenBtn) headerGenBtn.style.display = 'flex';
-            if(headerStartBtn) headerStartBtn.style.display = 'none';
-            if(headerOptBtn) headerOptBtn.style.display = 'none';
-            
             if (headerGenBtnText) {
                 headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
             }
+        } else {
+            if(headerGenBtn) headerGenBtn.style.display = 'none';
         }
+
+        // 3. Show the parameter sliders only if > 25 unrouted orders exist
+        if (unroutedCount <= 25) {
+            if(routingControls) routingControls.style.display = 'none';
+        } else {
+            if(routingControls) routingControls.style.display = 'flex';
+            if(dividerGroup) dividerGroup.style.display = 'flex';
+            if(priorityCont) priorityCont.style.display = 'flex';
+        }
+        
+        // 4. Optimize is hidden in Manager View
+        if(headerOptBtn) headerOptBtn.style.display = 'none';
     }
 }
 
