@@ -66,12 +66,17 @@
 
         <img id="brand-logo-sidebar" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
         
-        <button id="btn-header-start-over" class="btn-generate" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
-            <i class="fa-solid fa-rotate-left"></i> Start Over
-        </button>
-        <button id="btn-header-optimize" class="btn-generate" onclick="handleOptimize()" style="display:none; background:#2E4053; color:white; border:none; border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Optimize
-        </button>
+        <div style="display: flex; gap: 8px;">
+            <button id="btn-header-start-over" class="btn-generate" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+                <i class="fa-solid fa-rotate-left"></i> Start Over
+            </button>
+            <button id="btn-header-optimize" class="btn-generate" onclick="handleOptimize()" style="display:none; background:#2E4053; color:white; border:none; border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Optimize
+            </button>
+            <button id="btn-header-generate" class="btn-generate" onclick="handleGenerateRoute()" style="display:none; background:#2E4053; color:white; border:none; border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+                <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Generate Route</span>
+            </button>
+        </div>
     </div>
 
     <div id="routing-controls">
