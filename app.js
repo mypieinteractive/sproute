@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V3.16
+// * Dashboard - V3.17
 // * FILE: App.js
-// * Changes: V3.16 - Removed old views (driver/admin/map/list). Replaced with a unified Inspector view. Disabled Mapbox cooperative gestures, dynamically set map hint for managermobile, fixed distance regex parsers, and formatted ETAs for Inspector view.
+// * Changes: V3.17 - Rewrote handleCalculate() to construct a payload and securely offload the Re-Calculate routing operation directly to the backend Apps Script API, bypassing browser CORS/Length errors for >25 waypoints.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -527,7 +527,7 @@ async function handleGenerateRoute() {
 }
 
 async function handleStartOver() {
-    if(!confirm("Clear the current route and start over?")) return;
+    if(!confirm("Clear the current route and undo routing changes?")) return;
     
     const insp = inspectors.find(i => i.id === currentInspectorFilter);
     if (!insp) return;
@@ -1094,49 +1094,36 @@ async function handleCalculate() {
             return; 
         }
 
-        const MAX_WAYPOINTS = 25; 
-        let legs = []; 
+        let payload = {
+            action: 'calculate',
+            routeId: routeId,
+            driver: driverParam,
+            startTime: currentStartTime
+        };
 
-        for (let i = 0; i < activeStops.length - 1; i += (MAX_WAYPOINTS - 1)) {
-            const chunk = activeStops.slice(i, i + MAX_WAYPOINTS);
-            const coords = chunk.map(s => `${s.lng},${s.lat}`).join(';');
-            const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?access_token=${MAPBOX_TOKEN}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) throw new Error("Routing failed: " + data.message);
-            legs.push(...data.routes[0].legs);
-        }
-
-        let time = new Date();
-        let match = currentStartTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-        if (match) {
-            let hours = parseInt(match[1]), mins = parseInt(match[2]);
-            if (match[3] && match[3].toUpperCase() === 'PM' && hours < 12) hours += 12;
-            if (match[3] && match[3].toUpperCase() === 'AM' && hours === 12) hours = 0;
-            time.setHours(hours, mins, 0, 0);
-        } else { time.setHours(8, 0, 0, 0); }
-
-        let totalMeters = 0;
-        activeStops.forEach((stop, index) => {
-            if (index === 0) {
-                stop.eta = formatTime(time); stop.dist = "0.0 mi"; stop.durationSecs = 0;
-            } else {
-                let leg = legs[index - 1];
-                time = new Date(time.getTime() + (COMPANY_SERVICE_DELAY * 60 * 1000) + (leg.duration * 1000));
-                stop.eta = formatTime(time);
-                totalMeters += leg.distance;
-                stop.dist = (totalMeters * 0.000621371).toFixed(1) + " mi";
-                stop.durationSecs = leg.duration;
+        if (isManagerView && currentInspectorFilter !== 'all') {
+            let clusteredArrays = [];
+            for(let i = 0; i < currentRouteCount; i++) {
+                let itemsInCluster = activeStops.filter(s => s.cluster === i);
+                if (itemsInCluster.length > 0) {
+                    clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
+                }
             }
-        });
-
-        if (routeId) {
-            let minifiedStopsForSave = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
-            await fetch(WEB_APP_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'saveRoute', routeId: routeId, driver: driverParam, stops: minifiedStopsForSave })
-            });
+            payload.routeClusters = clusteredArrays;
+            payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
+        } else {
+            payload.stops = activeStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
         }
+
+        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const data = await res.json();
+        
+        if (data.error) throw new Error(data.error);
+
+        stops = data.updatedStops.map(s => {
+            let exp = expandStop(s);
+            return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false };
+        });
 
         dirtyRoutes.clear();
         document.getElementById('controls').style.display = 'none';
