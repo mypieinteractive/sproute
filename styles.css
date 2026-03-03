@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V3.10 */
+/* * Dashboard - V3.11 */
 /* * FILE: styles.css */
-/* * Changes: V3.10 - Removed deprecated views (.view-admin, .view-map, .view-list, .view-driver). Added baseline .view-inspector styling. */
+/* * Changes: V3.11 - Shifted Manager View stop number towards the left edge to reclaim list real estate. */
 /* * */
 
 :root { 
@@ -94,8 +94,6 @@ body.view-manager #resizer { display: block; }
 
 #map-hint { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.25); backdrop-filter: blur(4px); color: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; z-index: 200; pointer-events: none; border: 1px solid rgba(255,255,255,0.15); }
 
-.floating-brand { position: absolute; top: 15px; right: 15px; z-index: 1000; background: var(--bg-header); padding: 8px 16px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-color); pointer-events: none; justify-content: space-between; min-width: 200px; }
-
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
 #map-wrapper.shift-down .marker, #map-wrapper.shift-down .marker .pin-visual { cursor: pointer !important; }
 
@@ -149,7 +147,7 @@ body.view-manager #resizer { display: block; }
 .stop-sidebar.due-today { background-color: var(--orange); }
 .stop-sidebar.past-due { background-color: var(--red); }
 
-.col-handle { width: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 16px; margin-right: 4px; }
+.col-handle { width: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 16px; margin-right: 0px; }
 .col-handle.handle { cursor: grab; }
 .col-handle.handle:active { cursor: grabbing; }
 
@@ -170,8 +168,8 @@ body.view-manager #resizer { display: block; }
 .stop-actions { display: flex; align-items: center; padding-right: 8px; gap: 4px; }
 .icon-btn { font-size: 28px; cursor: pointer; padding: 4px; }
 
-.glide-table-header { display: flex; padding: 10px 8px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 5; }
-.glide-row { display: flex; padding: 10px 8px; border-bottom: 1px solid #282828; font-size: 14px; color: var(--text-main); align-items: center; cursor: pointer; background: var(--bg-panel); transition: background 0.2s; }
+.glide-table-header { display: flex; padding: 10px 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 5; }
+.glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid #282828; font-size: 14px; color: var(--text-main); align-items: center; cursor: pointer; background: var(--bg-panel); transition: background 0.2s; }
 .glide-row:hover { background: var(--bg-hover); }
 .glide-row.selected { background: var(--fade-blue) !important; }
 .glide-row.completed { opacity: 0.5; }
@@ -179,7 +177,7 @@ body.view-manager #resizer { display: block; }
 .sortable { cursor: pointer; transition: color 0.2s; display: flex; align-items: center; }
 .sortable:hover { color: var(--text-main); }
 
-.col-num { width: 36px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; display: flex; align-items: center; }
+.col-num { width: 30px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; display: flex; align-items: center; }
 
 .num-badge { 
     width: 26px; height: 26px; border-radius: 4px; 
