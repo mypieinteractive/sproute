@@ -1,7 +1,8 @@
 /* * */
-/* * Dashboard - V3.11 */
+/* * Dashboard - V3.12 */
 /* * FILE: styles.css */
-/* * Changes: V3.11 - Shifted Manager View stop number towards the left edge to reclaim list real estate. */
+/* * Changes: V3.12 - Added sticky grabber positioning, custom grey checkbox styling, */
+/* * and specific overrides for the static endpoint rows. */
 /* * */
 
 :root { 
@@ -147,7 +148,14 @@ body.view-manager #resizer { display: block; }
 .stop-sidebar.due-today { background-color: var(--orange); }
 .stop-sidebar.past-due { background-color: var(--red); }
 
+/* Sticky Right Grabber overrides */
 .col-handle { width: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 16px; margin-right: 0px; }
+.glide-row .col-handle, .glide-table-header .col-handle { position: sticky; right: 0; z-index: 10; min-width: 35px; }
+.glide-table-header .col-handle { background-color: var(--bg-header); }
+.glide-row .col-handle { background-color: var(--bg-panel); }
+.glide-row:hover .col-handle { background-color: var(--bg-hover); }
+.glide-row.selected .col-handle { background-color: var(--fade-blue) !important; }
+
 .col-handle.handle { cursor: grab; }
 .col-handle.handle:active { cursor: grabbing; }
 
@@ -217,3 +225,27 @@ body.view-manager #resizer { display: block; }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
 #processing-overlay { display: flex; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center; color: white; font-size: 22px; font-weight: bold; letter-spacing: 1px; }
+
+/* Custom Light Grey Checkbox */
+.grey-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    background-color: #e5e7eb;
+    border: 1px solid #9ca3af;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+}
+.grey-checkbox:checked { background-color: var(--blue); border-color: var(--blue); }
+.grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
+
+/* Static Endpoint Row */
+.static-endpoint { background-color: var(--bg-base); border-top: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color); font-weight: bold; }
+.static-endpoint .col-handle { background-color: var(--bg-base); }
+.endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-weight: bold; color: var(--text-main); background-color: var(--bg-panel); transition: all 0.2s ease; }
+.endpoint-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px var(--fade-blue); }
