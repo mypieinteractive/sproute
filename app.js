@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V3.19
+// * Dashboard - V3.20
 // * FILE: app.js
-// * Changes: V3.19 - Added global parsing and map rendering for 🏁 route start and end markers. 
-// * Added a 'Select All' checkbox for the manager view. Implemented sort:false to disable internal 
-// * drag-reordering of the unrouted list. 
+// * Changes: V3.20 - Condensed MASTER_PALETTE to 20 highly contrasting colors (prioritizing the 
+// * top 10). Updated getVisualStyle() so pin interiors change based on Route # (Colored, Black, White) 
+// * while the border and route line remain the inspector's designated color.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -70,27 +70,28 @@ const map = new mapboxgl.Map({
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
 
+// 20 High-Contrast Colors - Best 10 prioritized first
 const MASTER_PALETTE = [
-    { r1: '#2563eb', r2: '#60a5fa', r3: '#93c5fd', text: '#ffffff', unroutedText: '#60a5fa' },
-    { r1: '#10b981', r2: '#34d399', r3: '#6ee7b7', text: '#ffffff', unroutedText: '#34d399' },
-    { r1: '#f59e0b', r2: '#fbbf24', r3: '#fcd34d', text: '#000000', unroutedText: '#fbbf24' },
-    { r1: '#8b5cf6', r2: '#a78bfa', r3: '#c4b5fd', text: '#ffffff', unroutedText: '#a78bfa' },
-    { r1: '#ef4444', r2: '#f87171', r3: '#fca5a5', text: '#ffffff', unroutedText: '#f87171' },
-    { r1: '#14b8a6', r2: '#2dd4bf', r3: '#5eead4', text: '#000000', unroutedText: '#2dd4bf' },
-    { r1: '#ec4899', r2: '#f472b6', r3: '#f9a8d4', text: '#ffffff', unroutedText: '#f472b6' },
-    { r1: '#06b6d4', r2: '#22d3ee', r3: '#67e8f9', text: '#000000', unroutedText: '#22d3ee' },
-    { r1: '#84cc16', r2: '#a3e635', r3: '#bef264', text: '#000000', unroutedText: '#a3e635' },
-    { r1: '#6366f1', r2: '#818cf8', r3: '#a5b4fc', text: '#ffffff', unroutedText: '#818cf8' },
-    { r1: '#f97316', r2: '#fb923c', r3: '#fdba74', text: '#000000', unroutedText: '#fb923c' },
-    { r1: '#d946ef', r2: '#e879f9', r3: '#f0abfc', text: '#ffffff', unroutedText: '#e879f9' },
-    { r1: '#0ea5e9', r2: '#38bdf8', r3: '#7dd3fc', text: '#000000', unroutedText: '#38bdf8' },
-    { r1: '#f43f5e', r2: '#fb7185', r3: '#fda4af', text: '#ffffff', unroutedText: '#fb7185' },
-    { r1: '#78716c', r2: '#a8a29e', r3: '#d6d3d1', text: '#ffffff', unroutedText: '#a8a29e' },
-    { r1: '#475569', r2: '#94a3b8', r3: '#cbd5e1', text: '#ffffff', unroutedText: '#94a3b8' },
-    { r1: '#059669', r2: '#10b981', r3: '#6ee7b7', text: '#ffffff', unroutedText: '#10b981' },
-    { r1: '#7e22ce', r2: '#a855f7', r3: '#d8b4fe', text: '#ffffff', unroutedText: '#a855f7' },
-    { r1: '#eab308', r2: '#facc15', r3: '#fef08a', text: '#000000', unroutedText: '#facc15' },
-    { r1: '#047857', r2: '#34d399', r3: '#a7f3d0', text: '#ffffff', unroutedText: '#34d399' }
+    '#2563eb', // 1. Bold Blue
+    '#ef4444', // 2. Bright Red
+    '#10b981', // 3. Vibrant Green
+    '#f59e0b', // 4. Golden Amber
+    '#8b5cf6', // 5. Vivid Purple
+    '#0ea5e9', // 6. Sky Blue
+    '#ec4899', // 7. Hot Pink
+    '#14b8a6', // 8. Teal
+    '#f97316', // 9. Orange
+    '#6366f1', // 10. Indigo
+    '#84cc16', // 11. Lime
+    '#d946ef', // 12. Fuchsia
+    '#06b6d4', // 13. Cyan
+    '#f43f5e', // 14. Rose
+    '#9f1239', // 15. Burgundy
+    '#047857', // 16. Emerald
+    '#4338ca', // 17. Deep Blue
+    '#c2410c', // 18. Rust
+    '#475569', // 19. Slate
+    '#78716c'  // 20. Stone
 ];
 
 function expandStop(minStop) {
@@ -204,17 +205,16 @@ function getVisualStyle(stopData) {
         if (idx !== -1) inspectorIndex = idx;
     }
     
-    const p = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
+    const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
     const cluster = stopData.cluster || 0;
     
-    let routeColor = p.r1;
-    if (cluster === 1) routeColor = p.r2;
-    if (cluster === 2) routeColor = p.r3;
-    
     if (!isRouted) {
-        return { bg: 'transparent', border: routeColor, text: routeColor };
+        return { bg: 'transparent', border: baseColor, text: baseColor, line: baseColor };
     } else {
-        return { bg: routeColor, border: routeColor, text: p.text };
+        if (cluster === 0) return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
+        if (cluster === 1) return { bg: '#000000', border: baseColor, text: '#ffffff', line: baseColor };
+        if (cluster === 2) return { bg: '#ffffff', border: baseColor, text: '#000000', line: baseColor };
+        return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
     }
 }
 
@@ -1354,7 +1354,7 @@ function drawRoute() {
 
             features.push({
                 "type": "Feature",
-                "properties": { "color": style.bg }, 
+                "properties": { "color": style.line }, 
                 "geometry": { "type": "LineString", "coordinates": coords }
             });
         }
