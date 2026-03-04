@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V3.13 */
+/* * Dashboard - V3.14 */
 /* * FILE: styles.css */
-/* * Changes: V3.13 - Added styling overrides for the static endpoint row when viewed */
-/* * from the mobile/inspector view to ensure it matches the stop item layouts. */
+/* * Changes: V3.14 - Increased map overlay buttons z-index to stay above selected pins. */
+/* * Added styling for the incremental undo button in the search bar. */
 /* * */
 
 :root { 
@@ -56,8 +56,8 @@ body.view-managermobile #resizer::after {
 
 body.tier-individual .col-insp { display: none !important; }
 
-#routing-controls { padding: 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; }
-body.manager-all-inspectors #routing-controls { display: none !important; }
+/* Old routing controls - hidden in favor of dynamic header */
+#routing-controls { display: none !important; }
 
 .list-subheading {
     padding: 6px 12px; background: var(--bg-header); color: var(--blue);
@@ -93,7 +93,7 @@ body.view-manager #resizer { display: block; }
 #map-wrapper { position: relative; background-color: var(--bg-base); }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
 
-#map-hint { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.25); backdrop-filter: blur(4px); color: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; z-index: 200; pointer-events: none; border: 1px solid rgba(255,255,255,0.15); }
+#map-hint { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.25); backdrop-filter: blur(4px); color: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; z-index: 200; pointer-events: none; border: 1px solid rgba(255,255,255,0.15); transition: opacity 0.2s; }
 
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
 #map-wrapper.shift-down .marker, #map-wrapper.shift-down .marker .pin-visual { cursor: pointer !important; }
@@ -103,20 +103,23 @@ body.view-manager #resizer { display: block; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
 
-.btn-generate { background: var(--green); color: white; border: none; border-radius: 6px; padding: 10px 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; }
+.btn-generate { background: var(--green); color: white; border: none; border-radius: 6px; padding: 10px 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; width: 100%; }
 .btn-generate:active { opacity: 0.7; }
-
-#btn-generate-route { background-color: #2E4053; }
 
 #search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
 #search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
 #search-input::placeholder { color: var(--text-muted); }
 
+/* Incremental Undo Button */
+#btn-undo-incremental { background: transparent; border: none; color: var(--text-main); padding: 8px; cursor: pointer; font-size: 18px; transition: color 0.2s; display: flex; align-items: center; justify-content: center; }
+#btn-undo-incremental:hover:not(:disabled) { color: var(--blue); }
+#btn-undo-incremental:disabled { color: var(--text-muted); opacity: 0.3; cursor: not-allowed; }
+
 .rocker { display: flex; background: #222; border-radius: 6px; padding: 2px; }
 .rocker div { padding: 4px 10px; cursor: pointer; border-radius: 4px; transition: 0.2s; color: var(--text-muted); font-weight: normal; font-size: 15px; }
 .rocker div.active { background: var(--blue); color: white; }
 
-.map-overlay-btns { position: absolute; top: 15px; right: 15px; z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.map-overlay-btns { position: absolute; top: 15px; right: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 
 .floating-btn { border-radius: 8px; padding: 10px 14px; font-weight: normal; font-size: 13px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: none; transition: opacity 0.2s; background: var(--bg-panel); color: var(--text-main); border: 1px solid var(--border-color); }
 .floating-btn i { margin-right: 6px; }
@@ -134,9 +137,10 @@ body.view-manager #resizer { display: block; }
 @container sidebar (max-width: 450px) { .col-due { display: none !important; } }
 @container sidebar (max-width: 380px) { .col-insp { display: none !important; } }
 
-#controls { display: none; padding: 12px; background: var(--bg-base); border-bottom: 1px solid var(--border-color); flex-direction: column; gap: 8px; }
+/* Old #controls hidden in favor of dynamic header */
+#controls { display: none !important; }
 .ctrl-row { display: flex; gap: 8px; width: 100%; }
-.btn-glide { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border: none; border-radius: 8px; font-weight: normal; font-size: 13px; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.btn-glide { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 .btn-glide:active { opacity: 0.7; }
 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
