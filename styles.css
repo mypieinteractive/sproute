@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V3.12 */
+/* * Dashboard - V3.13 */
 /* * FILE: styles.css */
-/* * Changes: V3.12 - Added sticky grabber positioning, custom grey checkbox styling, */
-/* * and specific overrides for the static endpoint rows. */
+/* * Changes: V3.13 - Added styling overrides for the static endpoint row when viewed */
+/* * from the mobile/inspector view to ensure it matches the stop item layouts. */
 /* * */
 
 :root { 
@@ -249,3 +249,7 @@ body.view-manager #resizer { display: block; }
 .static-endpoint .col-handle { background-color: var(--bg-base); }
 .endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 4px; font-weight: bold; color: var(--text-main); background-color: var(--bg-panel); transition: all 0.2s ease; }
 .endpoint-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 2px var(--fade-blue); }
+
+.static-endpoint.compact { background: var(--bg-panel); min-height: 45px; }
+.static-endpoint.compact .endpoint-input { background: transparent; border: 1px dashed var(--border-color); padding: 6px; }
+.static-endpoint.compact .endpoint-input:focus { background: var(--bg-base); border-style: solid; }
