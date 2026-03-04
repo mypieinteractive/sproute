@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V3.22
+// * Dashboard - V3.24
 // * FILE: app.js
-// * Changes: V3.22 - Enabled endpoints to populate before initial generation from default 
-// * profiles, caching manager edits to localStorage until generation is fired. Added endpoint rows 
-// * to the inspector view with corresponding layout. Assured route line connects to both endpoints.
+// * Changes: V3.24 - Added historyStack for incremental undo. Removed old #controls area and 
+// * dynamically injected a state-aware #route-action-header. Hidden local Inspector unroutes. 
+// * Sent isManager param to back-end endpoints. Fixed map hint overlay bug.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -35,8 +35,33 @@ let routeStart = null;
 let routeEnd = null;
 
 let dirtyRoutes = new Set(); 
+let historyStack = [];
+let isAlteredRoute = false;
+
 function markRouteDirty(driverId, clusterIdx) {
     dirtyRoutes.add(`${driverId || 'unassigned'}_${clusterIdx || 0}`);
+}
+
+function pushToHistory() {
+    historyStack.push({
+        stops: JSON.parse(JSON.stringify(stops)),
+        dirty: new Set(dirtyRoutes)
+    });
+    if (historyStack.length > 20) historyStack.shift();
+    updateUndoUI();
+}
+
+function undoLastAction() {
+    if (historyStack.length === 0) return;
+    const last = historyStack.pop();
+    stops = last.stops;
+    dirtyRoutes = new Set(last.dirty);
+    render(); drawRoute(); updateSummary(); updateRouteTimes(); updateUndoUI();
+}
+
+function updateUndoUI() {
+    const undoBtn = document.getElementById('btn-undo-incremental');
+    if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -47,15 +72,6 @@ const viewMode = params.get('view') || 'inspector';
 const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
 
 document.body.className = `view-${viewMode} manager-all-inspectors`;
-
-const mapHintEl = document.getElementById('map-hint');
-if (mapHintEl) {
-    if (viewMode === 'managermobile') {
-        mapHintEl.innerText = 'Two fingers to drag/zoom the map';
-    } else {
-        mapHintEl.innerText = 'Shift-drag or Shift-click to select multiple';
-    }
-}
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 const map = new mapboxgl.Map({ 
@@ -169,6 +185,7 @@ function isActiveStop(s) {
         active = (status === '' || status === 'routed' || status === 'completed');
     } else {
         active = status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
+        if (s.hiddenInInspector) active = false; // Hide locally removed orders for Inspector
     }
     
     if (isManagerView && currentInspectorFilter !== 'all') {
@@ -270,6 +287,7 @@ async function loadData() {
         
         routeStart = data.routeStart || null;
         routeEnd = data.routeEnd || null;
+        isAlteredRoute = data.isAlteredRoute || false; // Catch the altered route flag
 
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         
@@ -280,7 +298,8 @@ async function loadData() {
                 id: exp.rowId || exp.id,
                 cluster: exp.cluster || 0,
                 manualCluster: false,
-                _hasExplicitCluster: s.R !== undefined
+                _hasExplicitCluster: s.R !== undefined,
+                hiddenInInspector: false
             };
         });
 
@@ -312,6 +331,7 @@ async function loadData() {
         originalStops = JSON.parse(JSON.stringify(stops)); 
         if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
         
+        historyStack = [];
         dirtyRoutes.clear();
 
         if (!Array.isArray(data)) {
@@ -366,6 +386,18 @@ async function loadData() {
         if(isManagerView) {
             document.querySelector('.rocker').style.display = 'none';
         }
+        
+        // Inject incremental undo button
+        if (!document.getElementById('btn-undo-incremental')) {
+            const searchCont = document.getElementById('search-container');
+            if (searchCont) {
+                const undoBtn = document.createElement('button');
+                undoBtn.id = 'btn-undo-incremental';
+                undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
+                undoBtn.onclick = undoLastAction;
+                searchCont.appendChild(undoBtn);
+            }
+        }
 
         render(); drawRoute(); updateSummary(); initSortable();
 
@@ -374,87 +406,80 @@ async function loadData() {
     } finally {
         const overlay = document.getElementById('processing-overlay');
         if (overlay) overlay.style.display = 'none';
+        updateUndoUI();
     }
 }
 
 function updateRoutingUI() {
-    if(!isManagerView) return;
+    let headerActions = document.getElementById('route-action-header');
+    if (!headerActions) {
+        headerActions = document.createElement('div');
+        headerActions.id = 'route-action-header';
+        headerActions.style.display = 'flex';
+        headerActions.style.gap = '8px';
+        headerActions.style.padding = '10px';
+        headerActions.style.background = 'var(--bg-panel)';
+        headerActions.style.borderBottom = '1px solid var(--border-color)';
+        
+        const sidebar = document.getElementById('sidebar');
+        if(sidebar) sidebar.insertBefore(headerActions, sidebar.firstChild);
+    }
+    
+    headerActions.innerHTML = ''; 
 
     const activeStops = stops.filter(s => isActiveStop(s));
     const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed').length;
     const unroutedCount = activeStops.length - routedCount;
-    
-    const routingControls = document.getElementById('routing-controls');
-    const dividerGroup = document.getElementById('route-divider-group');
-    const priorityCont = document.getElementById('priority-container');
-    const hintEl = document.getElementById('inspector-select-hint');
-    const headerOptBtn = document.getElementById('btn-header-optimize');
-    const headerGenBtn = document.getElementById('btn-header-generate');
-    const headerGenBtnText = document.getElementById('btn-header-generate-text');
-    const headerStartBtn = document.getElementById('btn-header-start-over');
+    const isDirty = dirtyRoutes.size > 0;
 
-    if (currentInspectorFilter === 'all') {
-        if(routingControls) routingControls.style.display = 'none';
-        if(headerOptBtn) headerOptBtn.style.display = 'none';
-        if(headerGenBtn) headerGenBtn.style.display = 'none';
-        if(headerStartBtn) headerStartBtn.style.display = 'none';
+    if (isManagerView && currentInspectorFilter === 'all') {
+        headerActions.style.display = 'none';
+        return;
+    }
 
-        let showHint = false;
-        const allValidStops = stops.filter(s => {
-            const status = (s.status || '').toLowerCase();
-            return status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
-        });
+    headerActions.style.display = 'flex';
 
-        for (const insp of inspectors) {
-            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) {
-                showHint = true; 
-                break;
-            }
+    if (isManagerView) {
+        if (unroutedCount > 0 && routedCount === 0) {
+            headerActions.innerHTML = `<button class="btn-generate" onclick="handleGenerateRoute()" style="width:100%; justify-content:center;">Generate Route</button>`;
+        } else if (isDirty) {
+            headerActions.innerHTML = `
+                <button class="btn-glide" style="background:var(--blue); color:white;" onclick="handleCalculate()">Re-calculate</button>
+                <button class="btn-glide" style="background:var(--purple); color:white;" onclick="handleOptimize()">Re-optimize</button>
+            `;
+        } else if (routedCount > 0) {
+            headerActions.innerHTML = `<button class="btn-glide" style="background:var(--bg-base); border: 1px solid var(--border-color); color:var(--text-main); width:100%;" onclick="handleStartOver()">Undo Routing (Start Over)</button>`;
+        } else {
+            headerActions.style.display = 'none';
         }
-        if (hintEl) hintEl.style.display = showHint ? 'block' : 'none';
-
     } else {
-        if (hintEl) hintEl.style.display = 'none';
-
-        if(headerStartBtn) headerStartBtn.style.display = routedCount > 0 ? 'flex' : 'none';
-
-        if (unroutedCount > 0) {
-            if(headerGenBtn) headerGenBtn.style.display = 'flex';
-            if (headerGenBtnText) {
-                headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-            }
+        if (isAlteredRoute && !isDirty) {
+            headerActions.innerHTML = `<button class="btn-glide" style="background:var(--bg-base); border: 1px solid var(--border-color); color:var(--text-main); width:100%;" onclick="handleRestoreOriginal()">Restore Original Route</button>`;
+        } else if (isDirty || (isAlteredRoute && isDirty)) { 
+             headerActions.innerHTML = `
+                <button class="btn-glide" style="background:var(--blue); color:white;" onclick="handleCalculate()">Re-calculate</button>
+                <button class="btn-glide" style="background:var(--purple); color:white;" onclick="handleOptimize()">Re-optimize</button>
+            `;
         } else {
-            if(headerGenBtn) headerGenBtn.style.display = 'none';
+            headerActions.style.display = 'none';
         }
-
-        if (unroutedCount <= 25) {
-            if(routingControls) routingControls.style.display = 'none';
-        } else {
-            if(routingControls) routingControls.style.display = 'flex';
-            if(dividerGroup) dividerGroup.style.display = 'flex';
-            if(priorityCont) priorityCont.style.display = 'flex';
-        }
-        
-        if(headerOptBtn) headerOptBtn.style.display = 'none';
     }
 }
 
 function setRoutes(num) {
+    pushToHistory();
     currentRouteCount = num;
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`rbtn-${i}`);
         if(btn) btn.classList.toggle('active', i === num);
     }
-    const headerGenBtnText = document.getElementById('btn-header-generate-text');
-    if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-    
     stops.forEach(s => s.manualCluster = false); 
-    
     liveClusterUpdate();
     updateSelectionUI(); 
 }
 
 function moveSelectedToRoute(cIdx) {
+    pushToHistory();
     selectedIds.forEach(id => {
         const s = stops.find(st => st.id === id);
         if (s) {
@@ -467,7 +492,6 @@ function moveSelectedToRoute(cIdx) {
         }
     });
     selectedIds.clear();
-    document.getElementById('controls').style.display = 'flex';
     render(); 
     drawRoute();
     updateSummary();
@@ -542,6 +566,8 @@ async function handleStartOver() {
             body: JSON.stringify({ action: 'resetRoute', driverId: insp.id, routeId: routeId }) 
         });
         
+        historyStack = []; // Clear history stack on major reset
+        
         stops.forEach(s => {
             if (s.driverId === insp.id && (s.status||'').toLowerCase() === 'routed') {
                 s.eta = '';
@@ -551,12 +577,32 @@ async function handleStartOver() {
         });
         
         dirtyRoutes.clear();
-        document.getElementById('controls').style.display = 'none'; 
-        render(); drawRoute(); updateSummary();
+        render(); drawRoute(); updateSummary(); updateUndoUI();
     } catch(e) { 
         alert("Error resetting the route. Please try again."); 
         console.error(e);
     } finally { 
+        if(overlay) overlay.style.display = 'none'; 
+    }
+}
+
+async function handleRestoreOriginal() {
+    if(!confirm("Restore the original route layout planned by the manager?")) return;
+    
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
+
+    try {
+        await fetch(WEB_APP_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({ action: 'restoreOriginalRoute', routeId: routeId }) 
+        });
+        
+        await loadData(); // Reload master JSON seamlessly
+    } catch(e) {
+        alert("Error restoring the route. Please try again."); 
+        console.error(e);
+    } finally {
         if(overlay) overlay.style.display = 'none'; 
     }
 }
@@ -653,16 +699,15 @@ window.toggleSelectAll = function(cb) {
 
 async function triggerBulkDelete() { 
     if(!confirm("Delete selected orders?")) return;
+    pushToHistory();
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
     try {
-        let affectedRouted = false;
         selectedIds.forEach(id => {
             const s = stops.find(st => st.id === id);
             if (s && (s.status || '').toLowerCase() === 'routed') {
-                affectedRouted = true;
                 markRouteDirty(s.driverId, s.cluster);
             }
         });
@@ -676,11 +721,6 @@ async function triggerBulkDelete() {
         await Promise.all(deletePromises);
         
         selectedIds.clear(); 
-        
-        if (affectedRouted) {
-            document.getElementById('controls').style.display = 'flex'; 
-        }
-
         updateInspectorDropdown(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
 
@@ -694,6 +734,7 @@ async function triggerBulkDelete() {
 
 async function triggerBulkUnroute() { 
     if(!confirm("Remove selected orders from route?")) return;
+    pushToHistory();
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
@@ -706,6 +747,7 @@ async function triggerBulkUnroute() {
                     markRouteDirty(stops[idx].driverId, stops[idx].cluster);
                 }
                 stops[idx].status = '';
+                if (!isManagerView) stops[idx].hiddenInInspector = true; 
             }
             return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
         });
@@ -714,7 +756,6 @@ async function triggerBulkUnroute() {
         
         selectedIds.clear(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
-        document.getElementById('controls').style.display = 'flex'; 
     } catch (err) {
         alert("Error removing orders from the route. Please try again.");
         console.error("Bulk Unroute Error:", err);
@@ -741,15 +782,14 @@ async function handleInspectorChange(e, rowId, selectEl) {
         else { render(); return; }
     }
     
+    pushToHistory();
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
     
     try { 
-        let affectedRouted = false;
         idsToUpdate.forEach(id => {
             const s = stops.find(st => st.id === id);
             if (s && (s.status || '').toLowerCase() === 'routed') {
-                affectedRouted = true;
                 markRouteDirty(s.driverId, s.cluster); 
                 markRouteDirty(newDriverId, s.cluster); 
             }
@@ -757,10 +797,6 @@ async function handleInspectorChange(e, rowId, selectEl) {
 
         for (const id of idsToUpdate) await processReassignDriver(id, newDriverName, newDriverId); 
         
-        if (affectedRouted) {
-            document.getElementById('controls').style.display = 'flex'; 
-        }
-
         updateInspectorDropdown(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
     } catch (err) { 
@@ -873,6 +909,7 @@ async function updateEndpointAddress(type, value) {
     }
     
     if (!value.trim()) return;
+    pushToHistory();
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
     
@@ -887,6 +924,7 @@ async function updateEndpointAddress(type, value) {
         if (data.success) {
             if (type === 'start') routeStart = data.endpoint;
             if (type === 'end') routeEnd = data.endpoint;
+            markRouteDirty('endpoints', 0); // Mark dirty to trigger save/calc
             render(); drawRoute();
         }
     } catch (e) {
@@ -1231,7 +1269,8 @@ async function handleCalculate() {
             driver: driverParam,
             startTime: currentStartTime,
             startAddr: routeStart && routeStart.address ? routeStart.address : null,
-            endAddr: routeEnd && routeEnd.address ? routeEnd.address : null
+            endAddr: routeEnd && routeEnd.address ? routeEnd.address : null,
+            isManager: isManagerView
         };
 
         if (isManagerView && currentInspectorFilter !== 'all') {
@@ -1258,8 +1297,9 @@ async function handleCalculate() {
             return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false };
         });
 
+        if (!isManagerView) isAlteredRoute = true;
+        historyStack = []; 
         dirtyRoutes.clear();
-        document.getElementById('controls').style.display = 'none';
         originalStops = JSON.parse(JSON.stringify(stops)); 
         render(); drawRoute(); updateSummary();
 
@@ -1273,40 +1313,11 @@ async function handleCalculate() {
 
 function handleOptimize() { showSyncOptions('optimize'); }
 
-async function handleUndo() {
-    if(!confirm("Discard all changes and revert to original route?")) return;
-    
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-    
-    try {
-        if (isManagerView) {
-            const payload = { action: 'undoManagerChanges', originalStops: originalStops };
-            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-            stops = JSON.parse(JSON.stringify(originalStops));
-            
-            dirtyRoutes.clear();
-            updateInspectorDropdown(); 
-            document.getElementById('controls').style.display = 'none';
-            render(); drawRoute(); updateSummary();
-        } else {
-            stops = JSON.parse(JSON.stringify(originalStops));
-            dirtyRoutes.clear();
-            document.getElementById('controls').style.display = 'none';
-            render(); drawRoute(); updateSummary();
-        }
-    } catch(e) { 
-        alert("Error undoing changes. Please try again."); 
-        console.error(e);
-    } finally { 
-        if(overlay) overlay.style.display = 'none'; 
-    }
-}
-
 function toggleComplete(e, id) {
     e.stopPropagation();
+    pushToHistory();
     const idx = stops.findIndex(s => s.id == id);
-    stops[idx].status = (stops[idx].status === 'completed') ? '' : 'completed';
+    stops[idx].status = (stops[idx].status === 'completed') ? 'Routed' : 'completed';
     render(); drawRoute(); updateSummary();
 }
 
@@ -1367,12 +1378,17 @@ function updateSelectionUI() {
         selectAllCb.checked = (activeStops.length > 0 && selectedIds.size === activeStops.length);
     }
     
-    document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY) ? 'block' : 'none'; 
+    document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY && isManagerView) ? 'block' : 'none'; 
     document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY) ? 'block' : 'none'; 
     
     const completeBtn = document.getElementById('bulk-complete-btn');
     if (completeBtn) {
         completeBtn.style.display = (has && !isManagerView) ? 'block' : 'none'; 
+    }
+
+    const hintEl = document.getElementById('map-hint');
+    if (hintEl) {
+        hintEl.style.opacity = has ? '0' : '1';
     }
     
     for(let i=1; i<=3; i++) {
@@ -1483,7 +1499,8 @@ async function finalizeSync(type) {
     
     let payload = { 
         action: type, driver: driverParam, 
-        startTime: currentStartTime, startAddr: startAddr, endAddr: endAddr 
+        startTime: currentStartTime, startAddr: startAddr, endAddr: endAddr,
+        isManager: isManagerView
     };
 
     if (isManagerView && currentInspectorFilter !== 'all') {
@@ -1500,6 +1517,9 @@ async function finalizeSync(type) {
         payload.stops = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
     }
 
+    const overlay = document.getElementById('processing-overlay');
+    if (overlay) overlay.style.display = 'flex';
+
     try {
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json(); 
@@ -1508,10 +1528,15 @@ async function finalizeSync(type) {
             return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false };
         });
         
+        if (!isManagerView) isAlteredRoute = true;
+        historyStack = [];
         dirtyRoutes.clear();
-        document.getElementById('controls').style.display = 'none'; 
         render(); drawRoute(); updateSummary();
-    } catch (e) { alert("Error updating locations. Please try again."); }
+    } catch (e) { 
+        alert("Error updating locations. Please try again."); 
+    } finally {
+        if (overlay) overlay.style.display = 'none';
+    }
 }
 
 function reorderStopsFromDOM() {
@@ -1556,6 +1581,7 @@ function initSortable() {
                 handle: '.handle',
                 filter: '.static-endpoint',
                 animation: 150,
+                onStart: () => pushToHistory(),
                 onEnd: async (evt) => {
                     let isMovedToUnrouted = false;
                     
@@ -1585,7 +1611,6 @@ function initSortable() {
                     }
                     
                     reorderStopsFromDOM();
-                    document.getElementById('controls').style.display = 'flex';
                     render(); 
                     
                     if (isMovedToUnrouted) {
@@ -1600,7 +1625,8 @@ function initSortable() {
             sortableUnrouted = Sortable.create(unroutedEl, {
                 group: 'manager-routes',
                 sort: false, 
-                animation: 150
+                animation: 150,
+                onStart: () => pushToHistory()
             });
         }
     } else if (!isManagerView) {
@@ -1609,6 +1635,7 @@ function initSortable() {
                 handle: '.handle',
                 filter: '.static-endpoint',
                 animation: 150,
+                onStart: () => pushToHistory(),
                 onEnd: (evt) => {
                     const stopId = evt.item.id.replace('item-', '');
                     const stop = stops.find(s => s.id === stopId);
@@ -1622,7 +1649,6 @@ function initSortable() {
                     }
 
                     reorderStopsFromDOM();
-                    document.getElementById('controls').style.display = 'flex';
                     render(); 
                 }
             });
