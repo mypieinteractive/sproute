@@ -1,9 +1,9 @@
 // *
 // * Dashboard - V3.19
 // * FILE: app.js
-// * Changes: V3.19 - Split Undo/Restore logic so the bottom bar undoes local drag changes while 
-// * the top button restores the full DB route. Formatted Inspector views to show Client, hide ETA when dirty, 
-// * strictly pull `startHour` natively from the backend payload, and filter unrouted stops from the Inspector list while keeping map pins.
+// * Changes: V3.19 - Added global parsing and map rendering for 🏁 route start and end markers. 
+// * Added a 'Select All' checkbox for the manager view. Implemented sort:false to disable internal 
+// * drag-reordering of the unrouted list. 
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -30,6 +30,9 @@ let sortableInstances = [];
 let sortableUnrouted = null;
 let currentRouteCount = 1; 
 let currentInspectorFilter = 'all';
+
+let routeStart = null;
+let routeEnd = null;
 
 let dirtyRoutes = new Set(); 
 function markRouteDirty(driverId, clusterIdx) {
@@ -64,7 +67,7 @@ const map = new mapboxgl.Map({
     boxZoom: false
 });
 
-let stops = [], originalStops = [], lastSavedStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
+let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
 
 const MASTER_PALETTE = [
@@ -282,6 +285,10 @@ async function loadData() {
     try {
         const res = await fetch(`${WEB_APP_URL}${queryParams}`);
         const data = await res.json();
+        
+        routeStart = data.routeStart || null;
+        routeEnd = data.routeEnd || null;
+
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         
         stops = rawStops.map(s => {
@@ -321,18 +328,11 @@ async function loadData() {
         }
 
         originalStops = JSON.parse(JSON.stringify(stops)); 
-        lastSavedStops = JSON.parse(JSON.stringify(stops)); 
+        if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
         
+        dirtyRoutes.clear();
+
         if (!Array.isArray(data)) {
-            if (data.startHour !== undefined) {
-                let h = parseInt(data.startHour);
-                let ampm = h >= 12 ? 'PM' : 'AM';
-                let h12 = h % 12 || 12;
-                currentStartTime = `${h12}:00 ${ampm}`;
-            } else if (stops.length > 0 && stops[0].eta) {
-                currentStartTime = stops[0].eta;
-            }
-            
             inspectors = data.inspectors || []; 
             if (data.serviceDelay !== undefined) COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
             if (data.permissions) {
@@ -342,16 +342,21 @@ async function loadData() {
             
             document.body.classList.add('tier-' + (data.tier ? data.tier.toLowerCase() : 'individual'));
 
+            const mapLogo = document.getElementById('brand-logo-map');
             const sidebarLogo = document.getElementById('brand-logo-sidebar');
 
             if (data.tier && data.companyLogo && (data.tier.toLowerCase() === 'company')) {
+                if (mapLogo) mapLogo.src = data.companyLogo;
                 if (sidebarLogo) sidebarLogo.src = data.companyLogo;
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
+                if (mapLogo) mapLogo.src = sprouteLogoUrl;
                 if (sidebarLogo) sidebarLogo.src = sprouteLogoUrl;
             }
             
             let displayName = data.displayName || 'Sproute'; 
+            const mapDriverEl = document.getElementById('map-driver-name');
+            if (mapDriverEl) mapDriverEl.innerText = displayName;
             
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
             const filterSelect = document.getElementById('inspector-dropdown-wrapper');
@@ -376,8 +381,6 @@ async function loadData() {
             }
         }
         
-        dirtyRoutes.clear();
-
         if(isManagerView) {
             document.querySelector('.rocker').style.display = 'none';
         }
@@ -393,17 +396,6 @@ async function loadData() {
 }
 
 function updateRoutingUI() {
-    const isModifiedFromDB = stops.some((s) => {
-        const os = originalStops.find(o => o.id === s.id);
-        if (!os) return true;
-        return s.status !== os.status || s.eta !== os.eta || s.cluster !== os.cluster || s.driverId !== os.driverId;
-    });
-    
-    const restoreBtn = document.getElementById('btn-header-restore');
-    if (restoreBtn) {
-        restoreBtn.style.display = isModifiedFromDB ? 'flex' : 'none';
-    }
-
     if(!isManagerView) return;
 
     const activeStops = stops.filter(s => isActiveStop(s));
@@ -663,6 +655,14 @@ function updateMarkerColors() {
     });
 }
 
+window.toggleSelectAll = function(cb) {
+    selectedIds.clear();
+    if (cb.checked) {
+        stops.filter(s => isActiveStop(s)).forEach(s => selectedIds.add(s.id));
+    }
+    updateSelectionUI();
+};
+
 async function triggerBulkDelete() { 
     if(!confirm("Delete selected orders?")) return;
     
@@ -862,7 +862,7 @@ function render() {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
         
-        const handleHeaderHtml = `<div class="col-handle"></div>`;
+        const handleHeaderHtml = `<div class="col-handle"><input type="checkbox" id="bulk-select-all" onchange="toggleSelectAll(this)" style="cursor:pointer; width:16px; height:16px;"></div>`;
         header.innerHTML = `
             ${handleHeaderHtml}
             <div class="col-num"></div>
@@ -908,11 +908,7 @@ function render() {
         
         let etaTime = extractTime(s.eta);
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
-        
-        const isDirtyManager = isManagerView && dirtyRoutes.has(routeKey);
-        const isDirtyInspector = !isManagerView && dirtyRoutes.size > 0;
-
-        if ((isDirtyManager || isDirtyInspector) && s.status && s.status.toLowerCase() === 'routed') {
+        if (dirtyRoutes.has(routeKey) && s.status && s.status.toLowerCase() === 'routed') {
             etaTime = '--';
         }
 
@@ -952,11 +948,10 @@ function render() {
         } else {
             item.className = `stop-item ${s.status} ${currentDisplayMode}`;
             
-            if ((s.status || '').toLowerCase() !== 'routed' && (s.status || '').toLowerCase() !== 'completed') {
-                item.style.display = 'none';
-            }
+            let distStr = s.dist ? String(s.dist) : '--';
+            if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
             
-            const metaDisplay = isDirtyInspector ? '-- | --' : `${etaTime} | ${s.client || '--'}`;
+            const metaDisplay = dirtyRoutes.has(routeKey) ? '-- | --' : `${etaTime} | ${distStr}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -1068,7 +1063,27 @@ function render() {
         activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
     }
 
-    if (activeStops.filter(s => s.lng && s.lat).length > 0) { 
+    if (routeStart && routeStart.lng && routeStart.lat) {
+        const el = document.createElement('div');
+        el.className = 'marker start-end-marker';
+        el.innerHTML = `<div style="font-size: 24px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)); transform: translateY(-10px);">🏁</div>`;
+        const m = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([routeStart.lng, routeStart.lat]).addTo(map);
+        markers.push(m);
+        bounds.extend([routeStart.lng, routeStart.lat]);
+    }
+    
+    if (routeEnd && routeEnd.lng && routeEnd.lat) {
+        if (!routeStart || routeStart.lng !== routeEnd.lng || routeStart.lat !== routeEnd.lat) {
+            const el = document.createElement('div');
+            el.className = 'marker start-end-marker';
+            el.innerHTML = `<div style="font-size: 24px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)); transform: translateY(-10px);">🏁</div>`;
+            const m = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([routeEnd.lng, routeEnd.lat]).addTo(map);
+            markers.push(m);
+            bounds.extend([routeEnd.lng, routeEnd.lat]);
+        }
+    }
+
+    if (activeStops.filter(s => s.lng && s.lat).length > 0 || (routeStart && routeStart.lng)) { 
         initialBounds = bounds; map.fitBounds(bounds, { padding: 50, maxZoom: 15 }); 
     }
     
@@ -1135,7 +1150,8 @@ async function handleCalculate() {
         let payload = {
             action: 'calculate',
             routeId: routeId,
-            driver: driverParam
+            driver: driverParam,
+            startTime: currentStartTime
         };
 
         if (isManagerView && currentInspectorFilter !== 'all') {
@@ -1164,10 +1180,7 @@ async function handleCalculate() {
 
         dirtyRoutes.clear();
         document.getElementById('controls').style.display = 'none';
-        
         originalStops = JSON.parse(JSON.stringify(stops)); 
-        lastSavedStops = JSON.parse(JSON.stringify(stops)); 
-        
         render(); drawRoute(); updateSummary();
 
     } catch (e) { 
@@ -1181,14 +1194,7 @@ async function handleCalculate() {
 function handleOptimize() { showSyncOptions('optimize'); }
 
 async function handleUndo() {
-    stops = JSON.parse(JSON.stringify(lastSavedStops));
-    dirtyRoutes.clear();
-    document.getElementById('controls').style.display = 'none';
-    render(); drawRoute(); updateSummary();
-}
-
-async function handleRestoreOriginal() {
-    if(!confirm("Discard all changes and revert to the original database route?")) return;
+    if(!confirm("Discard all changes and revert to original route?")) return;
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
@@ -1197,17 +1203,20 @@ async function handleRestoreOriginal() {
         if (isManagerView) {
             const payload = { action: 'undoManagerChanges', originalStops: originalStops };
             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+            stops = JSON.parse(JSON.stringify(originalStops));
+            
+            dirtyRoutes.clear();
+            updateInspectorDropdown(); 
+            document.getElementById('controls').style.display = 'none';
+            render(); drawRoute(); updateSummary();
+        } else {
+            stops = JSON.parse(JSON.stringify(originalStops));
+            dirtyRoutes.clear();
+            document.getElementById('controls').style.display = 'none';
+            render(); drawRoute(); updateSummary();
         }
-        
-        stops = JSON.parse(JSON.stringify(originalStops));
-        lastSavedStops = JSON.parse(JSON.stringify(originalStops));
-        
-        dirtyRoutes.clear();
-        updateInspectorDropdown(); 
-        document.getElementById('controls').style.display = 'none';
-        render(); drawRoute(); updateSummary();
     } catch(e) { 
-        alert("Error restoring the original route. Please try again."); 
+        alert("Error undoing changes. Please try again."); 
         console.error(e);
     } finally { 
         if(overlay) overlay.style.display = 'none'; 
@@ -1258,8 +1267,10 @@ function onMouseUp(e) {
 function updateSelectionUI() { 
     document.querySelectorAll('.stop-item, .glide-row').forEach(el=>el.classList.remove('selected')); 
     markers.forEach(m=>{ 
-        m.getElement().classList.toggle('bulk-selected', selectedIds.has(m._stopId)); 
-        if(selectedIds.has(m._stopId)) { const row = document.getElementById(`item-${m._stopId}`); if (row) row.classList.add('selected'); } 
+        if(m._stopId) {
+            m.getElement().classList.toggle('bulk-selected', selectedIds.has(m._stopId)); 
+            if(selectedIds.has(m._stopId)) { const row = document.getElementById(`item-${m._stopId}`); if (row) row.classList.add('selected'); } 
+        }
     }); 
     
     const has = selectedIds.size>0; 
@@ -1269,6 +1280,12 @@ function updateSelectionUI() {
         const s = stops.find(st => st.id === id);
         if (s && (s.status || '').toLowerCase() === 'routed') hasRouted = true;
     });
+
+    const selectAllCb = document.getElementById('bulk-select-all');
+    if (selectAllCb) {
+        const activeStops = stops.filter(s => isActiveStop(s));
+        selectAllCb.checked = (activeStops.length > 0 && selectedIds.size === activeStops.length);
+    }
     
     document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY) ? 'block' : 'none'; 
     document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY) ? 'block' : 'none'; 
@@ -1306,7 +1323,13 @@ function drawRoute() {
     if (map.getSource('route')) map.getSource('route').setData({ "type": "FeatureCollection", "features": [] });
 
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-    const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+    let routedStops = [];
+    
+    if (isManagerView) {
+        routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+    } else {
+        routedStops = activeStops;
+    }
     
     if (routedStops.length < 2) return; 
 
@@ -1324,10 +1347,15 @@ function drawRoute() {
     routesMap.forEach((cStops, key) => {
         if (cStops.length > 1) {
             const style = getVisualStyle(cStops[0]);
+            let coords = cStops.map(s => [s.lng, s.lat]);
+            
+            if (routeStart && routeStart.lng && routeStart.lat) coords.unshift([routeStart.lng, routeStart.lat]);
+            if (routeEnd && routeEnd.lng && routeEnd.lat) coords.push([routeEnd.lng, routeEnd.lat]);
+
             features.push({
                 "type": "Feature",
                 "properties": { "color": style.bg }, 
-                "geometry": { "type": "LineString", "coordinates": cStops.map(s => [s.lng, s.lat]) }
+                "geometry": { "type": "LineString", "coordinates": coords }
             });
         }
     });
@@ -1402,10 +1430,6 @@ async function finalizeSync(type) {
         
         dirtyRoutes.clear();
         document.getElementById('controls').style.display = 'none'; 
-        
-        lastSavedStops = JSON.parse(JSON.stringify(stops)); 
-        originalStops = JSON.parse(JSON.stringify(stops));
-        
         render(); drawRoute(); updateSummary();
     } catch (e) { alert("Error updating locations. Please try again."); }
 }
@@ -1494,6 +1518,7 @@ function initSortable() {
         if (unroutedEl) {
             sortableUnrouted = Sortable.create(unroutedEl, {
                 group: 'manager-routes',
+                sort: false, 
                 animation: 150
             });
         }
