@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V3.20
+// * Dashboard - V3.21
 // * FILE: app.js
-// * Changes: V3.20 - Condensed MASTER_PALETTE to 20 highly contrasting colors (prioritizing the 
-// * top 10). Updated getVisualStyle() so pin interiors change based on Route # (Colored, Black, White) 
-// * while the border and route line remain the inspector's designated color.
+// * Changes: V3.21 - UI layout modifications for the manager view. Moved stop # to the left 
+// * and the grabber handle to the fixed right edge. Replaced sorting headers when viewing 
+// * routed orders. Injected fixed Start/End static rows connected to a live update webhook.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -72,26 +72,8 @@ let currentSort = { col: null, asc: true };
 
 // 20 High-Contrast Colors - Best 10 prioritized first
 const MASTER_PALETTE = [
-    '#2563eb', // 1. Bold Blue
-    '#ef4444', // 2. Bright Red
-    '#10b981', // 3. Vibrant Green
-    '#f59e0b', // 4. Golden Amber
-    '#8b5cf6', // 5. Vivid Purple
-    '#0ea5e9', // 6. Sky Blue
-    '#ec4899', // 7. Hot Pink
-    '#14b8a6', // 8. Teal
-    '#f97316', // 9. Orange
-    '#6366f1', // 10. Indigo
-    '#84cc16', // 11. Lime
-    '#d946ef', // 12. Fuchsia
-    '#06b6d4', // 13. Cyan
-    '#f43f5e', // 14. Rose
-    '#9f1239', // 15. Burgundy
-    '#047857', // 16. Emerald
-    '#4338ca', // 17. Deep Blue
-    '#c2410c', // 18. Rust
-    '#475569', // 19. Slate
-    '#78716c'  // 20. Stone
+    '#2563eb', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#0ea5e9', '#ec4899', '#14b8a6', '#f97316', '#6366f1', 
+    '#84cc16', '#d946ef', '#06b6d4', '#f43f5e', '#9f1239', '#047857', '#4338ca', '#c2410c', '#475569', '#78716c'
 ];
 
 function expandStop(minStop) {
@@ -847,6 +829,48 @@ function createRouteSubheading(clusterNum, clusterStops) {
     return el;
 }
 
+function createEndpointRow(type, endpointData) {
+    const el = document.createElement('div');
+    el.className = 'glide-row static-endpoint';
+    let displayAddr = endpointData && endpointData.address ? endpointData.address : '';
+    let placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
+    
+    el.innerHTML = `
+        <div class="col-num" style="display:flex; justify-content:center; align-items:center; font-size:20px;">🏁</div>
+        <div style="flex: 1; padding: 0 10px; display:flex; align-items:center; min-width:0;">
+            <input type="text" class="endpoint-input" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+        </div>
+        <div class="col-handle" style="visibility:hidden;"></div>
+    `;
+    return el;
+}
+
+async function updateEndpointAddress(type, value) {
+    if (!value.trim() || !routeId) return;
+    const overlay = document.getElementById('processing-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    
+    try {
+        const res = await fetch(WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: type, address: value })
+        });
+        const data = await res.json();
+        
+        if (data.error) throw new Error(data.error);
+        if (data.success) {
+            if (type === 'start') routeStart = data.endpoint;
+            if (type === 'end') routeEnd = data.endpoint;
+            render(); drawRoute();
+        }
+    } catch (e) {
+        console.error("Endpoint update failed:", e);
+        alert("Failed to update address. Please check the address format.");
+    } finally {
+        if (overlay) overlay.style.display = 'none';
+    }
+}
+
 function render() {
     updateRoutingUI();
     const listContainer = document.getElementById('stop-list');
@@ -858,21 +882,29 @@ function render() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
+
     if (isManagerView) {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
         
-        const handleHeaderHtml = `<div class="col-handle"><input type="checkbox" id="bulk-select-all" onchange="toggleSelectAll(this)" style="cursor:pointer; width:16px; height:16px;"></div>`;
+        const showSort = !isSingleInspector;
+        const sortIcon = (col) => showSort ? getSortIcon(col) : '';
+        const sortClick = (col) => showSort ? `onclick="sortTable('${col}')"` : '';
+        const sortClass = showSort ? 'sortable' : '';
+
         header.innerHTML = `
-            ${handleHeaderHtml}
-            <div class="col-num"></div>
-            <div class="col-eta sortable" onclick="sortTable('eta')">ETA ${getSortIcon('eta')}</div>
-            <div class="col-due sortable" onclick="sortTable('dueDate')">Due ${getSortIcon('dueDate')}</div>
-            <div class="col-insp sortable" onclick="sortTable('driverName')">Inspector ${getSortIcon('driverName')}</div>
-            <div class="col-addr sortable" onclick="sortTable('address')">Address ${getSortIcon('address')}</div>
+            <div class="col-num" style="display:flex; justify-content:center;">
+                <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
+            </div>
+            <div class="col-eta ${sortClass}" ${sortClick('eta')}>ETA ${sortIcon('eta')}</div>
+            <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
+            <div class="col-insp ${sortClass}" ${sortClick('driverName')}>Inspector ${sortIcon('driverName')}</div>
+            <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
             <div class="col-app">App</div>
-            <div class="col-client sortable" onclick="sortTable('client')">Client ${getSortIcon('client')}</div>
-            <div class="col-type sortable" onclick="sortTable('type')">Order type ${getSortIcon('type')}</div>
+            <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
+            <div class="col-type ${sortClass}" ${sortClick('type')}>Order type ${sortIcon('type')}</div>
+            <div class="col-handle" style="visibility:hidden;"><i class="fa-solid fa-grip-lines"></i></div>
         `;
         listContainer.appendChild(header);
     }
@@ -935,7 +967,6 @@ function render() {
             const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             item.innerHTML = `
-                ${handleHtml}
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 2px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-eta">${etaTime}</div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
@@ -944,6 +975,7 @@ function render() {
                 <div class="col-app">${s.app || '--'}</div>
                 <div class="col-client">${s.client || '--'}</div>
                 <div class="col-type">${s.type || '--'}</div>
+                ${handleHtml}
             `;
         } else {
             item.className = `stop-item ${s.status} ${currentDisplayMode}`;
@@ -1003,7 +1035,7 @@ function render() {
         return item;
     };
 
-    if (isManagerView && currentInspectorFilter !== 'all') {
+    if (isSingleInspector) {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
         routedStops.sort(sortByEta);
@@ -1020,6 +1052,9 @@ function render() {
         
         if (routedStops.length > 0) {
             const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))].sort();
+            
+            listContainer.appendChild(createEndpointRow('start', routeStart));
+
             uniqueClusters.forEach(clusterId => {
                 const cStops = routedStops.filter(s => (s.cluster || 0) === clusterId);
                 if (cStops.length > 0) {
@@ -1032,6 +1067,8 @@ function render() {
                     cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
+
+            listContainer.appendChild(createEndpointRow('end', routeEnd));
         }
         
     } else if (viewMode === 'inspector') {
@@ -1151,7 +1188,9 @@ async function handleCalculate() {
             action: 'calculate',
             routeId: routeId,
             driver: driverParam,
-            startTime: currentStartTime
+            startTime: currentStartTime,
+            startAddr: routeStart && routeStart.address ? routeStart.address : null,
+            endAddr: routeEnd && routeEnd.address ? routeEnd.address : null
         };
 
         if (isManagerView && currentInspectorFilter !== 'all') {
@@ -1474,6 +1513,7 @@ function initSortable() {
             const inst = Sortable.create(routedEl, {
                 group: 'manager-routes',
                 handle: '.handle',
+                filter: '.static-endpoint',
                 animation: 150,
                 onEnd: async (evt) => {
                     let isMovedToUnrouted = false;
@@ -1526,6 +1566,7 @@ function initSortable() {
         document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
             const inst = Sortable.create(el, {
                 handle: '.handle',
+                filter: '.static-endpoint',
                 animation: 150,
                 onEnd: (evt) => {
                     const stopId = evt.item.id.replace('item-', '');
