@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V3.21
+// * Dashboard - V3.22
 // * FILE: app.js
-// * Changes: V3.21 - UI layout modifications for the manager view. Moved stop # to the left 
-// * and the grabber handle to the fixed right edge. Replaced sorting headers when viewing 
-// * routed orders. Injected fixed Start/End static rows connected to a live update webhook.
+// * Changes: V3.22 - Enabled endpoints to populate before initial generation from default 
+// * profiles, caching manager edits to localStorage until generation is fired. Added endpoint rows 
+// * to the inspector view with corresponding layout. Assured route line connects to both endpoints.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -507,10 +507,16 @@ async function handleGenerateRoute() {
         }
     }
 
+    let startInput = document.querySelector('input[placeholder="Enter Start Address..."]');
+    let endInput = document.querySelector('input[placeholder="Enter End Address..."]');
+    
+    let sAddr = startInput ? startInput.value : '';
+    let eAddr = endInput ? endInput.value : '';
+
     try {
         await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays })
+            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
         });
         
         await loadData();
@@ -830,23 +836,43 @@ function createRouteSubheading(clusterNum, clusterStops) {
 }
 
 function createEndpointRow(type, endpointData) {
-    const el = document.createElement('div');
-    el.className = 'glide-row static-endpoint';
-    let displayAddr = endpointData && endpointData.address ? endpointData.address : '';
-    let placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
+    const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
+    const placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
     
-    el.innerHTML = `
-        <div class="col-num" style="display:flex; justify-content:center; align-items:center; font-size:20px;">🏁</div>
-        <div style="flex: 1; padding: 0 10px; display:flex; align-items:center; min-width:0;">
-            <input type="text" class="endpoint-input" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
-        </div>
-        <div class="col-handle" style="visibility:hidden;"></div>
-    `;
-    return el;
+    if (!isManagerView) {
+        const el = document.createElement('div');
+        el.className = 'stop-item static-endpoint compact';
+        el.innerHTML = `
+            <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">🏁</div>
+            <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center;">
+                <input type="text" class="endpoint-input" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+            </div>
+            <div class="stop-actions" style="width: 40px;"></div>
+        `;
+        return el;
+    } else {
+        const el = document.createElement('div');
+        el.className = 'glide-row static-endpoint';
+        el.innerHTML = `
+            <div class="col-num" style="display:flex; justify-content:center; align-items:center; font-size:20px;">🏁</div>
+            <div style="flex: 1; padding: 0 10px; display:flex; align-items:center; min-width:0;">
+                <input type="text" class="endpoint-input" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+            </div>
+            <div class="col-handle" style="visibility:hidden;"></div>
+        `;
+        return el;
+    }
 }
 
 async function updateEndpointAddress(type, value) {
-    if (!value.trim() || !routeId) return;
+    if (!routeId) {
+        if (currentInspectorFilter && currentInspectorFilter !== 'all') {
+            localStorage.setItem(`sproute_${type}_${currentInspectorFilter}`, value);
+        }
+        return;
+    }
+    
+    if (!value.trim()) return;
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
     
@@ -1040,6 +1066,19 @@ function render() {
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
         routedStops.sort(sortByEta);
 
+        let currentStart = routeStart;
+        let currentEnd = routeEnd;
+        
+        if (!routeId) {
+            const insp = inspectors.find(i => i.id === currentInspectorFilter);
+            if (insp) {
+                currentStart = { address: localStorage.getItem('sproute_start_' + insp.id) || insp.start || '' };
+                currentEnd = { address: localStorage.getItem('sproute_end_' + insp.id) || insp.end || insp.start || '' };
+            }
+        }
+        
+        listContainer.appendChild(createEndpointRow('start', currentStart));
+
         if (unroutedStops.length > 0) {
             const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
             listContainer.appendChild(el);
@@ -1052,9 +1091,6 @@ function render() {
         
         if (routedStops.length > 0) {
             const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))].sort();
-            
-            listContainer.appendChild(createEndpointRow('start', routeStart));
-
             uniqueClusters.forEach(clusterId => {
                 const cStops = routedStops.filter(s => (s.cluster || 0) === clusterId);
                 if (cStops.length > 0) {
@@ -1067,13 +1103,15 @@ function render() {
                     cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
-
-            listContainer.appendChild(createEndpointRow('end', routeEnd));
         }
+        
+        listContainer.appendChild(createEndpointRow('end', currentEnd));
         
     } else if (viewMode === 'inspector') {
         const activeStopsCopy = [...activeStops].sort(sortByEta);
         const uniqueClusters = [...new Set(activeStopsCopy.map(s => s.cluster || 0))].sort();
+        
+        listContainer.appendChild(createEndpointRow('start', routeStart));
         
         if (uniqueClusters.length > 1) {
             uniqueClusters.forEach(clusterId => {
@@ -1093,6 +1131,9 @@ function render() {
             listContainer.appendChild(mainDiv);
             activeStopsCopy.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
         }
+        
+        listContainer.appendChild(createEndpointRow('end', routeEnd));
+        
     } else {
         const mainDiv = document.createElement('div');
         mainDiv.id = 'main-list-container';
