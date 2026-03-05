@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V3.24
+// * Dashboard - V4.0
 // * FILE: app.js
-// * Changes: V3.24 - Added historyStack for incremental undo. Removed old #controls area and 
-// * dynamically injected a state-aware #route-action-header. Hidden local Inspector unroutes. 
-// * Sent isManager param to back-end endpoints. Fixed map hint overlay bug.
+// * Changes: V4.0 - Rewrote updateRoutingUI to restore V3.20 functionality: shows routing 
+// * module if >25 unrouted orders, restores inspector hint in 'all' view, and targets hardcoded 
+// * header action buttons instead of dynamic generation. Rewrote createEndpointRow() to use 
+// * flexbox columns matching the list headers for perfect visual alignment.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -185,7 +186,7 @@ function isActiveStop(s) {
         active = (status === '' || status === 'routed' || status === 'completed');
     } else {
         active = status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
-        if (s.hiddenInInspector) active = false; // Hide locally removed orders for Inspector
+        if (s.hiddenInInspector) active = false;
     }
     
     if (isManagerView && currentInspectorFilter !== 'all') {
@@ -287,7 +288,7 @@ async function loadData() {
         
         routeStart = data.routeStart || null;
         routeEnd = data.routeEnd || null;
-        isAlteredRoute = data.isAlteredRoute || false; // Catch the altered route flag
+        isAlteredRoute = data.isAlteredRoute || false; 
 
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         
@@ -387,7 +388,6 @@ async function loadData() {
             document.querySelector('.rocker').style.display = 'none';
         }
         
-        // Inject incremental undo button
         if (!document.getElementById('btn-undo-incremental')) {
             const searchCont = document.getElementById('search-container');
             if (searchCont) {
@@ -411,57 +411,73 @@ async function loadData() {
 }
 
 function updateRoutingUI() {
-    let headerActions = document.getElementById('route-action-header');
-    if (!headerActions) {
-        headerActions = document.createElement('div');
-        headerActions.id = 'route-action-header';
-        headerActions.style.display = 'flex';
-        headerActions.style.gap = '8px';
-        headerActions.style.padding = '10px';
-        headerActions.style.background = 'var(--bg-panel)';
-        headerActions.style.borderBottom = '1px solid var(--border-color)';
-        
-        const sidebar = document.getElementById('sidebar');
-        if(sidebar) sidebar.insertBefore(headerActions, sidebar.firstChild);
-    }
-    
-    headerActions.innerHTML = ''; 
-
     const activeStops = stops.filter(s => isActiveStop(s));
     const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed').length;
     const unroutedCount = activeStops.length - routedCount;
     const isDirty = dirtyRoutes.size > 0;
 
+    const routingControls = document.getElementById('routing-controls');
+    const hintEl = document.getElementById('inspector-select-hint');
+    
+    const btnGen = document.getElementById('btn-header-generate');
+    const btnStartOver = document.getElementById('btn-header-start-over');
+    const btnRecalc = document.getElementById('btn-header-recalc');
+    const btnOptimize = document.getElementById('btn-header-optimize');
+    const btnRestore = document.getElementById('btn-header-restore');
+    
+    // Default Hide
+    if(btnGen) btnGen.style.display = 'none';
+    if(btnStartOver) btnStartOver.style.display = 'none';
+    if(btnRecalc) btnRecalc.style.display = 'none';
+    if(btnOptimize) btnOptimize.style.display = 'none';
+    if(btnRestore) btnRestore.style.display = 'none';
+
     if (isManagerView && currentInspectorFilter === 'all') {
-        headerActions.style.display = 'none';
+        if(routingControls) routingControls.style.display = 'none';
+        
+        let showHint = false;
+        const allValidStops = stops.filter(s => {
+            const status = (s.status || '').toLowerCase();
+            return status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
+        });
+
+        for (const insp of inspectors) {
+            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) {
+                showHint = true; 
+                break;
+            }
+        }
+        if (hintEl) hintEl.style.display = showHint ? 'block' : 'none';
         return;
     }
 
-    headerActions.style.display = 'flex';
+    if (hintEl) hintEl.style.display = 'none';
 
     if (isManagerView) {
-        if (unroutedCount > 0 && routedCount === 0) {
-            headerActions.innerHTML = `<button class="btn-generate" onclick="handleGenerateRoute()" style="width:100%; justify-content:center;">Generate Route</button>`;
-        } else if (isDirty) {
-            headerActions.innerHTML = `
-                <button class="btn-glide" style="background:var(--blue); color:white;" onclick="handleCalculate()">Re-calculate</button>
-                <button class="btn-glide" style="background:var(--purple); color:white;" onclick="handleOptimize()">Re-optimize</button>
-            `;
-        } else if (routedCount > 0) {
-            headerActions.innerHTML = `<button class="btn-glide" style="background:var(--bg-base); border: 1px solid var(--border-color); color:var(--text-main); width:100%;" onclick="handleStartOver()">Undo Routing (Start Over)</button>`;
+        if (unroutedCount > 25) {
+            if(routingControls) routingControls.style.display = 'flex';
         } else {
-            headerActions.style.display = 'none';
+            if(routingControls) routingControls.style.display = 'none';
+        }
+
+        if (unroutedCount > 0 && routedCount === 0) {
+            if(btnGen) btnGen.style.display = 'flex';
+            const headerGenBtnText = document.getElementById('btn-header-generate-text');
+            if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
+        } else if (isDirty) {
+            if(btnRecalc) btnRecalc.style.display = 'flex';
+            if(btnOptimize) btnOptimize.style.display = 'flex';
+        } else if (routedCount > 0) {
+            if(btnStartOver) btnStartOver.style.display = 'flex';
         }
     } else {
+        if(routingControls) routingControls.style.display = 'none';
+        
         if (isAlteredRoute && !isDirty) {
-            headerActions.innerHTML = `<button class="btn-glide" style="background:var(--bg-base); border: 1px solid var(--border-color); color:var(--text-main); width:100%;" onclick="handleRestoreOriginal()">Restore Original Route</button>`;
+            if(btnRestore) btnRestore.style.display = 'flex';
         } else if (isDirty || (isAlteredRoute && isDirty)) { 
-             headerActions.innerHTML = `
-                <button class="btn-glide" style="background:var(--blue); color:white;" onclick="handleCalculate()">Re-calculate</button>
-                <button class="btn-glide" style="background:var(--purple); color:white;" onclick="handleOptimize()">Re-optimize</button>
-            `;
-        } else {
-            headerActions.style.display = 'none';
+             if(btnRecalc) btnRecalc.style.display = 'flex';
+             if(btnOptimize) btnOptimize.style.display = 'flex';
         }
     }
 }
@@ -473,6 +489,9 @@ function setRoutes(num) {
         const btn = document.getElementById(`rbtn-${i}`);
         if(btn) btn.classList.toggle('active', i === num);
     }
+    const headerGenBtnText = document.getElementById('btn-header-generate-text');
+    if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
+    
     stops.forEach(s => s.manualCluster = false); 
     liveClusterUpdate();
     updateSelectionUI(); 
@@ -566,7 +585,7 @@ async function handleStartOver() {
             body: JSON.stringify({ action: 'resetRoute', driverId: insp.id, routeId: routeId }) 
         });
         
-        historyStack = []; // Clear history stack on major reset
+        historyStack = []; 
         
         stops.forEach(s => {
             if (s.driverId === insp.id && (s.status||'').toLowerCase() === 'routed') {
@@ -598,7 +617,7 @@ async function handleRestoreOriginal() {
             body: JSON.stringify({ action: 'restoreOriginalRoute', routeId: routeId }) 
         });
         
-        await loadData(); // Reload master JSON seamlessly
+        await loadData(); 
     } catch(e) {
         alert("Error restoring the route. Please try again."); 
         console.error(e);
@@ -881,7 +900,7 @@ function createEndpointRow(type, endpointData) {
         el.innerHTML = `
             <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">🏁</div>
             <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center;">
-                <input type="text" class="endpoint-input" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+                <input type="text" class="endpoint-input" style="font-size: 14px;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
             </div>
             <div class="stop-actions" style="width: 40px;"></div>
         `;
@@ -891,9 +910,15 @@ function createEndpointRow(type, endpointData) {
         el.className = 'glide-row static-endpoint';
         el.innerHTML = `
             <div class="col-num" style="display:flex; justify-content:center; align-items:center; font-size:20px;">🏁</div>
-            <div style="flex: 1; padding: 0 10px; display:flex; align-items:center; min-width:0;">
-                <input type="text" class="endpoint-input" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+            <div class="col-eta"></div>
+            <div class="col-due"></div>
+            <div class="col-insp"></div>
+            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px;">
+                <input type="text" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
             </div>
+            <div class="col-app"></div>
+            <div class="col-client"></div>
+            <div class="col-type"></div>
             <div class="col-handle" style="visibility:hidden;"></div>
         `;
         return el;
@@ -924,7 +949,7 @@ async function updateEndpointAddress(type, value) {
         if (data.success) {
             if (type === 'start') routeStart = data.endpoint;
             if (type === 'end') routeEnd = data.endpoint;
-            markRouteDirty('endpoints', 0); // Mark dirty to trigger save/calc
+            markRouteDirty('endpoints', 0);
             render(); drawRoute();
         }
     } catch (e) {
