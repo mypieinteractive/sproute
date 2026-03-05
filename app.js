@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V4.7
+// * Dashboard - V4.8
 // * FILE: app.js
-// * Changes: V4.7 - Added alphabetical sorting to the `inspectors` array on load to ensure permanent, 
-// * predictable color assignments across different companies. Added dynamic inline styling to colorize 
-// * both the main header filter dropdown and the inline table dropdowns with the inspectors' assigned colors.
+// * Changes: V4.8 - Moved Re-Optimize logic strictly to the endpoint rows (shows when endpoints are modified). 
+// * Enabled grabbers for unrouted list and disabled whole-row dragging. Unrouted pins now revert 
+// * to transparent immediately upon unrouting. Updated ETA column logic to hide ETAs for unrouted or dirty stops.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -199,7 +199,6 @@ function updateInspectorDropdown() {
         handleInspectorFilterChange('all');
     } else {
         filterSelect.value = currentVal;
-        // Ensure the select box itself shows the correct color on load
         if (currentVal !== 'all') {
             const inspIdx = inspectors.findIndex(i => i.id === currentVal);
             if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
@@ -304,11 +303,15 @@ function getVisualStyle(stopData) {
     }
     
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
-    const cluster = stopData.cluster || 0;
     
+    if (!isRouted) {
+        return { bg: 'transparent', border: baseColor, text: baseColor, line: baseColor };
+    }
+
+    const cluster = stopData.cluster || 0;
     const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
     
-    const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !isRouted;
+    const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
     const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
     
     let bgHex, borderHex = baseColor, textHex;
@@ -454,8 +457,6 @@ async function loadData() {
 
         if (!Array.isArray(data)) {
             inspectors = data.inspectors || []; 
-            
-            // Alphabetize inspectors to guarantee persistent color assignment
             inspectors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
             if (data.serviceDelay !== undefined) COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
@@ -530,14 +531,12 @@ function updateRoutingUI() {
     const btnGen = document.getElementById('btn-header-generate');
     const btnStartOver = document.getElementById('btn-header-start-over');
     const btnRecalc = document.getElementById('btn-header-recalc');
-    const btnOptimize = document.getElementById('btn-header-optimize');
     const btnRestore = document.getElementById('btn-header-restore');
     
     // Default Hide
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
     if(btnRecalc) btnRecalc.style.display = 'none';
-    if(btnOptimize) btnOptimize.style.display = 'none';
     if(btnRestore) btnRestore.style.display = 'none';
 
     if (isManagerView && currentInspectorFilter === 'all') {
@@ -574,7 +573,6 @@ function updateRoutingUI() {
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
         } else if (isDirty) {
             if(btnRecalc) btnRecalc.style.display = 'flex';
-            if(btnOptimize) btnOptimize.style.display = 'flex';
         } else if (routedCount > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
         }
@@ -585,7 +583,6 @@ function updateRoutingUI() {
             if(btnRestore) btnRestore.style.display = 'flex';
         } else if (isDirty || (isAlteredRoute && isDirty)) { 
              if(btnRecalc) btnRecalc.style.display = 'flex';
-             if(btnOptimize) btnOptimize.style.display = 'flex';
         }
     }
 }
@@ -657,8 +654,8 @@ async function handleGenerateRoute() {
         }
     }
 
-    let startInput = document.querySelector('input[placeholder="Enter Start Address..."]');
-    let endInput = document.querySelector('input[placeholder="Enter End Address..."]');
+    let startInput = document.getElementById('input-endpoint-start');
+    let endInput = document.getElementById('input-endpoint-end');
     
     let sAddr = startInput ? startInput.value : '';
     let eAddr = endInput ? endInput.value : '';
@@ -1010,17 +1007,57 @@ function createRouteSubheading(clusterNum, clusterStops) {
     return el;
 }
 
+window.checkEndpointModified = function() {
+    const sVal = document.getElementById('input-endpoint-start')?.value || '';
+    const eVal = document.getElementById('input-endpoint-end')?.value || '';
+    const sOrig = routeStart?.address || '';
+    const eOrig = routeEnd?.address || '';
+    
+    const modified = (sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim());
+    const isDirty = dirtyRoutes.has('endpoints_0');
+    const canOpt = isManagerView || PERMISSION_REOPTIMIZE;
+    
+    document.querySelectorAll('.btn-endpoint-opt').forEach(btn => {
+        btn.style.display = ((modified || isDirty) && canOpt) ? 'block' : 'none';
+    });
+};
+
+window.handleEndpointOptimize = async function() {
+    const sVal = document.getElementById('input-endpoint-start')?.value || '';
+    const eVal = document.getElementById('input-endpoint-end')?.value || '';
+    
+    if (routeStart) routeStart.address = sVal; else routeStart = {address: sVal};
+    if (routeEnd) routeEnd.address = eVal; else routeEnd = {address: eVal};
+
+    await finalizeSync('optimize', sVal, eVal);
+    
+    if(routeId) {
+        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: 'start', address: sVal }) }).catch(()=>{});
+        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: 'end', address: eVal }) }).catch(()=>{});
+    }
+    
+    dirtyRoutes.delete('endpoints_0');
+    render();
+};
+
 function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
+    const inputId = `input-endpoint-${type}`;
+    
+    const isDirty = dirtyRoutes.has('endpoints_0');
+    const canOpt = isManagerView || PERMISSION_REOPTIMIZE;
+    const displayStyle = (isDirty && canOpt) ? 'block' : 'none';
+    const optBtnHtml = `<button class="btn-endpoint-opt" style="display:${displayStyle}; background:#2C3D4F; color:white; font-size:11px; font-weight:bold; padding:4px 10px; border:none; border-radius:4px; cursor:pointer; margin-left:8px; flex-shrink:0;" onmousedown="event.preventDefault(); handleEndpointOptimize()">Re-Optimize</button>`;
     
     if (!isManagerView) {
         const el = document.createElement('div');
         el.className = 'stop-item static-endpoint compact';
         el.innerHTML = `
             <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">🏁</div>
-            <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center;">
-                <input type="text" class="endpoint-input" style="font-size: 14px;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+            <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; flex:1;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
+                ${optBtnHtml}
             </div>
             <div class="stop-actions" style="width: 40px;"></div>
         `;
@@ -1035,8 +1072,9 @@ function createEndpointRow(type, endpointData) {
                 <span style="font-size:18px;">🏁</span>
                 <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;">${labelText}</span>
             </div>
-            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px;">
-                <input type="text" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; align-items:center;">
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
+                ${optBtnHtml}
             </div>
             <div class="col-app"></div>
             <div class="col-client"></div>
@@ -1099,7 +1137,6 @@ function render() {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
         
-        // Disable sorting on ALL columns if previewing single inspector routing
         const sortIcon = (col) => isAllInspectors ? getSortIcon(col) : '';
         const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
         const sortClass = isAllInspectors ? 'sortable' : '';
@@ -1153,8 +1190,11 @@ function render() {
         };
         
         let etaTime = extractTime(s.eta);
+        const statusStr = (s.status||'').toLowerCase();
+        const isRouted = statusStr === 'routed' || statusStr === 'completed';
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
-        if (dirtyRoutes.has(routeKey) && s.status && s.status.toLowerCase() === 'routed') {
+        
+        if (!isRouted || dirtyRoutes.has(routeKey)) {
             etaTime = '--';
         }
 
@@ -1208,7 +1248,7 @@ function render() {
             let distStr = s.dist ? String(s.dist) : '--';
             if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
             
-            const metaDisplay = dirtyRoutes.has(routeKey) ? '-- | --' : `${etaTime} | ${distStr}`;
+            const metaDisplay = (!isRouted || dirtyRoutes.has(routeKey)) ? '-- | --' : `${etaTime} | ${distStr}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -1285,7 +1325,7 @@ function render() {
             unroutedDiv.id = 'unrouted-list';
             unroutedDiv.style.minHeight = '30px'; 
             listContainer.appendChild(unroutedDiv);
-            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, false)); });
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, true)); });
         }
         
         if (routedStops.length > 0) {
@@ -1472,8 +1512,6 @@ async function handleCalculate() {
     }
 }
 
-function handleOptimize() { showSyncOptions('optimize'); }
-
 function toggleComplete(e, id) {
     e.stopPropagation();
     pushToHistory();
@@ -1640,23 +1678,11 @@ function showNavChoice(la, ln) { const m = document.getElementById('modal-overla
 function setNavPref(p, la, ln) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; launchMaps(p, la, ln); }
 function launchMaps(p, la, ln) { window.location.href = p === 'google' ? `comgooglemaps://?daddr=${la},${ln}` : `maps://maps.apple.com/?daddr=${la},${ln}`; }
 
-function showSyncOptions(type) {
-    const modal = document.getElementById('modal-overlay'); modal.style.display = 'flex';
-    const defS = stops.length ? stops[0].address : "", defE = stops.length ? stops[stops.length-1].address : "";
-    document.getElementById('modal-content').innerHTML = `
-        <h3 style="margin:0">Update Locations</h3>
-        <p style="font-size:12px; color:var(--text-muted);">Start Time: ${currentStartTime}</p>
-        <input type="text" id="start-addr" value="${defS}" placeholder="Start Address" style="width:100%; padding:8px; margin:5px 0; border-radius:4px;">
-        <input type="text" id="end-addr" value="${defE}" placeholder="End Address" style="width:100%; padding:8px; margin:5px 0; border-radius:4px;">
-        <div style="display:flex; gap:10px; margin-top:20px;">
-            <button style="flex:1; padding:10px; border:none; border-radius:6px; background:#444; color:#fff;" onclick="document.getElementById('modal-overlay').style.display='none'">Cancel</button>
-            <button style="flex:1; padding:10px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold;" onclick="finalizeSync('${type}')">Submit</button>
-        </div>`;
-}
-
-async function finalizeSync(type) {
-    const startAddr = document.getElementById('start-addr').value, endAddr = document.getElementById('end-addr').value;
-    document.getElementById('modal-overlay').style.display = 'none';
+async function finalizeSync(type, directStart = null, directEnd = null) {
+    const startAddr = directStart !== null ? directStart : (document.getElementById('start-addr')?.value || '');
+    const endAddr = directEnd !== null ? directEnd : (document.getElementById('end-addr')?.value || '');
+    const modal = document.getElementById('modal-overlay');
+    if(modal) modal.style.display = 'none';
     
     let payload = { 
         action: type, driver: driverParam, 
@@ -1673,7 +1699,7 @@ async function finalizeSync(type) {
             }
         }
         payload.routeClusters = clusteredArrays;
-        payload.priorityLevel = document.getElementById('slider-priority').value;
+        payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
     } else {
         payload.stops = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
     }
@@ -1786,6 +1812,7 @@ function initSortable() {
             sortableUnrouted = Sortable.create(unroutedEl, {
                 group: 'manager-routes',
                 sort: false, 
+                handle: '.handle', 
                 animation: 150,
                 onStart: () => pushToHistory()
             });
