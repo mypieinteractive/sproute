@@ -1,10 +1,9 @@
 // *
-// * Dashboard - V4.9
+// * Dashboard - V4.10
 // * FILE: app.js
-// * Changes: V4.9 - Fixed a bug in getVisualStyle() where all unrouted pins were forced transparent, 
-// * breaking the live cluster preview during route preparation. Refined logic so preview colors 
-// * show when generating a route, but pins correctly return to transparent when explicitly unrouted 
-// * from an active route.
+// * Changes: V4.10 - Fixed Z-index and overlay stalling issues by explicitly hiding the processing 
+// * screen in catch blocks before triggering custom alerts. Updated handleCalculate() to pass a flat 
+// * array of stops to preserve manual sorting order instead of triggering backend route optimization.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -307,7 +306,6 @@ function getVisualStyle(stopData) {
     const cluster = stopData.cluster || 0;
     const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
     
-    // Live preview logic depends on having zero routed stops for the selected inspector.
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
     const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
     
@@ -665,6 +663,7 @@ async function handleGenerateRoute() {
         
         await loadData();
     } catch (e) {
+        if(overlay) overlay.style.display = 'none';
         await customAlert("Error requesting route generation. Please try again.");
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -699,6 +698,7 @@ async function handleStartOver() {
         dirtyRoutes.clear();
         render(); drawRoute(); updateSummary(); updateUndoUI();
     } catch(e) { 
+        if(overlay) overlay.style.display = 'none';
         await customAlert("Error resetting the route. Please try again."); 
         console.error(e);
     } finally { 
@@ -720,6 +720,7 @@ async function handleRestoreOriginal() {
         
         await loadData(); 
     } catch(e) {
+        if(overlay) overlay.style.display = 'none';
         await customAlert("Error restoring the route. Please try again."); 
         console.error(e);
     } finally {
@@ -855,6 +856,7 @@ async function triggerBulkDelete() {
         render(); drawRoute(); updateSummary(); updateRouteTimes();
 
     } catch (err) {
+        if(overlay) overlay.style.display = 'none';
         await customAlert("Error deleting orders. Please try again.");
         console.error("Bulk Delete Error:", err);
     } finally {
@@ -887,6 +889,7 @@ async function triggerBulkUnroute() {
         selectedIds.clear(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
     } catch (err) {
+        if(overlay) overlay.style.display = 'none';
         await customAlert("Error removing orders from the route. Please try again.");
         console.error("Bulk Unroute Error:", err);
     } finally {
@@ -933,6 +936,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
         updateInspectorDropdown(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
     } catch (err) { 
+        if(overlay) overlay.style.display = 'none';
         await customAlert("Error reassigning orders. Please try again."); 
         console.error(err);
     } finally {
@@ -1109,6 +1113,7 @@ async function updateEndpointAddress(type, value) {
             render(); drawRoute();
         }
     } catch (e) {
+        if (overlay) overlay.style.display = 'none';
         console.error("Endpoint update failed:", e);
         await customAlert("Failed to update address. Please check the address format.");
     } finally {
@@ -1457,6 +1462,7 @@ async function handleCalculate() {
     try {
         const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
         if (activeStops.length < 2) { 
+            if (overlay) overlay.style.display = 'none';
             await customAlert("Please select at least two stops to calculate a route."); 
             return; 
         }
@@ -1468,22 +1474,9 @@ async function handleCalculate() {
             startTime: currentStartTime,
             startAddr: routeStart && routeStart.address ? routeStart.address : null,
             endAddr: routeEnd && routeEnd.address ? routeEnd.address : null,
-            isManager: isManagerView
+            isManager: isManagerView,
+            stops: activeStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
         };
-
-        if (isManagerView && currentInspectorFilter !== 'all') {
-            let clusteredArrays = [];
-            for(let i = 0; i < currentRouteCount; i++) {
-                let itemsInCluster = activeStops.filter(s => s.cluster === i);
-                if (itemsInCluster.length > 0) {
-                    clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
-                }
-            }
-            payload.routeClusters = clusteredArrays;
-            payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
-        } else {
-            payload.stops = activeStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
-        }
 
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json();
@@ -1502,6 +1495,7 @@ async function handleCalculate() {
         render(); drawRoute(); updateSummary();
 
     } catch (e) { 
+        if (overlay) overlay.style.display = 'none';
         await customAlert("Error calculating the route. Please try again."); 
         console.error(e);
     } finally { 
@@ -1717,6 +1711,7 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
         dirtyRoutes.clear();
         render(); drawRoute(); updateSummary();
     } catch (e) { 
+        if (overlay) overlay.style.display = 'none';
         await customAlert("Error updating locations. Please try again."); 
     } finally {
         if (overlay) overlay.style.display = 'none';
