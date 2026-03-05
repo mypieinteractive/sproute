@@ -32,13 +32,13 @@
             <i class="fa-solid fa-trash-can"></i> Delete selected
         </button>
         
-        <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)" style="border-left: 4px solid #2563eb;">
+        <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)">
             Move to Route 1
         </button>
-        <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)" style="border-left: 4px solid #10b981;">
+        <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)">
             Move to Route 2
         </button>
-        <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)" style="border-left: 4px solid #f1c40f;">
+        <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)">
             Move to Route 3
         </button>
     </div>
@@ -82,17 +82,26 @@
 
     <div id="routing-controls" style="display: none; padding: 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: column;">
         <div id="route-divider-group" style="display:flex; gap:8px;">
-            <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1" style="--route-color: #2563eb;">
-                <div class="rbtn-title">1 Route</div>
-                <div class="rbtn-time" id="rtime-1">-- hrs</div>
+            <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
+                <div class="rbtn-indicator" id="rbtn-ind-1"></div>
+                <div class="rbtn-content">
+                    <div class="rbtn-title">1 Route</div>
+                    <div class="rbtn-time" id="rtime-1">-- hrs</div>
+                </div>
             </div>
-            <div class="route-btn" onclick="setRoutes(2)" id="rbtn-2" style="--route-color: #10b981;">
-                <div class="rbtn-title">2 Routes</div>
-                <div class="rbtn-time" id="rtime-2">-- hrs</div>
+            <div class="route-btn" onclick="setRoutes(2)" id="rbtn-2">
+                <div class="rbtn-indicator" id="rbtn-ind-2"></div>
+                <div class="rbtn-content">
+                    <div class="rbtn-title">2 Routes</div>
+                    <div class="rbtn-time" id="rtime-2">-- hrs</div>
+                </div>
             </div>
-            <div class="route-btn" onclick="setRoutes(3)" id="rbtn-3" style="--route-color: #f1c40f;">
-                <div class="rbtn-title">3 Routes</div>
-                <div class="rbtn-time" id="rtime-3">-- hrs</div>
+            <div class="route-btn" onclick="setRoutes(3)" id="rbtn-3">
+                <div class="rbtn-indicator" id="rbtn-ind-3"></div>
+                <div class="rbtn-content">
+                    <div class="rbtn-title">3 Routes</div>
+                    <div class="rbtn-time" id="rtime-3">-- hrs</div>
+                </div>
             </div>
         </div>
 
