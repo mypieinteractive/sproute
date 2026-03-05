@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V4.6 */
+/* * Dashboard - V4.8 */
 /* * FILE: styles.css */
-/* * Changes: V4.6 - Adjusted the active state background color of the Detailed/Compact */
-/* * rocker toggle to #2C3D4F. */
+/* * Changes: V4.8 - Added `.header-action-btn` class to standardize main routing buttons. */
+/* * Changed `.list-subheading` font color to #ffffff as requested. */
 /* * */
 
 :root { 
@@ -59,7 +59,7 @@ body.tier-individual .col-insp { display: none !important; }
 body.manager-all-inspectors #routing-controls { display: none !important; }
 
 .list-subheading {
-    padding: 6px 12px; background: var(--bg-header); color: var(--blue);
+    padding: 6px 12px; background: var(--bg-header); color: #ffffff;
     font-weight: bold; font-size: 11px; text-transform: uppercase;
     border-bottom: 1px solid var(--border-color); letter-spacing: 1px;
     display: flex; justify-content: space-between; align-items: center;
@@ -105,8 +105,8 @@ body.view-manager #resizer { display: block; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
 
-.btn-generate { background: var(--green); color: var(--bg-header); border: none; border-radius: 6px; padding: 0 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; }
-.btn-generate:active { opacity: 0.7; }
+.header-action-btn { width: 165px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
+.header-action-btn:active { opacity: 0.7; }
 
 #search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
 #search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
@@ -138,9 +138,6 @@ body.view-manager #resizer { display: block; }
 @container sidebar (max-width: 500px) { .col-app { display: none !important; } }
 @container sidebar (max-width: 450px) { .col-due { display: none !important; } }
 @container sidebar (max-width: 380px) { .col-insp { display: none !important; } }
-
-.btn-glide { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-.btn-glide:active { opacity: 0.7; }
 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
