@@ -62,19 +62,16 @@
         </div>
 
         <div style="display: flex; gap: 8px; justify-content: flex-end; flex: 1;">
-            <button id="btn-header-restore" class="btn-glide" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); height:36px; padding: 0; min-width: 165px;">
+            <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
                 <i class="fa-solid fa-clock-rotate-left"></i> Restore Original Route
             </button>
-            <button id="btn-header-start-over" class="btn-glide" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); height:36px; padding: 0; min-width: 165px;">
+            <button id="btn-header-start-over" class="header-action-btn" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
                 <i class="fa-solid fa-rotate-left"></i> Undo Routing
             </button>
-            <button id="btn-header-recalc" class="btn-glide" onclick="handleCalculate()" style="display:none; background:#444; color:white; height:36px; padding: 0; min-width: 165px;">
+            <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="display:none; background:#444; color:white;">
                 <i class="fa-solid fa-calculator"></i> Re-Calculate
             </button>
-            <button id="btn-header-optimize" class="btn-glide" onclick="handleOptimize()" style="display:none; background:#2C3D4F; color:white; height:36px; padding: 0; min-width: 165px;">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
-            </button>
-            <button id="btn-header-generate" class="btn-generate" onclick="handleGenerateRoute()" style="display:none; height:36px; padding: 0; min-width: 165px;">
+            <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
                 <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Generate Route</span>
             </button>
         </div>
