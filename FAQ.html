@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sproute | FAQ</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --primary-green: #76bc43;
+            --text-main: #e0e0e0;
+            --text-dim: #a0a0a0;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 900px;
+            padding: 40px 0;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        .leaf-icon {
+            color: var(--primary-green);
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .faq-section {
+            margin-bottom: 40px;
+        }
+
+        .question-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            transition: transform 0.2s ease;
+        }
+
+        h2 {
+            color: var(--primary-green);
+            font-size: 1.4rem;
+            margin-top: 0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        h3 {
+            color: white;
+            font-size: 1.1rem;
+            margin-top: 25px;
+        }
+
+        p {
+            color: var(--text-main);
+            font-weight: 300;
+        }
+
+        .highlight-box {
+            border-left: 4px solid var(--primary-green);
+            background: rgba(118, 188, 67, 0.05);
+            padding: 15px 20px;
+            margin: 20px 0;
+            font-style: italic;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .tier-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .tier-item {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tier-item:last-child { border-bottom: none; }
+
+        .tier-title {
+            font-weight: 700;
+            color: white;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .tag {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            background: rgba(255,255,255,0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        .cost-zero { color: var(--primary-green); font-weight: bold; }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 1.8rem; }
+            .question-card { padding: 15px; }
+            .container { width: 95%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <span class="leaf-icon">🍃</span>
+        <h1>Sproute FAQ</h1>
+        <p style="color: var(--text-dim);">Everything you need to know about our inspection-first logic.</p>
+    </header>
+
+    <div class="faq-section">
+        <div class="question-card">
+            <h2>What is Sproute?</h2>
+            <p>Sproute is an order management and route planning software, <strong>built BY inspectors, FOR inspectors</strong>. There are lots of similar products on the market, but Sproute is different in that it is uniquely built around the needs of regional property inspection companies—not delivery drivers or huge fleet operators.</p>
+            <p>This approach means we can offer advanced features specific to the needs of the property inspection community, while keeping things streamlined so that the monthly cost remains well below other products of similar quality.</p>
+            <div class="highlight-box">
+                "Go ahead and compare. We dare you to find a cheaper service."
+            </div>
+        </div>
+
+        <div class="question-card">
+            <h2>What is an API call, and why should I care?</h2>
+            <p>Sproute does not perform address validation or route optimization directly. Instead, we tap into the "gold-standard" resources of <strong>Google Maps</strong> and <strong>Mapbox</strong> through an <strong>API (Application Programming Interface)</strong>.</p>
+            <p>Because these providers charge a fee for every call, Sproute uses a clever tiered approach and custom backend coding to keep your costs effective while utilizing the strengths of both platforms.</p>
+
+            <h3>1. Address Geocoding & Validation</h3>
+            <div class="tier-list">
+                <div class="tier-item">
+                    <span class="tier-title">Sproute Address Cache <span class="tag cost-zero">$0 API COST</span></span>
+                    <p>The first place Sproute looks. If the address is matched here, it costs you nothing.</p>
+                </div>
+                <div class="tier-item">
+                    <span class="tier-title">Mapbox Geocoding <span class="tag">API CALL PER ADDRESS</span></span>
+                    <p>The simplest and most efficient call. Once matched, we save it to the cache so you never pay for that specific address again.</p>
+                </div>
+                <div class="tier-item">
+                    <span class="tier-title">Google Address Validation <span class="tag">API CALL PER ADDRESS</span></span>
+                    <p>The "heavy hitter" used for difficult rural areas or addresses with typos.</p>
+                </div>
+                <div class="tier-item">
+                    <span class="tier-title">Manual Validation</span>
+                    <p>If automation fails, we give you the tools to sleuth and enter coordinates manually. Once saved, it’s cached forever.</p>
+                </div>
+            </div>
+
+            <h3>2. Map Generation</h3>
+            <p>Every time a map is generated or reordered to help you manage pins, a single API call is utilized to ensure your visual data is live and accurate.</p>
+
+            <h3>3. Route Optimization</h3>
+            <p>Solving the "Traveling Salesman" problem is the most complex task. We use a tiered approach here as well:</p>
+            <div class="tier-list">
+                <div class="tier-item">
+                    <span class="tier-title">Google Routes (Up to 25 stops)</span>
+                    <p>The most cost-effective method for standard daily routes.</p>
+                </div>
+                <div class="tier-item">
+                    <span class="tier-title">Google Route Optimization (25+ stops)</span>
+                    <p>The most powerful logic available, capable of handling hundreds of stops at once.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="question-card">
+            <h2>Re-optimization and Heuristic Math</h2>
+            <p>We know routes change. To save your API limits, Sproute uses <strong>heuristic math (K-means clustering)</strong> when you make manual edits. This allows us to recalculate distances and times instantly without hitting a paid API.</p>
+            <p>Administrators have full control and can trigger a full "hard" re-optimization whenever necessary, or grant that power to inspectors in the field via the Settings menu.</p>
+        </div>
+    </div>
+
+    <footer style="text-align: center; color: var(--text-dim); padding: 20px; font-size: 0.8rem;">
+        &copy; 2026 Sproute Logistics Technology. All rights reserved.
+    </footer>
+</div>
+
+</body>
+</html>
