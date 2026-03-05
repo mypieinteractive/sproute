@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V4.10 */
+/* * Dashboard - V4.14 */
 /* * FILE: styles.css */
-/* * Changes: V4.10 - Bumped #modal-overlay z-index to 10000 so error alerts sit safely */
-/* * on top of the #processing-overlay (which is set at 9999). */
+/* * Changes: V4.14 - Added an attribute selector rule on the body tag to automatically */
+/* * hide any wrapper containing the priority slider when data-route-count is "1". */
 /* * */
 
 :root { 
@@ -23,6 +23,13 @@
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
 body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
+
+/* Safe hiding logic for the priority slider wrapper when route count is 1 */
+body[data-route-count="1"] .priority-wrapper, 
+body[data-route-count="1"] #slider-priority,
+body[data-route-count="1"] #priority-container { 
+    display: none !important; 
+}
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
