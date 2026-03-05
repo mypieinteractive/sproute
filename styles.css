@@ -1,8 +1,7 @@
 /* * */
-/* * Dashboard - V4.1 */
+/* * Dashboard - V4.3 */
 /* * FILE: styles.css */
-/* * Changes: V4.1 - Nested type-text under address elements and disabled order type column grid. */
-/* * Reconfigured generate button font color to contrast against the green. Pushed stop # margin. */
+/* * Changes: V4.3 - Refined .compact row rules to squish the margin padding down further. */
 /* * */
 
 :root { 
@@ -141,7 +140,11 @@ body.view-manager #resizer { display: block; }
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
 .stop-item.selected { background: var(--fade-blue) !important; }
-.stop-item.compact { min-height: 45px; }
+
+/* Tighter margins for compact rocker mode */
+.stop-item.compact { min-height: 40px; }
+.stop-item.compact .stop-content { padding: 2px 0; }
+.glide-row.compact { padding: 4px 4px; min-height: 40px; }
 
 .stop-sidebar { width: 35px; background-color: var(--purple); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; }
 .stop-sidebar.due-today { background-color: var(--orange); }
