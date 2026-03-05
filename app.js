@@ -1,10 +1,8 @@
 // *
-// * Dashboard - V4.14
+// * Dashboard - V4.15
 // * FILE: app.js
-// * Changes: V4.14 - Updated Endpoint labels to "Start" and "End". Re-styled the Re-Optimize 
-// * button to match header actions and left-justified it. Appends data-route-count to body to 
-// * dynamically hide the priority slider on single routes. Updated render() and drawRoute() to 
-// * correctly display and connect 🏁 markers for all active inspectors in the manager view.
+// * Changes: V4.15 - Enabled cooperativeGestures on Mapbox to restore 1-finger scroll lock. 
+// * Added (App | Client) meta text beneath the address in detailed manager view. 
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -115,7 +113,8 @@ const map = new mapboxgl.Map({
     center: [-96.797, 32.776],
     zoom: 11, 
     attributionControl: false,
-    boxZoom: false
+    boxZoom: false,
+    cooperativeGestures: true 
 });
 
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
@@ -1243,6 +1242,7 @@ function render() {
                 ${inspectorHtml}
                 <div class="col-addr">
                     <div class="addr-text">${(s.address||'').split(',')[0]}</div>
+                    <div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>
                     <div class="type-text">${s.type || ''}</div>
                 </div>
                 <div class="col-app">${s.app || '--'}</div>
