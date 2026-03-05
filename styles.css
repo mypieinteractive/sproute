@@ -1,8 +1,9 @@
 /* * */
-/* * Dashboard - V4.15 */
+/* * Dashboard - V4.16 */
 /* * FILE: styles.css */
-/* * Changes: V4.15 - Adjusted manager mobile layout to allow for native document scrolling */
-/* * and hid the resizer element on mobile. Shrunk the inspector column. Added meta-text styling. */
+/* * Changes: V4.16 - Reverted manager column sizing and scroll layout back to normal. */
+/* * Isolated all native-scroll, map height overrides, and narrower column overrides */
+/* * specifically inside the .view-managermobile scoped rules. */
 /* * */
 
 :root { 
@@ -54,6 +55,7 @@ body.view-managermobile #bulk-complete-btn { display: none !important; }
 body.view-managermobile #summary-metrics { display: none !important; } 
 body.view-managermobile #resizer { display: none !important; }
 body.view-managermobile #map-hint { display: none !important; }
+body.view-managermobile .col-insp { width: 90px; }
 
 body.tier-individual .col-insp { display: none !important; }
 
@@ -204,7 +206,7 @@ body.view-manager #resizer { display: block; }
 .col-due.due-today { color: var(--orange); }
 .col-due.past-due { color: var(--red); font-weight: bold; }
 
-.col-insp { width: 90px; color: var(--text-muted); padding-right: 6px; flex-shrink: 0; }
+.col-insp { width: 120px; color: var(--text-muted); padding-right: 6px; flex-shrink: 0; }
 .col-addr { flex: 1 1 auto; min-width: 0; padding-right: 6px; font-weight: 500; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 
