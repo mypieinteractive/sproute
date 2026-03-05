@@ -1,9 +1,9 @@
 /* * */
-/* * Dashboard - V4.16 */
+/* * Dashboard - V4.17 */
 /* * FILE: styles.css */
-/* * Changes: V4.16 - Reverted manager column sizing and scroll layout back to normal. */
-/* * Isolated all native-scroll, map height overrides, and narrower column overrides */
-/* * specifically inside the .view-managermobile scoped rules. */
+/* * Changes: V4.17 - Restored mobile 100vh scrolling view. Un-bolded meta-text. */
+/* * Customized .view-managermobile class scales to perfectly fit the required */
+/* * Num, ETA, Due, Insp, and Address columns on mobile view without dropping columns. */
 /* * */
 
 :root { 
@@ -47,15 +47,24 @@ body.view-manager #bulk-complete-btn { display: none !important; }
 body.view-manager #summary-metrics { display: none !important; } 
 
 /* MANAGER MOBILE VIEW */
-body.view-managermobile { flex-direction: column; overflow-y: auto; height: auto; min-height: 100vh; }
-body.view-managermobile #map-wrapper { height: 25vh; min-height: 200px; width: 100vw; flex: none; position: relative; z-index: 10; }
-body.view-managermobile #sidebar { height: auto; min-height: 75vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: visible; }
-body.view-managermobile #stop-list { overflow: visible; }
+body.view-managermobile { flex-direction: column; overflow: hidden; height: 100vh; }
+body.view-managermobile #map-wrapper { height: 40vh; width: 100vw; flex: none; position: relative; z-index: 10; }
+body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: hidden; }
+body.view-managermobile #stop-list { overflow-y: auto; overflow-x: hidden; height: 100%; }
 body.view-managermobile #bulk-complete-btn { display: none !important; }
 body.view-managermobile #summary-metrics { display: none !important; } 
-body.view-managermobile #resizer { display: none !important; }
 body.view-managermobile #map-hint { display: none !important; }
-body.view-managermobile .col-insp { width: 90px; }
+
+/* Mobile Column Fitting */
+body.view-managermobile .col-eta { width: 55px; font-size: 12px; }
+body.view-managermobile .col-due { width: 45px; font-size: 12px; }
+body.view-managermobile .col-insp { width: 85px; font-size: 12px; padding-right: 2px; }
+body.view-managermobile .insp-select { font-size: 12px; padding: 4px 14px 4px 4px; background-size: 8px auto; background-position: right 4px center; }
+body.view-managermobile .addr-text { font-size: 13px; }
+body.view-managermobile .glide-row { padding: 8px 2px; }
+body.view-managermobile .col-num { margin-left: 2px; width: 26px; }
+body.view-managermobile .num-badge { width: 22px; height: 22px; font-size: 11px; }
+body.view-managermobile .endpoint-controls-wrapper { padding-left: 4px; }
 
 body.tier-individual .col-insp { display: none !important; }
 
@@ -94,6 +103,8 @@ input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cur
 #resizer { width: 6px; background-color: var(--border-color); cursor: col-resize; display: none; flex: none; z-index: 100; transition: background-color 0.2s; }
 #resizer:hover, #resizer.active { background-color: var(--blue); }
 body.view-manager #resizer { display: block; }
+body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; cursor: row-resize; flex: none; background-color: var(--border-color); margin: 0; padding: 0; position: relative; z-index: 100; border-top: 1px solid #111; border-bottom: 1px solid #111; }
+body.view-managermobile #resizer::after { content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 35px; height: 3px; background: #777; border-radius: 3px; }
 
 #map-wrapper { position: relative; background-color: var(--bg-base); }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
@@ -108,8 +119,9 @@ body.view-manager #resizer { display: block; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
 
-.header-action-btn { width: 165px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
+.header-action-btn { height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
 .header-action-btn:active { opacity: 0.7; }
+#routing-controls .header-action-btn { width: 165px; }
 
 #search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
 #search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
@@ -139,8 +151,6 @@ body.view-manager #resizer { display: block; }
 
 @container sidebar (max-width: 600px) { .col-client { display: none !important; } }
 @container sidebar (max-width: 500px) { .col-app { display: none !important; } }
-@container sidebar (max-width: 450px) { .col-due { display: none !important; } }
-@container sidebar (max-width: 380px) { .col-insp { display: none !important; } }
 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
@@ -210,7 +220,7 @@ body.view-manager #resizer { display: block; }
 .col-addr { flex: 1 1 auto; min-width: 0; padding-right: 6px; font-weight: 500; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 
-.meta-text { font-size: 11px; font-weight: bold; color: var(--text-main); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+.meta-text { font-size: 11px; font-weight: normal; color: var(--text-main); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 .compact .meta-text { display: none; }
 
 .type-text { font-size: 11px; font-weight: normal; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
