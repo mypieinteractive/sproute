@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V4.14 */
+/* * Dashboard - V4.15 */
 /* * FILE: styles.css */
-/* * Changes: V4.14 - Added an attribute selector rule on the body tag to automatically */
-/* * hide any wrapper containing the priority slider when data-route-count is "1". */
+/* * Changes: V4.15 - Adjusted manager mobile layout to allow for native document scrolling */
+/* * and hid the resizer element on mobile. Shrunk the inspector column. Added meta-text styling. */
 /* * */
 
 :root { 
@@ -46,20 +46,14 @@ body.view-manager #bulk-complete-btn { display: none !important; }
 body.view-manager #summary-metrics { display: none !important; } 
 
 /* MANAGER MOBILE VIEW */
-body.view-managermobile { flex-direction: column; }
-body.view-managermobile #map-wrapper { height: 40vh; width: 100vw; flex: none; }
-body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); }
+body.view-managermobile { flex-direction: column; overflow-y: auto; height: auto; min-height: 100vh; }
+body.view-managermobile #map-wrapper { height: 25vh; min-height: 200px; width: 100vw; flex: none; position: relative; z-index: 10; }
+body.view-managermobile #sidebar { height: auto; min-height: 75vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: visible; }
+body.view-managermobile #stop-list { overflow: visible; }
 body.view-managermobile #bulk-complete-btn { display: none !important; }
 body.view-managermobile #summary-metrics { display: none !important; } 
-body.view-managermobile #resizer { 
-    display: block; width: 100vw; height: 16px; cursor: row-resize; 
-    flex: none; background-color: var(--border-color); margin: 0; padding: 0; 
-    position: relative; z-index: 100; border-top: 1px solid #111; border-bottom: 1px solid #111;
-}
-body.view-managermobile #resizer::after {
-    content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
-    width: 35px; height: 3px; background: #777; border-radius: 3px;
-}
+body.view-managermobile #resizer { display: none !important; }
+body.view-managermobile #map-hint { display: none !important; }
 
 body.tier-individual .col-insp { display: none !important; }
 
@@ -210,9 +204,13 @@ body.view-manager #resizer { display: block; }
 .col-due.due-today { color: var(--orange); }
 .col-due.past-due { color: var(--red); font-weight: bold; }
 
-.col-insp { width: 120px; color: var(--text-muted); padding-right: 6px; flex-shrink: 0; }
+.col-insp { width: 90px; color: var(--text-muted); padding-right: 6px; flex-shrink: 0; }
 .col-addr { flex: 1 1 auto; min-width: 0; padding-right: 6px; font-weight: 500; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+
+.meta-text { font-size: 11px; font-weight: bold; color: var(--text-main); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+.compact .meta-text { display: none; }
+
 .type-text { font-size: 11px; font-weight: normal; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 .compact .type-text { display: none; }
 
