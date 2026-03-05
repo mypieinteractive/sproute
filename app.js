@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.13
+// * Dashboard - V4.14
 // * FILE: app.js
-// * Changes: V4.13 - Reverted the client-side Mapbox calculation from V4.12. Restored the V4.11 
-// * logic where the frontend passes the strictly ordered array of modified routes to the backend 
-// * so the backend can manage API logging and conditional database saving securely.
+// * Changes: V4.14 - Updated Endpoint labels to "Start" and "End". Re-styled the Re-Optimize 
+// * button to match header actions and left-justified it. Appends data-route-count to body to 
+// * dynamically hide the priority slider on single routes. Updated render() and drawRoute() to 
+// * correctly display and connect 🏁 markers for all active inspectors in the manager view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -443,6 +444,7 @@ async function loadData() {
                 if(btn) btn.classList.toggle('active', i === cappedCount);
             }
         }
+        document.body.setAttribute('data-route-count', currentRouteCount);
 
         originalStops = JSON.parse(JSON.stringify(stops)); 
         if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
@@ -584,6 +586,8 @@ function updateRoutingUI() {
 
 function setRoutes(num) {
     currentRouteCount = num;
+    document.body.setAttribute('data-route-count', num);
+    
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`rbtn-${i}`);
         if(btn) btn.classList.toggle('active', i === num);
@@ -1045,11 +1049,13 @@ function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
     const inputId = `input-endpoint-${type}`;
+    const labelText = type === 'start' ? 'Start' : 'End';
     
     const isDirty = dirtyRoutes.has('endpoints_0');
     const canOpt = isManagerView || PERMISSION_REOPTIMIZE;
     const displayStyle = (isDirty && canOpt) ? 'block' : 'none';
-    const optBtnHtml = `<button class="btn-endpoint-opt" style="display:${displayStyle}; background:#2C3D4F; color:white; font-size:11px; font-weight:bold; padding:4px 10px; border:none; border-radius:4px; cursor:pointer; margin-left:8px; flex-shrink:0;" onmousedown="event.preventDefault(); handleEndpointOptimize()">Re-Optimize</button>`;
+    
+    const optBtnHtml = `<button class="header-action-btn btn-endpoint-opt" style="display:${displayStyle}; background:#2C3D4F; color:white; margin-left:12px; flex-shrink:0; width:auto; padding:0 16px;" onmousedown="event.preventDefault(); handleEndpointOptimize()">Re-Optimize</button>`;
     
     if (!isManagerView) {
         const el = document.createElement('div');
@@ -1064,7 +1070,6 @@ function createEndpointRow(type, endpointData) {
         `;
         return el;
     } else {
-        const labelText = type === 'start' ? 'Starting Location' : 'Ending Location';
         const el = document.createElement('div');
         el.className = 'glide-row static-endpoint';
         el.innerHTML = `
@@ -1073,8 +1078,8 @@ function createEndpointRow(type, endpointData) {
                 <span style="font-size:18px;">🏁</span>
                 <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;">${labelText}</span>
             </div>
-            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; align-items:center;">
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
+            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; align-items:center; justify-content: flex-start;">
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; max-width: 250px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
                 ${optBtnHtml}
             </div>
             <div class="col-app"></div>
@@ -1382,27 +1387,50 @@ function render() {
         activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
     }
 
-    if (routeStart && routeStart.lng && routeStart.lat) {
-        const el = document.createElement('div');
-        el.className = 'marker start-end-marker';
-        el.innerHTML = `<div style="font-size: 24px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)); transform: translateY(-10px);">🏁</div>`;
-        const m = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([routeStart.lng, routeStart.lat]).addTo(map);
-        markers.push(m);
-        bounds.extend([routeStart.lng, routeStart.lat]);
+    // --- Draw Start/End 🏁 Map Markers Dynamically ---
+    let endpointsToDraw = [];
+    if (isAllInspectors) {
+        const activeDriverIds = new Set(activeStops.map(s => s.driverId));
+        inspectors.forEach(insp => {
+            if (activeDriverIds.has(insp.id)) {
+                let sLng = insp.startLng || (routeStart ? routeStart.lng : null);
+                let sLat = insp.startLat || (routeStart ? routeStart.lat : null);
+                let eLng = insp.endLng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
+                let eLat = insp.endLat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
+                
+                if (sLng && sLat) endpointsToDraw.push({lng: sLng, lat: sLat});
+                if (eLng && eLat) endpointsToDraw.push({lng: eLng, lat: eLat});
+            }
+        });
+    } else {
+        let currentStart = routeStart;
+        let currentEnd = routeEnd;
+        if (!routeId && isSingleInspector) {
+            const insp = inspectors.find(i => i.id === currentInspectorFilter);
+            if (insp) {
+                currentStart = { lng: insp.startLng, lat: insp.startLat };
+                currentEnd = { lng: insp.endLng, lat: insp.endLat };
+            }
+        }
+        if (currentStart && currentStart.lng && currentStart.lat) endpointsToDraw.push(currentStart);
+        if (currentEnd && currentEnd.lng && currentEnd.lat) endpointsToDraw.push(currentEnd);
     }
-    
-    if (routeEnd && routeEnd.lng && routeEnd.lat) {
-        if (!routeStart || routeStart.lng !== routeEnd.lng || routeStart.lat !== routeEnd.lat) {
+
+    const seenCoords = new Set();
+    endpointsToDraw.forEach(ep => {
+        const key = `${ep.lng},${ep.lat}`;
+        if (!seenCoords.has(key)) {
+            seenCoords.add(key);
             const el = document.createElement('div');
             el.className = 'marker start-end-marker';
             el.innerHTML = `<div style="font-size: 24px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)); transform: translateY(-10px);">🏁</div>`;
-            const m = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([routeEnd.lng, routeEnd.lat]).addTo(map);
+            const m = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([ep.lng, ep.lat]).addTo(map);
             markers.push(m);
-            bounds.extend([routeEnd.lng, routeEnd.lat]);
+            bounds.extend([ep.lng, ep.lat]);
         }
-    }
+    });
 
-    if (activeStops.filter(s => s.lng && s.lat).length > 0 || (routeStart && routeStart.lng)) { 
+    if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
         initialBounds = bounds; map.fitBounds(bounds, { padding: 50, maxZoom: 15 }); 
     }
     
@@ -1652,18 +1680,33 @@ function drawRoute() {
     });
 
     routesMap.forEach((cStops, key) => {
-        if (cStops.length > 1) {
+        if (cStops.length > 0) {
             const style = getVisualStyle(cStops[0]);
             let coords = cStops.map(s => [s.lng, s.lat]);
             
-            if (routeStart && routeStart.lng && routeStart.lat) coords.unshift([routeStart.lng, routeStart.lat]);
-            if (routeEnd && routeEnd.lng && routeEnd.lat) coords.push([routeEnd.lng, routeEnd.lat]);
+            let dId = key.split('_')[0];
+            let rStart = routeStart;
+            let rEnd = routeEnd;
 
-            features.push({
-                "type": "Feature",
-                "properties": { "color": style.line }, 
-                "geometry": { "type": "LineString", "coordinates": coords }
-            });
+            // Connect specific inspector endpoints if manager is viewing all
+            if (isManagerView && dId !== 'unassigned') {
+                const insp = inspectors.find(i => i.id === dId);
+                if (insp) {
+                    rStart = { lng: insp.startLng || (routeStart ? routeStart.lng : null), lat: insp.startLat || (routeStart ? routeStart.lat : null) };
+                    rEnd = { lng: insp.endLng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null)), lat: insp.endLat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null)) };
+                }
+            }
+
+            if (rStart && rStart.lng && rStart.lat) coords.unshift([rStart.lng, rStart.lat]);
+            if (rEnd && rEnd.lng && rEnd.lat) coords.push([rEnd.lng, rEnd.lat]);
+
+            if (coords.length > 1) {
+                features.push({
+                    "type": "Feature",
+                    "properties": { "color": style.line }, 
+                    "geometry": { "type": "LineString", "coordinates": coords }
+                });
+            }
         }
     });
 
