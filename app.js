@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.0
+// * Dashboard - V4.1
 // * FILE: app.js
-// * Changes: V4.0 - Rewrote updateRoutingUI to restore V3.20 functionality: shows routing 
-// * module if >25 unrouted orders, restores inspector hint in 'all' view, and targets hardcoded 
-// * header action buttons instead of dynamic generation. Rewrote createEndpointRow() to use 
-// * flexbox columns matching the list headers for perfect visual alignment.
+// * Changes: V4.1 - Updated getVisualStyle() to apply route colors (Blue, Green, Yellow) to pin interiors
+// * during live-clustering. Moved Endpoint 🏁 emojis to the address column and added Start/End labels.
+// * Removed Order Type column, nesting data under address. Added sorting to App column (removed from ETA).
+// * Re-enabled Detailed/Compact rocker for Manager View. 
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -208,13 +208,19 @@ function getVisualStyle(stopData) {
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
     const cluster = stopData.cluster || 0;
     
-    if (!isRouted) {
+    // Route 1 = Blue, Route 2 = Green, Route 3 = Yellow
+    const ROUTE_COLORS = ['#2563eb', '#10b981', '#f1c40f'];
+    const routeColor = ROUTE_COLORS[cluster] || baseColor;
+    const textColor = cluster === 2 ? '#000000' : '#ffffff';
+
+    const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !isRouted;
+    
+    if (isPreviewingClusters) {
+        return { bg: routeColor, border: baseColor, text: textColor, line: baseColor };
+    } else if (!isRouted) {
         return { bg: 'transparent', border: baseColor, text: baseColor, line: baseColor };
     } else {
-        if (cluster === 0) return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
-        if (cluster === 1) return { bg: '#000000', border: baseColor, text: '#ffffff', line: baseColor };
-        if (cluster === 2) return { bg: '#ffffff', border: baseColor, text: '#000000', line: baseColor };
-        return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
+        return { bg: routeColor, border: baseColor, text: textColor, line: baseColor };
     }
 }
 
@@ -381,21 +387,6 @@ async function loadData() {
                         map.flyTo({ center: geo.features[0].center, zoom: 11 });
                     }
                 }).catch(err => console.error("Geocoding failed for company address.", err));
-            }
-        }
-        
-        if(isManagerView) {
-            document.querySelector('.rocker').style.display = 'none';
-        }
-        
-        if (!document.getElementById('btn-undo-incremental')) {
-            const searchCont = document.getElementById('search-container');
-            if (searchCont) {
-                const undoBtn = document.createElement('button');
-                undoBtn.id = 'btn-undo-incremental';
-                undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
-                undoBtn.onclick = undoLastAction;
-                searchCont.appendChild(undoBtn);
             }
         }
 
@@ -906,19 +897,21 @@ function createEndpointRow(type, endpointData) {
         `;
         return el;
     } else {
+        const labelText = type === 'start' ? 'Starting Location' : 'Ending Location';
         const el = document.createElement('div');
         el.className = 'glide-row static-endpoint';
         el.innerHTML = `
-            <div class="col-num" style="display:flex; justify-content:center; align-items:center; font-size:20px;">🏁</div>
+            <div class="col-num"></div>
             <div class="col-eta"></div>
             <div class="col-due"></div>
             <div class="col-insp"></div>
-            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px;">
-                <input type="text" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; align-items:center; gap:8px;">
+                <span style="font-size:18px;">🏁</span>
+                <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;">${labelText}</span>
+                <input type="text" class="endpoint-input" style="font-size: 14px; flex:1;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
             </div>
             <div class="col-app"></div>
             <div class="col-client"></div>
-            <div class="col-type"></div>
             <div class="col-handle" style="visibility:hidden;"></div>
         `;
         return el;
@@ -972,27 +965,31 @@ function render() {
     today.setHours(0, 0, 0, 0);
 
     const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
+    const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
 
     if (isManagerView) {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
         
-        const showSort = !isSingleInspector;
-        const sortIcon = (col) => showSort ? getSortIcon(col) : '';
-        const sortClick = (col) => showSort ? `onclick="sortTable('${col}')"` : '';
-        const sortClass = showSort ? 'sortable' : '';
+        // Disable sorting on ALL columns if previewing single inspector routing
+        const sortIcon = (col) => isAllInspectors ? getSortIcon(col) : '';
+        const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
+        const sortClass = isAllInspectors ? 'sortable' : '';
+        
+        const appSortClass = isAllInspectors ? 'sortable' : '';
+        const appSortClick = isAllInspectors ? `onclick="sortTable('app')"` : '';
+        const appSortIcon = isAllInspectors ? getSortIcon('app') : '';
 
         header.innerHTML = `
-            <div class="col-num" style="display:flex; justify-content:center;">
+            <div class="col-num">
                 <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
             </div>
-            <div class="col-eta ${sortClass}" ${sortClick('eta')}>ETA ${sortIcon('eta')}</div>
+            <div class="col-eta">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')}>Inspector ${sortIcon('driverName')}</div>
             <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
-            <div class="col-app">App</div>
+            <div class="col-app ${appSortClass}" ${appSortClick}>App ${appSortIcon}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
-            <div class="col-type ${sortClass}" ${sortClick('type')}>Order type ${sortIcon('type')}</div>
             <div class="col-handle" style="visibility:hidden;"><i class="fa-solid fa-grip-lines"></i></div>
         `;
         listContainer.appendChild(header);
@@ -1034,7 +1031,7 @@ function render() {
         }
 
         if (isManagerView) {
-            item.className = `glide-row ${s.status}`;
+            item.className = `glide-row ${s.status} ${currentDisplayMode}`;
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (inspectors.length > 0) {
@@ -1060,10 +1057,12 @@ function render() {
                 <div class="col-eta">${etaTime}</div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 ${inspectorHtml}
-                <div class="col-addr">${(s.address||'').split(',')[0]}</div>
+                <div class="col-addr">
+                    <div class="addr-text">${(s.address||'').split(',')[0]}</div>
+                    <div class="type-text">${s.type || ''}</div>
+                </div>
                 <div class="col-app">${s.app || '--'}</div>
                 <div class="col-client">${s.client || '--'}</div>
-                <div class="col-type">${s.type || '--'}</div>
                 ${handleHtml}
             `;
         } else {
