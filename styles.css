@@ -1,9 +1,8 @@
 /* * */
-/* * Dashboard - V4.0 */
+/* * Dashboard - V4.1 */
 /* * FILE: styles.css */
-/* * Changes: V4.0 - Cleaned up unused dynamic inline CSS templates. Unified endpoint inputs */
-/* * to accurately fit within their new aligned flexbox containers. Returned .btn-glide rules */
-/* * so that they can fit perfectly inline with the .btn-generate headers. */
+/* * Changes: V4.1 - Nested type-text under address elements and disabled order type column grid. */
+/* * Reconfigured generate button font color to contrast against the green. Pushed stop # margin. */
 /* * */
 
 :root { 
@@ -103,7 +102,7 @@ body.view-manager #resizer { display: block; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
 
-.btn-generate { background: var(--green); color: white; border: none; border-radius: 6px; padding: 0 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; }
+.btn-generate { background: var(--green); color: var(--bg-header); border: none; border-radius: 6px; padding: 0 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; }
 .btn-generate:active { opacity: 0.7; }
 
 #search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
@@ -131,7 +130,6 @@ body.view-manager #resizer { display: block; }
 #sidebar { display: flex; flex-direction: column; background: var(--bg-panel); z-index: 10; container-type: inline-size; container-name: sidebar; overflow-x: hidden; }
 #stop-list { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; position: relative; }
 
-@container sidebar (max-width: 700px) { .col-type { display: none !important; } }
 @container sidebar (max-width: 600px) { .col-client { display: none !important; } }
 @container sidebar (max-width: 500px) { .col-app { display: none !important; } }
 @container sidebar (max-width: 450px) { .col-due { display: none !important; } }
@@ -186,7 +184,7 @@ body.view-manager #resizer { display: block; }
 .sortable { cursor: pointer; transition: color 0.2s; display: flex; align-items: center; }
 .sortable:hover { color: var(--text-main); }
 
-.col-num { width: 30px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.col-num { width: 30px; margin-left: 12px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 
 .num-badge { 
     width: 26px; height: 26px; border-radius: 4px; 
@@ -201,10 +199,14 @@ body.view-manager #resizer { display: block; }
 .col-due.past-due { color: var(--red); font-weight: bold; }
 
 .col-insp { width: 120px; color: var(--text-muted); padding-right: 6px; flex-shrink: 0; }
-.col-addr { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; font-weight: 500; }
+.col-addr { flex: 1 1 auto; min-width: 0; padding-right: 6px; font-weight: 500; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+.addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+.type-text { font-size: 11px; font-weight: normal; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+.compact .type-text { display: none; }
+
 .col-app { width: 45px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-client { width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; }
-.col-type { width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); flex-shrink: 0;}
+.col-type { display: none; } /* Disabled as per V4.1 rules */
 
 .insp-select { width: 100%; background-color: var(--bg-panel); color: var(--text-main); border: 1px solid var(--border-color); padding: 6px 20px 6px 6px; border-radius: 4px; font-size: 13px; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23888888%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); background-repeat: no-repeat; background-position: right 6px center; background-size: 10px auto; }
 .insp-select:focus { outline: none; border-color: var(--blue); }
