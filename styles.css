@@ -1,7 +1,8 @@
 /* * */
-/* * Dashboard - V4.3 */
+/* * Dashboard - V4.4 */
 /* * FILE: styles.css */
-/* * Changes: V4.3 - Refined .compact row rules to squish the margin padding down further. */
+/* * Changes: V4.4 - Added flex layout properties to support the new dynamic circle containers (.rbtn-indicator) */
+/* * inside the X Route buttons. Overrode border styling on Move To Route buttons to prepare for JS dynamic injection. */
 /* * */
 
 :root { 
@@ -67,10 +68,13 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 
 .route-btn { 
     flex: 1; border: 2px solid transparent; background: var(--bg-base); 
-    border-radius: 6px; padding: 8px 0; text-align: center; cursor: pointer; 
-    transition: 0.2s; opacity: 0.6; 
+    border-radius: 6px; padding: 6px 10px; cursor: pointer; 
+    transition: 0.2s; opacity: 0.6; display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 .route-btn.active { border-color: var(--route-color); opacity: 1; background: rgba(255,255,255,0.05); }
+.rbtn-content { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
+.rbtn-indicator { display: flex; flex-direction: column; gap: 3px; }
+.rbtn-circle { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
 .rbtn-title { font-size: 13px; font-weight: bold; color: var(--text-main); pointer-events: none; }
 .rbtn-time { font-size: 11px; color: var(--text-muted); pointer-events: none; margin-top: 2px; }
 
@@ -125,6 +129,7 @@ body.view-manager #resizer { display: block; }
 #bulk-delete-btn { background: var(--red); color: white; border: none; }
 #bulk-unroute-btn { background: var(--orange); color: white; border: none; }
 #bulk-complete-btn { background: var(--green); color: white; border: none; }
+#move-r1-btn, #move-r2-btn, #move-r3-btn { border-left: 4px solid transparent; }
 
 #sidebar { display: flex; flex-direction: column; background: var(--bg-panel); z-index: 10; container-type: inline-size; container-name: sidebar; overflow-x: hidden; }
 #stop-list { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; position: relative; }
