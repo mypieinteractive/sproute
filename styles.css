@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V4.8 */
+/* * Dashboard - V4.10 */
 /* * FILE: styles.css */
-/* * Changes: V4.8 - Added `.header-action-btn` class to standardize main routing buttons. */
-/* * Changed `.list-subheading` font color to #ffffff as requested. */
+/* * Changes: V4.10 - Bumped #modal-overlay z-index to 10000 so error alerts sit safely */
+/* * on top of the #processing-overlay (which is set at 9999). */
 /* * */
 
 :root { 
@@ -230,7 +230,7 @@ body.view-manager #resizer { display: block; }
 
 .boxdraw { background: rgba(37, 99, 235, 0.3); border: 1px solid var(--blue); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
 
-#modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+#modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; }
 .modal-box { background: var(--bg-panel); color: var(--text-main); padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid var(--border-color); }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
