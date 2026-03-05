@@ -1,10 +1,11 @@
 // *
-// * Dashboard - V4.2
+// * Dashboard - V4.3
 // * FILE: app.js
-// * Changes: V4.2 - Reverted the fixed blue/green/yellow cluster colors from V4.1. 
-// * Updated getVisualStyle() to strictly use the Inspector's assigned base color (X) 
-// * and manipulate the center and text colors to distinguish between Route 1, 2, and 3 
-// * for both routed states and live-cluster previews.
+// * Changes: V4.3 - Added hexToRgba() helper to apply 60% opacity to pin/badge interiors. 
+// * Increased pin/badge border thickness to 3px. Linked list Stop # badges to update synchronously 
+// * with live-clustering. Updated getVisualStyle() to fill unrouted pins with base color prior to 
+// * route generation (Single Inspector Mode only). Overrode flex-direction on Start/End list rows 
+// * to align emoji, label, and input on a single horizontal line.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -196,6 +197,13 @@ function isActiveStop(s) {
     return active;
 }
 
+function hexToRgba(hex, alpha) {
+    let r = parseInt(hex.slice(1, 3), 16),
+        g = parseInt(hex.slice(3, 5), 16),
+        b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function getVisualStyle(stopData) {
     const isRouted = (stopData.status || '').toLowerCase() === 'routed' || (stopData.status || '').toLowerCase() === 'completed';
     
@@ -208,16 +216,33 @@ function getVisualStyle(stopData) {
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
     const cluster = stopData.cluster || 0;
     
+    const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+    
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !isRouted;
+    const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
+    
+    let bgHex, borderHex = baseColor, textHex;
     
     if (isRouted || isPreviewingClusters) {
-        if (cluster === 0) return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
-        if (cluster === 1) return { bg: '#000000', border: baseColor, text: '#ffffff', line: baseColor };
-        if (cluster === 2) return { bg: '#ffffff', border: baseColor, text: '#000000', line: baseColor };
-        return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
+        if (cluster === 0) { bgHex = baseColor; textHex = '#ffffff'; }
+        else if (cluster === 1) { bgHex = '#000000'; textHex = '#ffffff'; }
+        else { bgHex = '#ffffff'; textHex = '#000000'; }
+    } else if (isSinglePreview) {
+        bgHex = baseColor; textHex = '#ffffff';
     } else {
-        return { bg: 'transparent', border: baseColor, text: baseColor, line: baseColor };
+        bgHex = 'transparent'; textHex = baseColor;
     }
+
+    let bgFinal = bgHex;
+    if (bgHex !== 'transparent') {
+        if (bgHex.startsWith('#')) {
+            bgFinal = hexToRgba(bgHex, 0.6);
+        } else {
+            bgFinal = bgHex; 
+        }
+    }
+
+    return { bg: bgFinal, border: borderHex, text: textHex, line: borderHex };
 }
 
 const resizerEl = document.getElementById('resizer');
@@ -688,8 +713,18 @@ function updateMarkerColors() {
             const pin = m.getElement().querySelector('.pin-visual');
             if(pin) {
                 pin.style.backgroundColor = visualStyle.bg;
-                pin.style.border = `2px solid ${visualStyle.border}`;
+                pin.style.border = `3px solid ${visualStyle.border}`;
                 pin.style.color = visualStyle.text;
+            }
+            
+            const row = document.getElementById(`item-${stopData.id}`);
+            if (row) {
+                const badge = row.querySelector('.num-badge');
+                if (badge) {
+                    badge.style.backgroundColor = visualStyle.bg;
+                    badge.style.border = `3px solid ${visualStyle.border}`;
+                    badge.style.color = visualStyle.text;
+                }
             }
         }
     });
@@ -901,7 +936,7 @@ function createEndpointRow(type, endpointData) {
             <div class="col-eta"></div>
             <div class="col-due"></div>
             <div class="col-insp"></div>
-            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; align-items:center; gap:8px;">
+            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; flex-direction:row; align-items:center; gap:8px;">
                 <span style="font-size:18px;">🏁</span>
                 <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;">${labelText}</span>
                 <input type="text" class="endpoint-input" style="font-size: 14px; flex:1;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
@@ -1049,7 +1084,7 @@ function render() {
             const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             item.innerHTML = `
-                <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 2px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
+                <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-eta">${etaTime}</div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 ${inspectorHtml}
@@ -1098,7 +1133,7 @@ function render() {
             el.className = `marker ${s.status}`; 
             
             const style = getVisualStyle(s);
-            el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 2px solid ${style.border}; color: ${style.text};"><span>${displayIndex}</span></div>`;
+            el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};"><span>${displayIndex}</span></div>`;
 
             if (urgencyClass) {
                 const w = document.createElement('div'); w.className = 'marker-warning'; 
