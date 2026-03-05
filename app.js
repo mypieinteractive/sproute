@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V4.4
+// * Dashboard - V4.5
 // * FILE: app.js
-// * Changes: V4.4 - Added updateRouteButtonColors() to dynamically style the "Move to Route" floating buttons 
-// * and the sidebar "X Routes" buttons with the active inspector's colors (Base, Black, White). 
-// * Updated createEndpointRow() spacing to perfectly align the endpoint inputs with the Address column.
+// * Changes: V4.5 - Replaced MASTER_PALETTE with the requested 20 specific colors. 
+// * Removed pushToHistory() from setRoutes() so parameter adjustments are ignored by undo stack. 
+// * Adjusted createEndpointRow() flex alignment to right-justify the label against the input field.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -86,10 +86,12 @@ const map = new mapboxgl.Map({
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
 
-// 20 High-Contrast Colors - Best 10 prioritized first
+// Specific 20 Colors provided for Sproute app
 const MASTER_PALETTE = [
-    '#2563eb', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#0ea5e9', '#ec4899', '#14b8a6', '#f97316', '#6366f1', 
-    '#84cc16', '#d946ef', '#06b6d4', '#f43f5e', '#9f1239', '#047857', '#4338ca', '#c2410c', '#475569', '#78716c'
+    '#4363d8', '#800000', '#469990', '#808000', '#ffd8b1', 
+    '#42d4f4', '#3cb44b', '#f58231', '#fffac8', '#000075', 
+    '#a9a9a9', '#bfef45', '#aaffc3', '#f032e6', '#ffe119', 
+    '#e6194B', '#9A6324', '#fabed4', '#dcbeff', '#911eb4'
 ];
 
 function expandStop(minStop) {
@@ -181,7 +183,7 @@ function handleInspectorFilterChange(val) {
 function updateRouteButtonColors() {
     if (!isManagerView) return;
     
-    let baseColor = '#2563eb';
+    let baseColor = MASTER_PALETTE[0];
     if (currentInspectorFilter !== 'all') {
         const inspIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
         if (inspIdx > -1) baseColor = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
@@ -534,7 +536,6 @@ function updateRoutingUI() {
 }
 
 function setRoutes(num) {
-    pushToHistory();
     currentRouteCount = num;
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`rbtn-${i}`);
@@ -972,7 +973,7 @@ function createEndpointRow(type, endpointData) {
         el.className = 'glide-row static-endpoint';
         el.innerHTML = `
             <div class="col-num"></div>
-            <div style="width: 260px; flex-shrink: 0; display:flex; align-items:center; gap:8px; padding-left:12px;">
+            <div style="width: 260px; flex-shrink: 0; display:flex; align-items:center; justify-content: flex-end; gap:8px; padding-right:12px;">
                 <span style="font-size:18px;">🏁</span>
                 <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;">${labelText}</span>
             </div>
