@@ -74,7 +74,7 @@
             <button id="btn-header-optimize" class="btn-glide" onclick="handleOptimize()" style="display:none; background:var(--blue); color:white; height:36px; padding: 0 14px;">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
             </button>
-            <button id="btn-header-generate" class="btn-generate" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:white; border:none; height:36px;">
+            <button id="btn-header-generate" class="btn-generate" onclick="handleGenerateRoute()" style="display:none; height:36px;">
                 <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Generate Route</span>
             </button>
         </div>
@@ -127,6 +127,7 @@
             <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
             <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
         </div>
+        <button id="btn-undo-incremental" onclick="undoLastAction()"><i class="fa-solid fa-rotate-left"></i></button>
     </div>
     
     <div id="stop-list"></div>
