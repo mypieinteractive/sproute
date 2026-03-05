@@ -1,8 +1,9 @@
 /* * */
-/* * Dashboard - V3.14 */
+/* * Dashboard - V4.0 */
 /* * FILE: styles.css */
-/* * Changes: V3.14 - Increased map overlay buttons z-index to stay above selected pins. */
-/* * Added styling for the incremental undo button in the search bar. */
+/* * Changes: V4.0 - Cleaned up unused dynamic inline CSS templates. Unified endpoint inputs */
+/* * to accurately fit within their new aligned flexbox containers. Returned .btn-glide rules */
+/* * so that they can fit perfectly inline with the .btn-generate headers. */
 /* * */
 
 :root { 
@@ -56,8 +57,7 @@ body.view-managermobile #resizer::after {
 
 body.tier-individual .col-insp { display: none !important; }
 
-/* Old routing controls - hidden in favor of dynamic header */
-#routing-controls { display: none !important; }
+body.manager-all-inspectors #routing-controls { display: none !important; }
 
 .list-subheading {
     padding: 6px 12px; background: var(--bg-header); color: var(--blue);
@@ -103,7 +103,7 @@ body.view-manager #resizer { display: block; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
 
-.btn-generate { background: var(--green); color: white; border: none; border-radius: 6px; padding: 10px 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; width: 100%; }
+.btn-generate { background: var(--green); color: white; border: none; border-radius: 6px; padding: 0 14px; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity 0.2s; white-space: nowrap; height: 100%; }
 .btn-generate:active { opacity: 0.7; }
 
 #search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
@@ -137,10 +137,7 @@ body.view-manager #resizer { display: block; }
 @container sidebar (max-width: 450px) { .col-due { display: none !important; } }
 @container sidebar (max-width: 380px) { .col-insp { display: none !important; } }
 
-/* Old #controls hidden in favor of dynamic header */
-#controls { display: none !important; }
-.ctrl-row { display: flex; gap: 8px; width: 100%; }
-.btn-glide { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.btn-glide { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: opacity 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 .btn-glide:active { opacity: 0.7; }
 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
@@ -189,7 +186,7 @@ body.view-manager #resizer { display: block; }
 .sortable { cursor: pointer; transition: color 0.2s; display: flex; align-items: center; }
 .sortable:hover { color: var(--text-main); }
 
-.col-num { width: 30px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; display: flex; align-items: center; }
+.col-num { width: 30px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 
 .num-badge { 
     width: 26px; height: 26px; border-radius: 4px; 
