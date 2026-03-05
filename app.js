@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.16
+// * Dashboard - V4.17
 // * FILE: app.js
-// * Changes: V4.16 - Reverted V4.15 global bleed. Isolated Mapbox cooperativeGestures 
-// * strictly to the managermobile view mode. Isolated the (App | Client) address 
-// * sub-text strictly to the managermobile view mode.
+// * Changes: V4.17 - Hid grabbers if no routed stops exist for an inspector. Rebuilt 
+// * createEndpointRow to perfectly align with the standard glide-row layout columns. 
+// * Forced float parsing on endpoints to fix 🏁 map markers and updated drawRoute to 
+// * connect lines even with a single routed stop. Restored resizer for mobile view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1058,7 +1059,7 @@ function createEndpointRow(type, endpointData) {
     const canOpt = isManagerView || PERMISSION_REOPTIMIZE;
     const displayStyle = (isDirty && canOpt) ? 'block' : 'none';
     
-    const optBtnHtml = `<button class="header-action-btn btn-endpoint-opt" style="display:${displayStyle}; background:#2C3D4F; color:white; margin-left:12px; flex-shrink:0; width:auto; padding:0 16px;" onmousedown="event.preventDefault(); handleEndpointOptimize()">Re-Optimize</button>`;
+    const optBtnHtml = `<button class="header-action-btn btn-endpoint-opt" style="display:${displayStyle}; background:#2C3D4F; color:white; flex-shrink:0; width:auto; padding:0 12px; margin-right: 8px;" onmousedown="event.preventDefault(); handleEndpointOptimize()">Re-Optimize</button>`;
     
     if (!isManagerView) {
         const el = document.createElement('div');
@@ -1077,13 +1078,17 @@ function createEndpointRow(type, endpointData) {
         el.className = 'glide-row static-endpoint';
         el.innerHTML = `
             <div class="col-num"></div>
-            <div style="width: 260px; flex-shrink: 0; display:flex; align-items:center; justify-content: flex-end; gap:8px; padding-right:12px;">
-                <span style="font-size:18px;">🏁</span>
-                <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;">${labelText}</span>
+            <div class="col-eta"></div>
+            <div class="col-due"></div>
+            <div class="col-insp" style="display:flex; justify-content:flex-end; align-items:center; padding-right:6px;">
+                <div style="display:flex; align-items:center; gap:8px;" class="endpoint-controls-wrapper">
+                    ${optBtnHtml}
+                    <span style="font-size:18px;">🏁</span>
+                    <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;" class="endpoint-label-text">${labelText}</span>
+                </div>
             </div>
-            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; align-items:center; justify-content: flex-start;">
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; max-width: 250px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
-                ${optBtnHtml}
+            <div class="col-addr">
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%; max-width: 250px;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
             </div>
             <div class="col-app"></div>
             <div class="col-client"></div>
@@ -1142,6 +1147,9 @@ function render() {
 
     const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
+    
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
 
     if (isManagerView) {
         const header = document.createElement('div');
@@ -1165,12 +1173,10 @@ function render() {
             <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
             <div class="col-app ${appSortClass}" ${appSortClick}>App ${appSortIcon}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
-            <div class="col-handle" style="visibility:hidden;"><i class="fa-solid fa-grip-lines"></i></div>
+            <div class="col-handle" style="visibility:${hasRouted ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
         `;
         listContainer.appendChild(header);
     }
-
-    const activeStops = stops.filter(s => isActiveStop(s));
     
     const processStop = (s, displayIndex, showHandle) => {
         const item = document.createElement('div');
@@ -1201,10 +1207,10 @@ function render() {
         
         let etaTime = extractTime(s.eta);
         const statusStr = (s.status||'').toLowerCase();
-        const isRouted = statusStr === 'routed' || statusStr === 'completed';
+        const isRoutedStop = statusStr === 'routed' || statusStr === 'completed';
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
         
-        if (!isRouted || dirtyRoutes.has(routeKey)) {
+        if (!isRoutedStop || dirtyRoutes.has(routeKey)) {
             etaTime = '--';
         }
 
@@ -1237,7 +1243,7 @@ function render() {
             }
 
             const style = getVisualStyle(s);
-            const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
+            const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}" style="visibility:${showHandle ? 'visible' : 'hidden'};">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             let metaHtml = '';
             if (viewMode === 'managermobile') {
@@ -1264,7 +1270,7 @@ function render() {
             let distStr = s.dist ? String(s.dist) : '--';
             if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
             
-            const metaDisplay = (!isRouted || dirtyRoutes.has(routeKey)) ? '-- | --' : `${etaTime} | ${distStr}`;
+            const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey)) ? '-- | --' : `${etaTime} | ${distStr}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -1341,7 +1347,7 @@ function render() {
             unroutedDiv.id = 'unrouted-list';
             unroutedDiv.style.minHeight = '30px'; 
             listContainer.appendChild(unroutedDiv);
-            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, true)); });
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted)); });
         }
         
         if (routedStops.length > 0) {
@@ -1407,8 +1413,8 @@ function render() {
                 let eLng = insp.endLng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
                 let eLat = insp.endLat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
                 
-                if (sLng && sLat) endpointsToDraw.push({lng: sLng, lat: sLat});
-                if (eLng && eLat) endpointsToDraw.push({lng: eLng, lat: eLat});
+                if (sLng && sLat) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat)});
+                if (eLng && eLat) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat)});
             }
         });
     } else {
@@ -1417,12 +1423,12 @@ function render() {
         if (!routeId && isSingleInspector) {
             const insp = inspectors.find(i => i.id === currentInspectorFilter);
             if (insp) {
-                currentStart = { lng: insp.startLng, lat: insp.startLat };
-                currentEnd = { lng: insp.endLng, lat: insp.endLat };
+                currentStart = { lng: insp.startLng || (routeStart ? routeStart.lng : null), lat: insp.startLat || (routeStart ? routeStart.lat : null) };
+                currentEnd = { lng: insp.endLng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null)), lat: insp.endLat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null)) };
             }
         }
-        if (currentStart && currentStart.lng && currentStart.lat) endpointsToDraw.push(currentStart);
-        if (currentEnd && currentEnd.lng && currentEnd.lat) endpointsToDraw.push(currentEnd);
+        if (currentStart && currentStart.lng && currentStart.lat) endpointsToDraw.push({lng: parseFloat(currentStart.lng), lat: parseFloat(currentStart.lat)});
+        if (currentEnd && currentEnd.lng && currentEnd.lat) endpointsToDraw.push({lng: parseFloat(currentEnd.lng), lat: parseFloat(currentEnd.lat)});
     }
 
     const seenCoords = new Set();
@@ -1675,7 +1681,8 @@ function drawRoute() {
         routedStops = activeStops;
     }
     
-    if (routedStops.length < 2) return; 
+    // Allow lines to be drawn even if there's only 1 routed stop connecting to endpoints
+    if (routedStops.length === 0) return; 
 
     routedStops.sort(sortByEta);
 
@@ -1691,7 +1698,7 @@ function drawRoute() {
     routesMap.forEach((cStops, key) => {
         if (cStops.length > 0) {
             const style = getVisualStyle(cStops[0]);
-            let coords = cStops.map(s => [s.lng, s.lat]);
+            let coords = cStops.map(s => [parseFloat(s.lng), parseFloat(s.lat)]);
             
             let dId = key.split('_')[0];
             let rStart = routeStart;
@@ -1706,8 +1713,8 @@ function drawRoute() {
                 }
             }
 
-            if (rStart && rStart.lng && rStart.lat) coords.unshift([rStart.lng, rStart.lat]);
-            if (rEnd && rEnd.lng && rEnd.lat) coords.push([rEnd.lng, rEnd.lat]);
+            if (rStart && rStart.lng && rStart.lat) coords.unshift([parseFloat(rStart.lng), parseFloat(rStart.lat)]);
+            if (rEnd && rEnd.lng && rEnd.lat) coords.push([parseFloat(rEnd.lng), parseFloat(rEnd.lat)]);
 
             if (coords.length > 1) {
                 features.push({
