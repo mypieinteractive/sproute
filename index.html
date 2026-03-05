@@ -61,23 +61,26 @@
             <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 12px; white-space: nowrap;">&lt;- Select an Inspector to Route</span>
         </div>
 
-        <div style="display: flex; gap: 8px;">
-            <button id="btn-header-restore" class="btn-generate" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+        <div style="display: flex; gap: 8px; justify-content: flex-end; flex: 1;">
+            <button id="btn-header-restore" class="btn-glide" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); height:36px; padding: 0 14px;">
                 <i class="fa-solid fa-clock-rotate-left"></i> Restore Original Route
             </button>
-            <button id="btn-header-start-over" class="btn-generate" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+            <button id="btn-header-start-over" class="btn-glide" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color); height:36px; padding: 0 14px;">
                 <i class="fa-solid fa-rotate-left"></i> Undo Routing
             </button>
-            <button id="btn-header-optimize" class="btn-generate" onclick="handleOptimize()" style="display:none; background:#2E4053; color:white; border:none; border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Optimize
+            <button id="btn-header-recalc" class="btn-glide" onclick="handleCalculate()" style="display:none; background:#444; color:white; height:36px; padding: 0 14px;">
+                <i class="fa-solid fa-calculator"></i> Re-Calculate
             </button>
-            <button id="btn-header-generate" class="btn-generate" onclick="handleGenerateRoute()" style="display:none; background:#2E4053; color:white; border:none; border-radius:6px; padding:8px 14px; font-size:14px; font-weight:bold; cursor:pointer; align-items:center; gap:6px; height:36px;">
+            <button id="btn-header-optimize" class="btn-glide" onclick="handleOptimize()" style="display:none; background:var(--blue); color:white; height:36px; padding: 0 14px;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
+            </button>
+            <button id="btn-header-generate" class="btn-generate" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:white; border:none; height:36px;">
                 <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Generate Route</span>
             </button>
         </div>
     </div>
 
-    <div id="routing-controls">
+    <div id="routing-controls" style="display: none; padding: 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: column;">
         <div id="route-divider-group" style="display:flex; gap:8px;">
             <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1" style="--route-color: #2563eb;">
                 <div class="rbtn-title">1 Route</div>
@@ -123,21 +126,6 @@
         <div class="rocker">
             <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
             <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
-        </div>
-    </div>
-    
-    <div id="controls">
-        <div style="text-align: center; font-weight: bold; color: var(--red); font-size: 12px; margin-bottom: 4px;">CHANGES MADE - SYNC REQUIRED</div>
-        <div class="ctrl-row">
-            <button id="btn-reoptimize" class="btn-glide" onclick="handleOptimize()" style="background:var(--blue); color:white; font-weight:bold;">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Optimize
-            </button>
-            <button id="btn-recalc" class="btn-glide" style="background:#444; color:white;" onclick="handleCalculate()">
-                <i class="fa-solid fa-calculator"></i> Re-Calculate
-            </button>
-            <button class="btn-glide" style="background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-color);" onclick="handleUndo()">
-                <i class="fa-solid fa-rotate-left"></i> Undo
-            </button>
         </div>
     </div>
     
