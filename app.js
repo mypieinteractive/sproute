@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.1
+// * Dashboard - V4.2
 // * FILE: app.js
-// * Changes: V4.1 - Updated getVisualStyle() to apply route colors (Blue, Green, Yellow) to pin interiors
-// * during live-clustering. Moved Endpoint 🏁 emojis to the address column and added Start/End labels.
-// * Removed Order Type column, nesting data under address. Added sorting to App column (removed from ETA).
-// * Re-enabled Detailed/Compact rocker for Manager View. 
+// * Changes: V4.2 - Reverted the fixed blue/green/yellow cluster colors from V4.1. 
+// * Updated getVisualStyle() to strictly use the Inspector's assigned base color (X) 
+// * and manipulate the center and text colors to distinguish between Route 1, 2, and 3 
+// * for both routed states and live-cluster previews.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -208,19 +208,15 @@ function getVisualStyle(stopData) {
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
     const cluster = stopData.cluster || 0;
     
-    // Route 1 = Blue, Route 2 = Green, Route 3 = Yellow
-    const ROUTE_COLORS = ['#2563eb', '#10b981', '#f1c40f'];
-    const routeColor = ROUTE_COLORS[cluster] || baseColor;
-    const textColor = cluster === 2 ? '#000000' : '#ffffff';
-
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !isRouted;
     
-    if (isPreviewingClusters) {
-        return { bg: routeColor, border: baseColor, text: textColor, line: baseColor };
-    } else if (!isRouted) {
-        return { bg: 'transparent', border: baseColor, text: baseColor, line: baseColor };
+    if (isRouted || isPreviewingClusters) {
+        if (cluster === 0) return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
+        if (cluster === 1) return { bg: '#000000', border: baseColor, text: '#ffffff', line: baseColor };
+        if (cluster === 2) return { bg: '#ffffff', border: baseColor, text: '#000000', line: baseColor };
+        return { bg: baseColor, border: baseColor, text: '#ffffff', line: baseColor };
     } else {
-        return { bg: routeColor, border: baseColor, text: textColor, line: baseColor };
+        return { bg: 'transparent', border: baseColor, text: baseColor, line: baseColor };
     }
 }
 
