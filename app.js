@@ -1,11 +1,9 @@
 // *
-// * Dashboard - V4.3
+// * Dashboard - V4.4
 // * FILE: app.js
-// * Changes: V4.3 - Added hexToRgba() helper to apply 60% opacity to pin/badge interiors. 
-// * Increased pin/badge border thickness to 3px. Linked list Stop # badges to update synchronously 
-// * with live-clustering. Updated getVisualStyle() to fill unrouted pins with base color prior to 
-// * route generation (Single Inspector Mode only). Overrode flex-direction on Start/End list rows 
-// * to align emoji, label, and input on a single horizontal line.
+// * Changes: V4.4 - Added updateRouteButtonColors() to dynamically style the "Move to Route" floating buttons 
+// * and the sidebar "X Routes" buttons with the active inspector's colors (Base, Black, White). 
+// * Updated createEndpointRow() spacing to perfectly align the endpoint inputs with the Address column.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -176,7 +174,46 @@ function handleInspectorFilterChange(val) {
     
     if (val !== 'all') liveClusterUpdate();
     
+    updateRouteButtonColors();
     render(); drawRoute(); updateSummary();
+}
+
+function updateRouteButtonColors() {
+    if (!isManagerView) return;
+    
+    let baseColor = '#2563eb';
+    if (currentInspectorFilter !== 'all') {
+        const inspIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
+        if (inspIdx > -1) baseColor = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
+    }
+
+    const mr1 = document.getElementById('move-r1-btn');
+    const mr2 = document.getElementById('move-r2-btn');
+    const mr3 = document.getElementById('move-r3-btn');
+    if (mr1) mr1.style.borderLeftColor = baseColor;
+    if (mr2) mr2.style.borderLeftColor = '#000000';
+    if (mr3) mr3.style.borderLeftColor = '#ffffff';
+
+    for(let i=1; i<=3; i++) {
+        const btn = document.getElementById(`rbtn-${i}`);
+        if (btn) btn.style.setProperty('--route-color', baseColor);
+        
+        const ind = document.getElementById(`rbtn-ind-${i}`);
+        if (ind) {
+            ind.innerHTML = '';
+            for(let c=0; c<i; c++) {
+                let bgHex = baseColor;
+                if (c === 1) bgHex = '#000000';
+                if (c === 2) bgHex = '#ffffff';
+                
+                const circle = document.createElement('div');
+                circle.className = 'rbtn-circle';
+                circle.style.backgroundColor = hexToRgba(bgHex, 0.6);
+                circle.style.border = `2px solid ${baseColor}`;
+                ind.appendChild(circle);
+            }
+        }
+    }
 }
 
 function isActiveStop(s) {
@@ -399,6 +436,8 @@ async function loadData() {
             } else {
                 if (sidebarDriverEl) sidebarDriverEl.innerText = displayName;
             }
+            
+            updateRouteButtonColors();
             
             let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
             if (!hasValidStops && data.companyAddress) {
@@ -933,13 +972,12 @@ function createEndpointRow(type, endpointData) {
         el.className = 'glide-row static-endpoint';
         el.innerHTML = `
             <div class="col-num"></div>
-            <div class="col-eta"></div>
-            <div class="col-due"></div>
-            <div class="col-insp"></div>
-            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px; display:flex; flex-direction:row; align-items:center; gap:8px;">
+            <div style="width: 260px; flex-shrink: 0; display:flex; align-items:center; gap:8px; padding-left:12px;">
                 <span style="font-size:18px;">🏁</span>
                 <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;">${labelText}</span>
-                <input type="text" class="endpoint-input" style="font-size: 14px; flex:1;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
+            </div>
+            <div class="col-addr" style="flex: 1 1 auto; padding-right: 6px;">
+                <input type="text" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" onblur="updateEndpointAddress('${type}', this.value)">
             </div>
             <div class="col-app"></div>
             <div class="col-client"></div>
