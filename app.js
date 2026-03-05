@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.8
+// * Dashboard - V4.9
 // * FILE: app.js
-// * Changes: V4.8 - Moved Re-Optimize logic strictly to the endpoint rows (shows when endpoints are modified). 
-// * Enabled grabbers for unrouted list and disabled whole-row dragging. Unrouted pins now revert 
-// * to transparent immediately upon unrouting. Updated ETA column logic to hide ETAs for unrouted or dirty stops.
+// * Changes: V4.9 - Fixed a bug in getVisualStyle() where all unrouted pins were forced transparent, 
+// * breaking the live cluster preview during route preparation. Refined logic so preview colors 
+// * show when generating a route, but pins correctly return to transparent when explicitly unrouted 
+// * from an active route.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -303,14 +304,10 @@ function getVisualStyle(stopData) {
     }
     
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
-    
-    if (!isRouted) {
-        return { bg: 'transparent', border: baseColor, text: baseColor, line: baseColor };
-    }
-
     const cluster = stopData.cluster || 0;
     const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
     
+    // Live preview logic depends on having zero routed stops for the selected inspector.
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
     const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
     
