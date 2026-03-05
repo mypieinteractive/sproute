@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V4.5 */
+/* * Dashboard - V4.6 */
 /* * FILE: styles.css */
-/* * Changes: V4.5 - Narrowed the fixed width of .col-client so .col-addr can expand dynamically. */
-/* * Changed font-weight on endpoint input field to normal. */
+/* * Changes: V4.6 - Adjusted the active state background color of the Detailed/Compact */
+/* * rocker toggle to #2C3D4F. */
 /* * */
 
 :root { 
@@ -119,7 +119,7 @@ body.view-manager #resizer { display: block; }
 
 .rocker { display: flex; background: #222; border-radius: 6px; padding: 2px; }
 .rocker div { padding: 4px 10px; cursor: pointer; border-radius: 4px; transition: 0.2s; color: var(--text-muted); font-weight: normal; font-size: 15px; }
-.rocker div.active { background: var(--blue); color: white; }
+.rocker div.active { background: #2C3D4F; color: white; }
 
 .map-overlay-btns { position: absolute; top: 15px; right: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 
