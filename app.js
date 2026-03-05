@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V4.6
+// * Dashboard - V4.7
 // * FILE: app.js
-// * Changes: V4.6 - Replaced native window.alert() and window.confirm() with custom async modal 
-// * functions (customAlert and customConfirm) to support dark mode. Updated handleStartOver() 
-// * confirmation text. Updated MASTER_PALETTE to exactly match the newly requested 20 colors.
+// * Changes: V4.7 - Added alphabetical sorting to the `inspectors` array on load to ensure permanent, 
+// * predictable color assignments across different companies. Added dynamic inline styling to colorize 
+// * both the main header filter dropdown and the inline table dropdowns with the inspectors' assigned colors.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -184,11 +184,12 @@ function updateInspectorDropdown() {
     });
 
     const currentVal = filterSelect.value || 'all';
-    let filterHtml = '<option value="all">All Inspectors</option>';
+    let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
-    inspectors.forEach(i => { 
+    inspectors.forEach((i, idx) => { 
         if (validInspectorIds.has(i.id)) {
-            filterHtml += `<option value="${i.id}">${i.name}</option>`; 
+            const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
+            filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: bold;">${i.name}</option>`; 
         }
     });
     
@@ -198,6 +199,13 @@ function updateInspectorDropdown() {
         handleInspectorFilterChange('all');
     } else {
         filterSelect.value = currentVal;
+        // Ensure the select box itself shows the correct color on load
+        if (currentVal !== 'all') {
+            const inspIdx = inspectors.findIndex(i => i.id === currentVal);
+            if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
+        } else {
+            filterSelect.style.color = 'var(--text-main)';
+        }
     }
 }
 
@@ -207,6 +215,16 @@ function handleInspectorFilterChange(val) {
     document.body.classList.toggle('manager-single-inspector', val !== 'all');
     selectedIds.clear();
     
+    const filterSelect = document.getElementById('inspector-filter');
+    if (filterSelect) {
+        if (val === 'all') {
+            filterSelect.style.color = 'var(--text-main)';
+        } else {
+            const inspIdx = inspectors.findIndex(i => i.id === val);
+            if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
+        }
+    }
+
     if (val !== 'all') liveClusterUpdate();
     
     updateRouteButtonColors();
@@ -436,6 +454,10 @@ async function loadData() {
 
         if (!Array.isArray(data)) {
             inspectors = data.inspectors || []; 
+            
+            // Alphabetize inspectors to guarantee persistent color assignment
+            inspectors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
             if (data.serviceDelay !== undefined) COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
             if (data.permissions) {
                 if (typeof data.permissions.modify !== 'undefined') PERMISSION_MODIFY = data.permissions.modify;
@@ -1141,13 +1163,22 @@ function render() {
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (inspectors.length > 0) {
-                const optionsHtml = inspectors.map(insp => `<option value="${insp.id}" ${s.driverId === insp.id ? 'selected' : ''}>${insp.name}</option>`).join('');
+                const optionsHtml = inspectors.map((insp, idx) => {
+                    const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
+                    return `<option value="${insp.id}" style="color: ${color}; font-weight: bold;" ${s.driverId === insp.id ? 'selected' : ''}>${insp.name}</option>`;
+                }).join('');
                 const defaultPlaceholder = !s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : '';
                 const disableSelectAttr = !PERMISSION_MODIFY ? 'disabled' : '';
 
+                let currentInspColor = 'var(--text-main)';
+                if (s.driverId) {
+                    const dIdx = inspectors.findIndex(i => i.id === s.driverId);
+                    if (dIdx > -1) currentInspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
+                }
+
                 inspectorHtml = `
                     <div class="col-insp" onclick="event.stopPropagation()">
-                        <select class="insp-select" onchange="handleInspectorChange(event, '${s.id}', this)" ${disableSelectAttr}>
+                        <select class="insp-select" onchange="handleInspectorChange(event, '${s.id}', this)" style="color: ${currentInspColor}; font-weight: bold;" ${disableSelectAttr}>
                             ${defaultPlaceholder}
                             ${optionsHtml}
                         </select>
