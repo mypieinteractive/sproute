@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.10
+// * Dashboard - V4.12
 // * FILE: app.js
-// * Changes: V4.10 - Fixed Z-index and overlay stalling issues by explicitly hiding the processing 
-// * screen in catch blocks before triggering custom alerts. Updated handleCalculate() to pass a flat 
-// * array of stops to preserve manual sorting order instead of triggering backend route optimization.
+// * Changes: V4.12 - Completely refactored `handleCalculate()` to perform route calculations 
+// * purely on the client side using the Mapbox Directions API. Automatically calculates ETAs 
+// * based on driving durations and service delays, handles Mapbox's 25-waypoint limit via 
+// * automatic chunking, and sends a silent "save" payload to the backend to update the database.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1461,42 +1462,136 @@ async function handleCalculate() {
 
     try {
         const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-        if (activeStops.length < 2) { 
+        const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
+        
+        let dirtyKeys = new Set();
+        if (isEndpointsDirty) {
+            activeStops.forEach(s => dirtyKeys.add(`${s.driverId || 'unassigned'}_${s.cluster || 0}`));
+        } else {
+            activeStops.forEach(s => {
+                const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
+                if (dirtyRoutes.has(routeKey)) dirtyKeys.add(routeKey);
+            });
+        }
+
+        if (dirtyKeys.size === 0) { 
             if (overlay) overlay.style.display = 'none';
-            await customAlert("Please select at least two stops to calculate a route."); 
+            dirtyRoutes.clear();
+            render(); drawRoute(); updateSummary();
             return; 
         }
 
-        let payload = {
-            action: 'calculate',
-            routeId: routeId,
-            driver: driverParam,
-            startTime: currentStartTime,
-            startAddr: routeStart && routeStart.address ? routeStart.address : null,
-            endAddr: routeEnd && routeEnd.address ? routeEnd.address : null,
-            isManager: isManagerView,
-            stops: activeStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
-        };
+        let baseDate = new Date();
+        let timeMatch = currentStartTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)/i);
+        if (timeMatch) {
+            let hours = parseInt(timeMatch[1], 10);
+            let mins = parseInt(timeMatch[2], 10);
+            let mod = timeMatch[3].toUpperCase();
+            if (hours === 12 && mod === 'AM') hours = 0;
+            if (hours !== 12 && mod === 'PM') hours += 12;
+            baseDate.setHours(hours, mins, 0, 0);
+        }
 
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const data = await res.json();
-        
-        if (data.error) throw new Error(data.error);
+        let allUpdatedStops = [];
 
-        stops = data.updatedStops.map(s => {
-            let exp = expandStop(s);
-            return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false };
-        });
+        for (let key of dirtyKeys) {
+            let [dId, cIdx] = key.split('_');
+            cIdx = parseInt(cIdx);
+            
+            let routeStops = activeStops.filter(s => (s.driverId || 'unassigned') === dId && (s.cluster || 0) === cIdx);
+            if (routeStops.length === 0) continue;
+            
+            let rStart = routeStart;
+            let rEnd = routeEnd;
+            
+            if (!routeId && isManagerView && currentInspectorFilter === 'all') {
+                 const insp = inspectors.find(i => i.id === dId);
+                 if (insp) {
+                     rStart = { address: localStorage.getItem('sproute_start_' + insp.id) || insp.start || '', lng: insp.startLng, lat: insp.startLat };
+                     rEnd = { address: localStorage.getItem('sproute_end_' + insp.id) || insp.end || insp.start || '', lng: insp.endLng, lat: insp.endLat };
+                 }
+            }
+
+            let points = [];
+            let hasValidStart = (rStart && rStart.lng && rStart.lat);
+            if (hasValidStart) points.push({ lng: rStart.lng, lat: rStart.lat });
+            
+            routeStops.forEach(s => points.push({ lng: s.lng, lat: s.lat }));
+            
+            let hasValidEnd = (rEnd && rEnd.lng && rEnd.lat);
+            if (hasValidEnd) points.push({ lng: rEnd.lng, lat: rEnd.lat });
+
+            if (points.length < 2) continue;
+
+            let legs = [];
+            for (let i = 0; i < points.length - 1; i += 24) {
+                let chunk = points.slice(i, i + 25); 
+                let coordsStr = chunk.map(p => `${p.lng},${p.lat}`).join(';');
+                let url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?access_token=${MAPBOX_TOKEN}`;
+                
+                let res = await fetch(url);
+                let data = await res.json();
+                if (data.code !== 'Ok') throw new Error(data.message || "Mapbox Routing Error");
+                
+                legs = legs.concat(data.routes[0].legs);
+            }
+
+            let currentTime = baseDate.getTime();
+            
+            for (let i = 0; i < routeStops.length; i++) {
+                let stop = routeStops[i];
+                let durationSecs = 0;
+                let distanceMeters = 0;
+                
+                if (hasValidStart) {
+                    if (legs[i]) {
+                        durationSecs = legs[i].duration;
+                        distanceMeters = legs[i].distance;
+                    }
+                } else {
+                    if (i > 0 && legs[i - 1]) {
+                        durationSecs = legs[i - 1].duration;
+                        distanceMeters = legs[i - 1].distance;
+                    }
+                }
+
+                currentTime += (durationSecs * 1000);
+                
+                let etaDate = new Date(currentTime);
+                let formattedEta = etaDate.toLocaleDateString('en-US') + ' ' + etaDate.toLocaleTimeString('en-US', {hour: 'numeric', minute:'2-digit'});
+                
+                stop.eta = formattedEta;
+                stop.durationSecs = durationSecs;
+                stop.dist = (distanceMeters / 1609.34).toFixed(1) + ' mi';
+                stop.status = 'Routed';
+                
+                allUpdatedStops.push(stop);
+                
+                currentTime += (COMPANY_SERVICE_DELAY * 60 * 1000);
+            }
+        }
 
         if (!isManagerView) isAlteredRoute = true;
         historyStack = []; 
         dirtyRoutes.clear();
         originalStops = JSON.parse(JSON.stringify(stops)); 
-        render(); drawRoute(); updateSummary();
+        
+        render(); 
+        drawRoute(); 
+        updateSummary();
+
+        if (allUpdatedStops.length > 0) {
+            let savePayload = {
+                action: 'saveCalculatedStops',
+                routeId: routeId,
+                stops: allUpdatedStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
+            };
+            fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(savePayload) }).catch(e => console.error("Silent save failed", e));
+        }
 
     } catch (e) { 
         if (overlay) overlay.style.display = 'none';
-        await customAlert("Error calculating the route. Please try again."); 
+        await customAlert("Error calculating the route: " + e.message); 
         console.error(e);
     } finally { 
         if (overlay) overlay.style.display = 'none'; 
