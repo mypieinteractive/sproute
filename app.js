@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V4.5
+// * Dashboard - V4.6
 // * FILE: app.js
-// * Changes: V4.5 - Replaced MASTER_PALETTE with the requested 20 specific colors. 
-// * Removed pushToHistory() from setRoutes() so parameter adjustments are ignored by undo stack. 
-// * Adjusted createEndpointRow() flex alignment to right-justify the label against the input field.
+// * Changes: V4.6 - Replaced native window.alert() and window.confirm() with custom async modal 
+// * functions (customAlert and customConfirm) to support dark mode. Updated handleStartOver() 
+// * confirmation text. Updated MASTER_PALETTE to exactly match the newly requested 20 colors.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -37,6 +37,40 @@ let routeEnd = null;
 let dirtyRoutes = new Set(); 
 let historyStack = [];
 let isAlteredRoute = false;
+
+// Custom Dark Mode Alerts & Confirms
+function customAlert(msg) {
+    return new Promise(resolve => {
+        const m = document.getElementById('modal-overlay');
+        m.style.display = 'flex';
+        document.getElementById('modal-content').innerHTML = `
+            <h3 style="margin-top:0;">Alert</h3>
+            <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
+            <div style="display:flex; justify-content:flex-end;">
+                <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-alert-ok">OK</button>
+            </div>`;
+        document.getElementById('modal-alert-ok').onclick = () => {
+            m.style.display = 'none';
+            resolve();
+        };
+    });
+}
+
+function customConfirm(msg) {
+    return new Promise(resolve => {
+        const m = document.getElementById('modal-overlay');
+        m.style.display = 'flex';
+        document.getElementById('modal-content').innerHTML = `
+            <h3 style="margin-top:0;">Confirm</h3>
+            <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button style="padding:10px 20px; border:none; border-radius:6px; background:#444; color:white; cursor:pointer;" id="modal-confirm-cancel">Cancel</button>
+                <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-confirm-ok">OK</button>
+            </div>`;
+        document.getElementById('modal-confirm-ok').onclick = () => { m.style.display = 'none'; resolve(true); };
+        document.getElementById('modal-confirm-cancel').onclick = () => { m.style.display = 'none'; resolve(false); };
+    });
+}
 
 function markRouteDirty(driverId, clusterIdx) {
     dirtyRoutes.add(`${driverId || 'unassigned'}_${clusterIdx || 0}`);
@@ -86,11 +120,10 @@ const map = new mapboxgl.Map({
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
 
-// Specific 20 Colors provided for Sproute app
 const MASTER_PALETTE = [
-    '#4363d8', '#800000', '#469990', '#808000', '#ffd8b1', 
-    '#42d4f4', '#3cb44b', '#f58231', '#fffac8', '#000075', 
-    '#a9a9a9', '#bfef45', '#aaffc3', '#f032e6', '#ffe119', 
+    '#4363d8', '#ffd8b1', '#469990', '#808000', '#000075', 
+    '#bfef45', '#fffac8', '#f58231', '#42d4f4', '#3cb44b', 
+    '#a9a9a9', '#800000', '#aaffc3', '#f032e6', '#ffe119', 
     '#e6194B', '#9A6324', '#fabed4', '#dcbeff', '#911eb4'
 ];
 
@@ -616,14 +649,14 @@ async function handleGenerateRoute() {
         
         await loadData();
     } catch (e) {
-        alert("Error requesting route generation. Please try again.");
+        await customAlert("Error requesting route generation. Please try again.");
     } finally {
         if(overlay) overlay.style.display = 'none';
     }
 }
 
 async function handleStartOver() {
-    if(!confirm("Clear the current route and undo routing changes?")) return;
+    if(!(await customConfirm("Clear All Routes For This Inspector?"))) return;
     
     const insp = inspectors.find(i => i.id === currentInspectorFilter);
     if (!insp) return;
@@ -650,7 +683,7 @@ async function handleStartOver() {
         dirtyRoutes.clear();
         render(); drawRoute(); updateSummary(); updateUndoUI();
     } catch(e) { 
-        alert("Error resetting the route. Please try again."); 
+        await customAlert("Error resetting the route. Please try again."); 
         console.error(e);
     } finally { 
         if(overlay) overlay.style.display = 'none'; 
@@ -658,7 +691,7 @@ async function handleStartOver() {
 }
 
 async function handleRestoreOriginal() {
-    if(!confirm("Restore the original route layout planned by the manager?")) return;
+    if(!(await customConfirm("Restore the original route layout planned by the manager?"))) return;
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
@@ -671,7 +704,7 @@ async function handleRestoreOriginal() {
         
         await loadData(); 
     } catch(e) {
-        alert("Error restoring the route. Please try again."); 
+        await customAlert("Error restoring the route. Please try again."); 
         console.error(e);
     } finally {
         if(overlay) overlay.style.display = 'none'; 
@@ -779,7 +812,7 @@ window.toggleSelectAll = function(cb) {
 };
 
 async function triggerBulkDelete() { 
-    if(!confirm("Delete selected orders?")) return;
+    if(!(await customConfirm("Delete selected orders?"))) return;
     pushToHistory();
     
     const overlay = document.getElementById('processing-overlay');
@@ -806,7 +839,7 @@ async function triggerBulkDelete() {
         render(); drawRoute(); updateSummary(); updateRouteTimes();
 
     } catch (err) {
-        alert("Error deleting orders. Please try again.");
+        await customAlert("Error deleting orders. Please try again.");
         console.error("Bulk Delete Error:", err);
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -814,7 +847,7 @@ async function triggerBulkDelete() {
 }
 
 async function triggerBulkUnroute() { 
-    if(!confirm("Remove selected orders from route?")) return;
+    if(!(await customConfirm("Remove selected orders from route?"))) return;
     pushToHistory();
     
     const overlay = document.getElementById('processing-overlay');
@@ -838,7 +871,7 @@ async function triggerBulkUnroute() {
         selectedIds.clear(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
     } catch (err) {
-        alert("Error removing orders from the route. Please try again.");
+        await customAlert("Error removing orders from the route. Please try again.");
         console.error("Bulk Unroute Error:", err);
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -859,8 +892,11 @@ async function handleInspectorChange(e, rowId, selectEl) {
     
     let idsToUpdate = [rowId];
     if (selectedIds.has(rowId) && selectedIds.size > 1) {
-        if (confirm(`Reassign all ${selectedIds.size} selected orders to ${newDriverName}?`)) idsToUpdate = Array.from(selectedIds);
-        else { render(); return; }
+        if (await customConfirm(`Reassign all ${selectedIds.size} selected orders to ${newDriverName}?`)) {
+            idsToUpdate = Array.from(selectedIds);
+        } else { 
+            render(); return; 
+        }
     }
     
     pushToHistory();
@@ -881,7 +917,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
         updateInspectorDropdown(); 
         render(); drawRoute(); updateSummary(); updateRouteTimes();
     } catch (err) { 
-        alert("Error reassigning orders. Please try again."); 
+        await customAlert("Error reassigning orders. Please try again."); 
         console.error(err);
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -1017,7 +1053,7 @@ async function updateEndpointAddress(type, value) {
         }
     } catch (e) {
         console.error("Endpoint update failed:", e);
-        alert("Failed to update address. Please check the address format.");
+        await customAlert("Failed to update address. Please check the address format.");
     } finally {
         if (overlay) overlay.style.display = 'none';
     }
@@ -1353,7 +1389,7 @@ async function handleCalculate() {
     try {
         const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
         if (activeStops.length < 2) { 
-            alert("Please select at least two stops to calculate a route."); 
+            await customAlert("Please select at least two stops to calculate a route."); 
             return; 
         }
 
@@ -1398,7 +1434,7 @@ async function handleCalculate() {
         render(); drawRoute(); updateSummary();
 
     } catch (e) { 
-        alert("Error calculating the route. Please try again."); 
+        await customAlert("Error calculating the route. Please try again."); 
         console.error(e);
     } finally { 
         if (overlay) overlay.style.display = 'none'; 
@@ -1627,7 +1663,7 @@ async function finalizeSync(type) {
         dirtyRoutes.clear();
         render(); drawRoute(); updateSummary();
     } catch (e) { 
-        alert("Error updating locations. Please try again."); 
+        await customAlert("Error updating locations. Please try again."); 
     } finally {
         if (overlay) overlay.style.display = 'none';
     }
