@@ -1,8 +1,9 @@
 // *
-// * Dashboard - V4.15
+// * Dashboard - V4.16
 // * FILE: app.js
-// * Changes: V4.15 - Enabled cooperativeGestures on Mapbox to restore 1-finger scroll lock. 
-// * Added (App | Client) meta text beneath the address in detailed manager view. 
+// * Changes: V4.16 - Reverted V4.15 global bleed. Isolated Mapbox cooperativeGestures 
+// * strictly to the managermobile view mode. Isolated the (App | Client) address 
+// * sub-text strictly to the managermobile view mode.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -107,15 +108,18 @@ const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile');
 document.body.className = `view-${viewMode} manager-all-inspectors`;
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
-const map = new mapboxgl.Map({ 
+const mapConfig = { 
     container: 'map', 
     style: 'mapbox://styles/mapbox/dark-v11', 
     center: [-96.797, 32.776],
     zoom: 11, 
     attributionControl: false,
-    boxZoom: false,
-    cooperativeGestures: true 
-});
+    boxZoom: false
+};
+if (viewMode === 'managermobile') {
+    mapConfig.cooperativeGestures = true;
+}
+const map = new mapboxgl.Map(mapConfig);
 
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
@@ -1235,6 +1239,11 @@ function render() {
             const style = getVisualStyle(s);
             const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
+            let metaHtml = '';
+            if (viewMode === 'managermobile') {
+                metaHtml = `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>`;
+            }
+
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-eta">${etaTime}</div>
@@ -1242,7 +1251,7 @@ function render() {
                 ${inspectorHtml}
                 <div class="col-addr">
                     <div class="addr-text">${(s.address||'').split(',')[0]}</div>
-                    <div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>
+                    ${metaHtml}
                     <div class="type-text">${s.type || ''}</div>
                 </div>
                 <div class="col-app">${s.app || '--'}</div>
