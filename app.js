@@ -1,10 +1,11 @@
 // *
-// * Dashboard - V4.21
+// * Dashboard - V4.22
 // * FILE: app.js
-// * Changes: V4.21 - Implemented the "Queue Kick" architecture for handleGenerateRoute.
-// * The front end now receives a fast "queued" status, instantly fires a secondary 
-// * "processQueue" fetch (ignoring its inevitable timeout), and simultaneously begins 
-// * the 5-second polling loop to wait for the backend to finish the heavy routing math.
+// * Changes: V4.22 - Rebuilt endpoint rows in Manager views to right-align 
+// * flag/text with the input. Removed localStorage address caching to fix 
+// * ghost typos overriding Google Sheet data. Fixed coordinate handoff 
+// * ensuring 🏁 pins are drawn. Added a smart polling lock to keep the 
+// * UI loading until the backend returns actively routed data.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -38,6 +39,9 @@ let routeEnd = null;
 let dirtyRoutes = new Set(); 
 let historyStack = [];
 let isAlteredRoute = false;
+
+let isPollingForRoute = false;
+let pollRetries = 0;
 
 // Custom Dark Mode Alerts & Confirms
 function customAlert(msg) {
@@ -443,6 +447,20 @@ async function loadData() {
             };
         });
 
+        // Smart Polling Lock: Wait until the backend actually returns routed data for the selected driver
+        if (isPollingForRoute) {
+            const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed'));
+            if (!driverHasRouted && pollRetries < 15) {
+                pollRetries++;
+                const overlay = document.getElementById('processing-overlay');
+                if (overlay) overlay.style.display = 'flex';
+                setTimeout(loadData, 5000);
+                return; // Exit here so it doesn't render the unrouted array
+            } else {
+                isPollingForRoute = false; 
+            }
+        }
+
         const getLocalDateStr = (etaStr) => {
             if (!etaStr) return "";
             const d = new Date(etaStr);
@@ -533,7 +551,7 @@ async function loadData() {
         console.error("Error loading data:", e); 
     } finally {
         const overlay = document.getElementById('processing-overlay');
-        if (overlay) overlay.style.display = 'none';
+        if (overlay && !isPollingForRoute) overlay.style.display = 'none';
         updateUndoUI();
     }
 }
@@ -689,10 +707,7 @@ async function handleGenerateRoute() {
         
         const data = await res.json();
         
-        // If the backend instantly queues the job, fire the process payload and start polling
         if (data.status === 'queued' || data.success) {
-            
-            // Fire and forget the heavy processor (ignores the timeout)
             fetch(WEB_APP_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'processQueue', routeId: routeId, driverId: insp.id })
@@ -700,10 +715,10 @@ async function handleGenerateRoute() {
                 console.log("Ignored expected timeout from processQueue", err);
             });
             
-            // Immediately start the 5-second polling loop
+            isPollingForRoute = true;
+            pollRetries = 0;
             setTimeout(loadData, 5000);
         } else {
-            // Fallback if not queued
             await loadData();
         }
     } catch (e) {
@@ -1114,21 +1129,16 @@ function createEndpointRow(type, endpointData) {
         return el;
     } else {
         const el = document.createElement('div');
-        el.className = 'glide-row static-endpoint';
+        el.className = 'glide-row static-endpoint compact';
+        el.style.borderBottom = '2px solid var(--border-color)';
+        el.style.padding = '8px 10px';
         el.innerHTML = `
-            <div class="col-num" style="font-size:16px; margin-left: 10px;">🏁</div>
-            <div class="col-eta"></div>
-            <div class="col-due"></div>
-            <div class="col-insp" style="display:flex; justify-content:flex-start; align-items:center; padding-right:6px; overflow:hidden;">
+            <div style="display:flex; flex:1; align-items:center; justify-content:flex-end;">
                 ${optBtnHtml}
-                <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;" class="endpoint-label-text">${labelText}</span>
+                <div style="font-size:18px; margin-right: 8px;">🏁</div>
+                <span style="font-weight:bold; color:var(--text-main); font-size:14px; white-space:nowrap; margin-right: 12px;">${labelText}:</span>
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%; max-width: 350px;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
             </div>
-            <div class="col-addr">
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%; max-width: 250px;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
-            </div>
-            <div class="col-app"></div>
-            <div class="col-client"></div>
-            <div class="col-handle" style="visibility:hidden;"></div>
         `;
         return el;
     }
@@ -1145,10 +1155,7 @@ async function updateEndpointAddress(type, value) {
     render(); drawRoute(); 
     
     if (!routeId) {
-        if (currentInspectorFilter && currentInspectorFilter !== 'all') {
-            localStorage.setItem(`sproute_${type}_${currentInspectorFilter}`, value);
-        }
-        return;
+        return; 
     }
     
     pushToHistory();
@@ -1371,8 +1378,8 @@ function render() {
         if (!routeId) {
             const insp = inspectors.find(i => i.id === currentInspectorFilter);
             if (insp) {
-                currentStart = { address: localStorage.getItem('sproute_start_' + insp.id) || insp.start || '' };
-                currentEnd = { address: localStorage.getItem('sproute_end_' + insp.id) || insp.end || insp.start || '' };
+                currentStart = { address: insp.start || '', lat: insp.startLat, lng: insp.startLng };
+                currentEnd = { address: insp.end || insp.start || '', lat: insp.endLat || insp.startLat, lng: insp.endLng || insp.startLng };
             }
         }
         
