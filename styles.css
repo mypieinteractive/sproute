@@ -1,9 +1,8 @@
 /* * */
-/* * Dashboard - V4.17 */
+/* * Dashboard - V4.19 */
 /* * FILE: styles.css */
-/* * Changes: V4.17 - Restored mobile 100vh scrolling view. Un-bolded meta-text. */
-/* * Customized .view-managermobile class scales to perfectly fit the required */
-/* * Num, ETA, Due, Insp, and Address columns on mobile view without dropping columns. */
+/* * Changes: V4.19 - Made subheadings sticky. Adjusted action buttons width to auto. */
+/* * Hidden endpoint label text on mobile to ensure Re-Optimize button fits cleanly. */
 /* * */
 
 :root { 
@@ -65,6 +64,11 @@ body.view-managermobile .glide-row { padding: 8px 2px; }
 body.view-managermobile .col-num { margin-left: 2px; width: 26px; }
 body.view-managermobile .num-badge { width: 22px; height: 22px; font-size: 11px; }
 body.view-managermobile .endpoint-controls-wrapper { padding-left: 4px; }
+body.view-managermobile .endpoint-label-text { display: none !important; } /* Hidden on mobile to fit button */
+
+@container sidebar (max-width: 500px) {
+    .endpoint-label-text { display: none !important; } /* Hidden on tight desktop to fit button */
+}
 
 body.tier-individual .col-insp { display: none !important; }
 
@@ -75,7 +79,13 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     font-weight: bold; font-size: 11px; text-transform: uppercase;
     border-bottom: 1px solid var(--border-color); letter-spacing: 1px;
     display: flex; justify-content: space-between; align-items: center;
+    position: sticky; z-index: 4; top: 0;
 }
+body.view-manager .list-subheading,
+body.view-managermobile .list-subheading {
+    top: 38px; /* Offset beneath the glide table header */
+}
+
 .route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: var(--text-main); }
 
 .route-btn { 
@@ -119,9 +129,8 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
 
-.header-action-btn { height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
+.header-action-btn { height: 36px; padding: 0 16px; width: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
 .header-action-btn:active { opacity: 0.7; }
-#routing-controls .header-action-btn { width: 165px; }
 
 #search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
 #search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
