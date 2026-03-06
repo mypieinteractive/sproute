@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.20
+// * Dashboard - V4.21
 // * FILE: app.js
-// * Changes: V4.20 - Solidified the front-end geocoding handoff. 
-// * Ensured Re-Optimize isolated fetch calls also pass the localized 
-// * Mapbox lat/lng coordinates directly to the backend to bypass server-side geocoding.
+// * Changes: V4.21 - Implemented the "Queue Kick" architecture for handleGenerateRoute.
+// * The front end now receives a fast "queued" status, instantly fires a secondary 
+// * "processQueue" fetch (ignoring its inevitable timeout), and simultaneously begins 
+// * the 5-second polling loop to wait for the backend to finish the heavy routing math.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -405,6 +406,14 @@ async function loadData() {
         const res = await fetch(`${WEB_APP_URL}${queryParams}`);
         const data = await res.json();
         
+        // Polling logic for async backend processing
+        if (data.status === 'processing' || data.status === 'queued') {
+            const overlay = document.getElementById('processing-overlay');
+            if (overlay) overlay.style.display = 'flex';
+            setTimeout(loadData, 5000);
+            return; 
+        }
+
         if (data.routeId) {
             routeId = data.routeId;
         }
@@ -673,18 +682,34 @@ async function handleGenerateRoute() {
     let eAddr = endInput ? endInput.value : '';
 
     try {
-        await fetch(WEB_APP_URL, {
+        const res = await fetch(WEB_APP_URL, {
             method: 'POST',
             body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
         });
         
-        await loadData();
+        const data = await res.json();
+        
+        // If the backend instantly queues the job, fire the process payload and start polling
+        if (data.status === 'queued' || data.success) {
+            
+            // Fire and forget the heavy processor (ignores the timeout)
+            fetch(WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'processQueue', routeId: routeId, driverId: insp.id })
+            }).catch(err => {
+                console.log("Ignored expected timeout from processQueue", err);
+            });
+            
+            // Immediately start the 5-second polling loop
+            setTimeout(loadData, 5000);
+        } else {
+            // Fallback if not queued
+            await loadData();
+        }
     } catch (e) {
         if(overlay) overlay.style.display = 'none';
-        await customAlert("Generation is taking longer than expected or encountered an error. Please wait a moment and refresh the page.");
-    } finally {
-        if(overlay) overlay.style.display = 'none';
-    }
+        await customAlert("Generation encountered an error. Please wait a moment and try again.");
+    } 
 }
 
 async function handleStartOver() {
@@ -1063,23 +1088,6 @@ window.handleEndpointOptimize = async function() {
     render();
 };
 
-// Local Front-End Geocoding to instantly resolve endpoint lat/lng
-async function geocodeAddress(addr) {
-    if (!addr) return null;
-    try {
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addr)}.json?access_token=${MAPBOX_TOKEN}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.features && data.features.length > 0) {
-            return {
-                lat: data.features[0].center[1],
-                lng: data.features[0].center[0]
-            };
-        }
-    } catch (e) { console.error("Geocoding error:", e); }
-    return null;
-}
-
 function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
@@ -1129,18 +1137,12 @@ function createEndpointRow(type, endpointData) {
 async function updateEndpointAddress(type, value) {
     if (!value.trim()) return;
 
-    // Immediately resolve local coordinates for drawing 🏁 lines
-    const geo = await geocodeAddress(value);
     let epObj = { address: value };
-    if (geo) {
-        epObj.lat = geo.lat;
-        epObj.lng = geo.lng;
-    }
     
     if (type === 'start') routeStart = epObj;
     if (type === 'end') routeEnd = epObj;
     markRouteDirty('endpoints', 0);
-    render(); drawRoute(); // Updates map instantly with front-end geo
+    render(); drawRoute(); 
     
     if (!routeId) {
         if (currentInspectorFilter && currentInspectorFilter !== 'all') {
@@ -1156,7 +1158,7 @@ async function updateEndpointAddress(type, value) {
     try {
         const res = await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: type, address: value, lat: epObj.lat, lng: epObj.lng })
+            body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: type, address: value })
         });
         const data = await res.json();
         
@@ -1791,7 +1793,6 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
     const modal = document.getElementById('modal-overlay');
     if(modal) modal.style.display = 'none';
     
-    // Send geocoded coords directly to backend if available
     let sLat = routeStart && routeStart.lat ? routeStart.lat : null;
     let sLng = routeStart && routeStart.lng ? routeStart.lng : null;
     let eLat = routeEnd && routeEnd.lat ? routeEnd.lat : null;
