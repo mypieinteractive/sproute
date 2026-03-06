@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.18
+// * Dashboard - V4.19
 // * FILE: app.js
-// * Changes: V4.18 - Changed routeId from const to let to allow dynamic updating. 
-// * Added logic in loadData() to update routeId from the backend response. 
-// * Injected routeId into the finalizeSync payload to patch the Re-Optimize failure.
+// * Changes: V4.19 - Increased pin interior opacity to 0.75. Fixed inspector view endpoints 
+// * not pre-populating. Added sticky logic to subheadings. Realigned Re-Optimize button to left. 
+// * Wipes ETAs on page load if backend flags needsRecalculation. Added local front-end 
+// * geocoding to instantly resolve coordinates for start/end 🏁 pins and route lines.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -264,7 +265,7 @@ function updateRouteButtonColors() {
                 
                 const circle = document.createElement('div');
                 circle.className = 'rbtn-circle';
-                circle.style.backgroundColor = hexToRgba(bgHex, 0.6);
+                circle.style.backgroundColor = hexToRgba(bgHex, 0.75); // Increased opacity
                 circle.style.border = `2px solid ${baseColor}`;
                 ind.appendChild(circle);
             }
@@ -328,7 +329,7 @@ function getVisualStyle(stopData) {
     let bgFinal = bgHex;
     if (bgHex !== 'transparent') {
         if (bgHex.startsWith('#')) {
-            bgFinal = hexToRgba(bgHex, 0.6);
+            bgFinal = hexToRgba(bgHex, 0.75); // Increased to 0.75 per request
         } else {
             bgFinal = bgHex; 
         }
@@ -408,10 +409,17 @@ async function loadData() {
         if (data.routeId) {
             routeId = data.routeId;
         }
+        
+        // Blank out ETAs if backend explicitly says calculations are out of sync
+        if (data.needsRecalculation) {
+            isAlteredRoute = true;
+            dirtyRoutes.add('all'); 
+        }
 
         routeStart = data.routeStart || null;
         routeEnd = data.routeEnd || null;
-        isAlteredRoute = data.isAlteredRoute || false; 
+        
+        if (data.isAlteredRoute) isAlteredRoute = true;
 
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         
@@ -457,7 +465,6 @@ async function loadData() {
         if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
         
         historyStack = [];
-        dirtyRoutes.clear();
 
         if (!Array.isArray(data)) {
             inspectors = data.inspectors || []; 
@@ -675,7 +682,8 @@ async function handleGenerateRoute() {
         await loadData();
     } catch (e) {
         if(overlay) overlay.style.display = 'none';
-        await customAlert("Error requesting route generation. Please try again.");
+        // Updated error messaging for potential 504 timeouts
+        await customAlert("Generation is taking longer than expected or encountered an error. Please wait a moment and refresh the page.");
     } finally {
         if(overlay) overlay.style.display = 'none';
     }
@@ -1052,6 +1060,23 @@ window.handleEndpointOptimize = async function() {
     render();
 };
 
+// Local Front-End Geocoding to instantly resolve endpoint lat/lng
+async function geocodeAddress(addr) {
+    if (!addr) return null;
+    try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addr)}.json?access_token=${MAPBOX_TOKEN}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.features && data.features.length > 0) {
+            return {
+                lat: data.features[0].center[1],
+                lng: data.features[0].center[0]
+            };
+        }
+    } catch (e) { console.error("Geocoding error:", e); }
+    return null;
+}
+
 function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
@@ -1070,8 +1095,8 @@ function createEndpointRow(type, endpointData) {
         el.innerHTML = `
             <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">🏁</div>
             <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; flex:1;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
                 ${optBtnHtml}
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; flex:1;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
             </div>
             <div class="stop-actions" style="width: 40px;"></div>
         `;
@@ -1080,15 +1105,12 @@ function createEndpointRow(type, endpointData) {
         const el = document.createElement('div');
         el.className = 'glide-row static-endpoint';
         el.innerHTML = `
-            <div class="col-num"></div>
+            <div class="col-num" style="font-size:16px; margin-left: 10px;">🏁</div>
             <div class="col-eta"></div>
             <div class="col-due"></div>
-            <div class="col-insp" style="display:flex; justify-content:flex-end; align-items:center; padding-right:6px;">
-                <div style="display:flex; align-items:center; gap:8px;" class="endpoint-controls-wrapper">
-                    ${optBtnHtml}
-                    <span style="font-size:18px;">🏁</span>
-                    <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;" class="endpoint-label-text">${labelText}</span>
-                </div>
+            <div class="col-insp" style="display:flex; justify-content:flex-start; align-items:center; padding-right:6px; overflow:hidden;">
+                ${optBtnHtml}
+                <span style="font-weight:bold; color:var(--text-muted); font-size:13px; white-space:nowrap;" class="endpoint-label-text">${labelText}</span>
             </div>
             <div class="col-addr">
                 <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%; max-width: 250px;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
@@ -1102,6 +1124,21 @@ function createEndpointRow(type, endpointData) {
 }
 
 async function updateEndpointAddress(type, value) {
+    if (!value.trim()) return;
+
+    // Immediately resolve local coordinates for drawing 🏁 lines
+    const geo = await geocodeAddress(value);
+    let epObj = { address: value };
+    if (geo) {
+        epObj.lat = geo.lat;
+        epObj.lng = geo.lng;
+    }
+    
+    if (type === 'start') routeStart = epObj;
+    if (type === 'end') routeEnd = epObj;
+    markRouteDirty('endpoints', 0);
+    render(); drawRoute(); // Updates map instantly with front-end geo
+    
     if (!routeId) {
         if (currentInspectorFilter && currentInspectorFilter !== 'all') {
             localStorage.setItem(`sproute_${type}_${currentInspectorFilter}`, value);
@@ -1109,7 +1146,6 @@ async function updateEndpointAddress(type, value) {
         return;
     }
     
-    if (!value.trim()) return;
     pushToHistory();
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
@@ -1117,21 +1153,14 @@ async function updateEndpointAddress(type, value) {
     try {
         const res = await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: type, address: value })
+            body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: type, address: value, lat: epObj.lat, lng: epObj.lng })
         });
         const data = await res.json();
         
         if (data.error) throw new Error(data.error);
-        if (data.success) {
-            if (type === 'start') routeStart = data.endpoint;
-            if (type === 'end') routeEnd = data.endpoint;
-            markRouteDirty('endpoints', 0);
-            render(); drawRoute();
-        }
     } catch (e) {
-        if (overlay) overlay.style.display = 'none';
         console.error("Endpoint update failed:", e);
-        await customAlert("Failed to update address. Please check the address format.");
+        await customAlert("Failed to sync new address to server. Ensure connection is stable.");
     } finally {
         if (overlay) overlay.style.display = 'none';
     }
@@ -1213,7 +1242,8 @@ function render() {
         const isRoutedStop = statusStr === 'routed' || statusStr === 'completed';
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
         
-        if (!isRoutedStop || dirtyRoutes.has(routeKey)) {
+        // Wipe ETAs if route logic is dirty or marked universally out-of-sync by the backend
+        if (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) {
             etaTime = '--';
         }
 
@@ -1273,7 +1303,7 @@ function render() {
             let distStr = s.dist ? String(s.dist) : '--';
             if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
             
-            const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey)) ? '-- | --' : `${etaTime} | ${distStr}`;
+            const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? '-- | --' : `${etaTime} | ${distStr}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -1758,9 +1788,16 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
     const modal = document.getElementById('modal-overlay');
     if(modal) modal.style.display = 'none';
     
+    // Send geocoded coords directly to backend if available
+    let sLat = routeStart && routeStart.lat ? routeStart.lat : null;
+    let sLng = routeStart && routeStart.lng ? routeStart.lng : null;
+    let eLat = routeEnd && routeEnd.lat ? routeEnd.lat : null;
+    let eLng = routeEnd && routeEnd.lng ? routeEnd.lng : null;
+
     let payload = { 
         action: type, routeId: routeId, driver: driverParam, 
         startTime: currentStartTime, startAddr: startAddr, endAddr: endAddr,
+        startLat: sLat, startLng: sLng, endLat: eLat, endLng: eLng,
         isManager: isManagerView
     };
 
