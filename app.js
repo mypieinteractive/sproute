@@ -1,10 +1,9 @@
 // *
-// * Dashboard - V4.19
+// * Dashboard - V4.20
 // * FILE: app.js
-// * Changes: V4.19 - Increased pin interior opacity to 0.75. Fixed inspector view endpoints 
-// * not pre-populating. Added sticky logic to subheadings. Realigned Re-Optimize button to left. 
-// * Wipes ETAs on page load if backend flags needsRecalculation. Added local front-end 
-// * geocoding to instantly resolve coordinates for start/end 🏁 pins and route lines.
+// * Changes: V4.20 - Solidified the front-end geocoding handoff. 
+// * Ensured Re-Optimize isolated fetch calls also pass the localized 
+// * Mapbox lat/lng coordinates directly to the backend to bypass server-side geocoding.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -265,7 +264,7 @@ function updateRouteButtonColors() {
                 
                 const circle = document.createElement('div');
                 circle.className = 'rbtn-circle';
-                circle.style.backgroundColor = hexToRgba(bgHex, 0.75); // Increased opacity
+                circle.style.backgroundColor = hexToRgba(bgHex, 0.75); 
                 circle.style.border = `2px solid ${baseColor}`;
                 ind.appendChild(circle);
             }
@@ -329,7 +328,7 @@ function getVisualStyle(stopData) {
     let bgFinal = bgHex;
     if (bgHex !== 'transparent') {
         if (bgHex.startsWith('#')) {
-            bgFinal = hexToRgba(bgHex, 0.75); // Increased to 0.75 per request
+            bgFinal = hexToRgba(bgHex, 0.75); 
         } else {
             bgFinal = bgHex; 
         }
@@ -409,7 +408,7 @@ async function loadData() {
         if (data.routeId) {
             routeId = data.routeId;
         }
-        
+
         // Blank out ETAs if backend explicitly says calculations are out of sync
         if (data.needsRecalculation) {
             isAlteredRoute = true;
@@ -682,7 +681,6 @@ async function handleGenerateRoute() {
         await loadData();
     } catch (e) {
         if(overlay) overlay.style.display = 'none';
-        // Updated error messaging for potential 504 timeouts
         await customAlert("Generation is taking longer than expected or encountered an error. Please wait a moment and refresh the page.");
     } finally {
         if(overlay) overlay.style.display = 'none';
@@ -1052,8 +1050,13 @@ window.handleEndpointOptimize = async function() {
     await finalizeSync('optimize', sVal, eVal);
     
     if(routeId) {
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: 'start', address: sVal }) }).catch(()=>{});
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: 'end', address: eVal }) }).catch(()=>{});
+        let sPayload = { action: 'updateEndpoint', routeId: routeId, type: 'start', address: sVal };
+        if (routeStart && routeStart.lat) { sPayload.lat = routeStart.lat; sPayload.lng = routeStart.lng; }
+        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(sPayload) }).catch(()=>{});
+        
+        let ePayload = { action: 'updateEndpoint', routeId: routeId, type: 'end', address: eVal };
+        if (routeEnd && routeEnd.lat) { ePayload.lat = routeEnd.lat; ePayload.lng = routeEnd.lng; }
+        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(ePayload) }).catch(()=>{});
     }
     
     dirtyRoutes.delete('endpoints_0');
