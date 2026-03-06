@@ -1,10 +1,9 @@
 // *
-// * Dashboard - V4.17
+// * Dashboard - V4.18
 // * FILE: app.js
-// * Changes: V4.17 - Hid grabbers if no routed stops exist for an inspector. Rebuilt 
-// * createEndpointRow to perfectly align with the standard glide-row layout columns. 
-// * Forced float parsing on endpoints to fix 🏁 map markers and updated drawRoute to 
-// * connect lines even with a single routed stop. Restored resizer for mobile view.
+// * Changes: V4.18 - Changed routeId from const to let to allow dynamic updating. 
+// * Added logic in loadData() to update routeId from the backend response. 
+// * Injected routeId into the finalizeSync payload to patch the Re-Optimize failure.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -100,7 +99,7 @@ function updateUndoUI() {
 }
 
 const params = new URLSearchParams(window.location.search);
-const routeId = params.get('id');
+let routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const viewMode = params.get('view') || 'inspector'; 
@@ -406,6 +405,10 @@ async function loadData() {
         const res = await fetch(`${WEB_APP_URL}${queryParams}`);
         const data = await res.json();
         
+        if (data.routeId) {
+            routeId = data.routeId;
+        }
+
         routeStart = data.routeStart || null;
         routeEnd = data.routeEnd || null;
         isAlteredRoute = data.isAlteredRoute || false; 
@@ -1756,7 +1759,7 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
     if(modal) modal.style.display = 'none';
     
     let payload = { 
-        action: type, driver: driverParam, 
+        action: type, routeId: routeId, driver: driverParam, 
         startTime: currentStartTime, startAddr: startAddr, endAddr: endAddr,
         isManager: isManagerView
     };
