@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.24
+// * Dashboard - V4.25
 // * FILE: app.js
-// * Changes: V4.24 - Patched the endpoint coordinate fallback logic in render(). 
-// * If the backend delivers a routeStart object with an address but no coordinates 
-// * (such as before a route is generated), the front end will now correctly borrow 
-// * the coordinates from the active Inspector's master profile to draw the 🏁 pins.
+// * Changes: V4.25 - Fixed a data mapping mismatch in the endpoint fallback logic. 
+// * The front end now correctly maps nested backend coordinate objects 
+// * (e.g., insp.routeStart.lat) alongside flat properties to ensure Mapbox 
+// * can always locate the start/end coordinates and draw the 🏁 pins.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1402,17 +1402,21 @@ function render() {
         activeInsp = inspectors.find(i => i.id === driverParam) || (inspectors.length > 0 ? inspectors[0] : null);
     }
 
+    // Comprehensive Fallback: Check nested objects AND flat properties
     if (activeInsp) {
-        if (!currentStart) currentStart = { address: activeInsp.start || '' };
-        if (currentStart && !currentStart.lat && activeInsp.startLat) {
-            currentStart.lat = activeInsp.startLat;
-            currentStart.lng = activeInsp.startLng;
+        let iStart = activeInsp.routeStart || {};
+        let iEnd = activeInsp.routeEnd || {};
+        
+        if (!currentStart) currentStart = { address: iStart.address || activeInsp.start || '' };
+        if (!currentStart.lat) {
+            currentStart.lat = iStart.lat || activeInsp.startLat;
+            currentStart.lng = iStart.lng || activeInsp.startLng;
         }
 
-        if (!currentEnd) currentEnd = { address: activeInsp.end || activeInsp.start || '' };
-        if (currentEnd && !currentEnd.lat) {
-            currentEnd.lat = activeInsp.endLat || activeInsp.startLat;
-            currentEnd.lng = activeInsp.endLng || activeInsp.startLng;
+        if (!currentEnd) currentEnd = { address: iEnd.address || activeInsp.end || iStart.address || activeInsp.start || '' };
+        if (!currentEnd.lat) {
+            currentEnd.lat = iEnd.lat || activeInsp.endLat || iStart.lat || activeInsp.startLat;
+            currentEnd.lng = iEnd.lng || activeInsp.endLng || iStart.lng || activeInsp.startLng;
         }
     }
 
@@ -1491,13 +1495,16 @@ function render() {
         const activeDriverIds = new Set(activeStops.map(s => s.driverId));
         inspectors.forEach(insp => {
             if (activeDriverIds.has(insp.id)) {
-                let sLng = insp.startLng || (routeStart ? routeStart.lng : null);
-                let sLat = insp.startLat || (routeStart ? routeStart.lat : null);
-                let eLng = insp.endLng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
-                let eLat = insp.endLat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
+                let iStart = insp.routeStart || {};
+                let iEnd = insp.routeEnd || {};
                 
-                if (sLng && sLat) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat)});
-                if (eLng && eLat) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat)});
+                let sLng = iStart.lng || insp.startLng || (routeStart ? routeStart.lng : null);
+                let sLat = iStart.lat || insp.startLat || (routeStart ? routeStart.lat : null);
+                let eLng = iEnd.lng || insp.endLng || iStart.lng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
+                let eLat = iEnd.lat || insp.endLat || iStart.lat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
+                
+                if (sLng && sLat && !isNaN(sLng)) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat)});
+                if (eLng && eLat && !isNaN(eLng)) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat)});
             }
         });
     } else {
@@ -1779,12 +1786,24 @@ function drawRoute() {
             let rStart = routeStart;
             let rEnd = routeEnd;
 
-            // Connect specific inspector endpoints if manager is viewing all
-            if (isManagerView && dId !== 'unassigned') {
+            if (dId !== 'unassigned') {
                 const insp = inspectors.find(i => i.id === dId);
                 if (insp) {
-                    rStart = { lng: insp.startLng || (routeStart ? routeStart.lng : null), lat: insp.startLat || (routeStart ? routeStart.lat : null) };
-                    rEnd = { lng: insp.endLng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null)), lat: insp.endLat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null)) };
+                    let iStart = insp.routeStart || {};
+                    let iEnd = insp.routeEnd || {};
+                    
+                    if (!rStart || !rStart.lat) {
+                        rStart = { 
+                            lat: iStart.lat || insp.startLat || (routeStart?.lat), 
+                            lng: iStart.lng || insp.startLng || (routeStart?.lng) 
+                        };
+                    }
+                    if (!rEnd || !rEnd.lat) {
+                        rEnd = { 
+                            lat: iEnd.lat || insp.endLat || iStart.lat || insp.startLat || (routeEnd?.lat), 
+                            lng: iEnd.lng || insp.endLng || iStart.lng || insp.startLng || (routeEnd?.lng) 
+                        };
+                    }
                 }
             }
 
