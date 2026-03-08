@@ -1,11 +1,11 @@
 // *
-// * Dashboard - V4.23
+// * Dashboard - V4.24
 // * FILE: app.js
-// * Changes: V4.23 - Implemented "Cascading Endpoints" architecture. Mapbox Autocomplete 
-// * Search added to start/end inputs. Added getActiveEndpoints() to cascade between 
-// * Route JSON and Inspector Default profiles. Rebuilt saveEndpointToBackend() to direct 
-// * updates to either the route JSON or the Inspector default profile. Redesigned 
-// * 🏁 map markers to use the hollow inspector-colored circle with top-right flag.
+// * Changes: V4.24 - Added auto-commit to endpoint text inputs on Enter/Blur using 
+// * the top Mapbox suggestion. Added auto-select text on input focus. Hid the 
+// * Re-Optimize button when no active routes exist. Matched start/end map pin 
+// * sizes to standard pins, and updated emojis (🏠 for Start top-left, 🏁 for 
+// * End top-right) preventing overlap when coordinates are identical.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -42,6 +42,8 @@ let isAlteredRoute = false;
 
 let isPollingForRoute = false;
 let pollRetries = 0;
+
+let latestSuggestions = { start: null, end: null };
 
 // Custom Dark Mode Alerts & Confirms
 function customAlert(msg) {
@@ -559,6 +561,26 @@ async function loadData() {
 // Mapbox Autocomplete Logic
 let geocodeTimeout;
 
+function commitTopSuggestion(type, inputEl) {
+    const eps = getActiveEndpoints();
+    const currentSaved = type === 'start' ? eps.start?.address : eps.end?.address;
+
+    if (inputEl.value.trim() !== '' && inputEl.value !== currentSaved) {
+        if (latestSuggestions[type]) {
+            const top = latestSuggestions[type];
+            inputEl.value = top.place_name;
+            selectEndpoint(type, top.place_name, top.center[1], top.center[0]);
+        }
+    }
+}
+
+window.handleEndpointKeyDown = function(e, type) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        e.target.blur(); 
+    }
+};
+
 async function handleEndpointInput(e, type) {
     checkEndpointModified();
     clearTimeout(geocodeTimeout);
@@ -568,6 +590,7 @@ async function handleEndpointInput(e, type) {
     
     if (!val.trim()) { 
         if (dropdown) dropdown.innerHTML = ''; 
+        latestSuggestions[type] = null;
         return; 
     }
     
@@ -576,6 +599,7 @@ async function handleEndpointInput(e, type) {
         try {
             const res = await fetch(url);
             const data = await res.json();
+            latestSuggestions[type] = data.features.length > 0 ? data.features[0] : null;
             renderAutocomplete(data.features, e.target, type);
         } catch (err) { console.error("Autocomplete Error:", err); }
     }, 300);
@@ -615,7 +639,8 @@ function renderAutocomplete(features, inputEl, type) {
         item.onmouseleave = () => item.style.background = 'transparent';
         
         item.onmousedown = (e) => {
-            e.preventDefault(); // Prevents input blur from firing before click registers
+            e.preventDefault(); 
+            latestSuggestions[type] = f; 
             inputEl.value = f.place_name;
             dropdown.innerHTML = '';
             selectEndpoint(type, f.place_name, f.center[1], f.center[0]);
@@ -626,6 +651,7 @@ function renderAutocomplete(features, inputEl, type) {
 
 function handleEndpointBlur(type, inputEl) {
     setTimeout(() => {
+        commitTopSuggestion(type, inputEl);
         const dropdown = document.getElementById(`autocomplete-${type}`);
         if (dropdown) dropdown.innerHTML = ''; 
     }, 200);
@@ -1226,7 +1252,11 @@ window.checkEndpointModified = function() {
     
     const modified = (sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim());
     const isDirty = dirtyRoutes.has('endpoints_0');
-    const canOpt = isManagerView || PERMISSION_REOPTIMIZE;
+
+    // Only allow opt if there is actually an active routed state
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+    const canOpt = (isManagerView || PERMISSION_REOPTIMIZE) && hasRouted;
     
     document.querySelectorAll('.btn-endpoint-opt').forEach(btn => {
         btn.style.display = ((modified || isDirty) && canOpt) ? 'block' : 'none';
@@ -1262,9 +1292,14 @@ function createEndpointRow(type, endpointData) {
     const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
     const inputId = `input-endpoint-${type}`;
     const labelText = type === 'start' ? 'Start' : 'End';
+    const rowIcon = type === 'start' ? '🏠' : '🏁';
     
     const isDirty = dirtyRoutes.has('endpoints_0');
-    const canOpt = isManagerView || PERMISSION_REOPTIMIZE;
+    
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+    const canOpt = (isManagerView || PERMISSION_REOPTIMIZE) && hasRouted;
+    
     const displayStyle = (isDirty && canOpt) ? 'block' : 'none';
     
     const optBtnHtml = `<button class="header-action-btn btn-endpoint-opt" style="display:${displayStyle}; background:#2C3D4F; color:white; flex-shrink:0; width:auto; padding:0 12px; margin-right: 8px;" onmousedown="event.preventDefault(); handleEndpointOptimize()">Re-Optimize</button>`;
@@ -1273,11 +1308,11 @@ function createEndpointRow(type, endpointData) {
         const el = document.createElement('div');
         el.className = 'stop-item static-endpoint compact';
         el.innerHTML = `
-            <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">🏁</div>
+            <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${rowIcon}</div>
             <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
                 ${optBtnHtml}
                 <div style="position:relative; width:100%; flex:1;">
-                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="handleEndpointInput(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 </div>
             </div>
             <div class="stop-actions" style="width: 40px;"></div>
@@ -1291,10 +1326,10 @@ function createEndpointRow(type, endpointData) {
         el.innerHTML = `
             <div style="display:flex; flex:1; align-items:center; justify-content:flex-end;">
                 ${optBtnHtml}
-                <div style="font-size:18px; margin-right: 8px;">🏁</div>
+                <div style="font-size:18px; margin-right: 8px;">${rowIcon}</div>
                 <span style="font-weight:bold; color:var(--text-main); font-size:14px; white-space:nowrap; margin-right: 12px;">${labelText}:</span>
                 <div style="position:relative; width:100%; max-width: 350px;">
-                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="handleEndpointInput(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 </div>
             </div>
         `;
@@ -1535,54 +1570,64 @@ function render() {
         activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
     }
 
-    // --- Draw Start/End 🏁 Map Markers Dynamically ---
+    // --- Draw Start/End 🏁/🏠 Map Markers Dynamically ---
     let endpointsToDraw = [];
+    
+    const pushEndpoint = (lng, lat, dId, type) => {
+        if (lng && lat) {
+            let existing = endpointsToDraw.find(e => e.lng === lng && e.lat === lat && e.driverId === dId);
+            if (existing) {
+                if (type === 'start') existing.isStart = true;
+                if (type === 'end') existing.isEnd = true;
+            } else {
+                endpointsToDraw.push({ lng, lat, driverId: dId, isStart: type === 'start', isEnd: type === 'end' });
+            }
+        }
+    };
+
     if (isAllInspectors) {
         const activeDriverIds = new Set(activeStops.map(s => s.driverId));
         inspectors.forEach(insp => {
             if (activeDriverIds.has(insp.id)) {
                 let sLng = insp.startLng; let sLat = insp.startLat;
                 let eLng = insp.endLng || insp.startLng; let eLat = insp.endLat || insp.startLat;
-                if (sLng && sLat) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat), driverId: insp.id});
-                if (eLng && eLat) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat), driverId: insp.id});
+                pushEndpoint(parseFloat(sLng), parseFloat(sLat), insp.id, 'start');
+                pushEndpoint(parseFloat(eLng), parseFloat(eLat), insp.id, 'end');
             }
         });
     } else {
         let eps = getActiveEndpoints();
         let cInsp = inspectors.find(i => i.id === (isManagerView ? currentInspectorFilter : driverParam));
         let dId = cInsp ? cInsp.id : null;
-        if (eps.start && eps.start.lng && eps.start.lat) endpointsToDraw.push({lng: parseFloat(eps.start.lng), lat: parseFloat(eps.start.lat), driverId: dId});
-        if (eps.end && eps.end.lng && eps.end.lat) endpointsToDraw.push({lng: parseFloat(eps.end.lng), lat: parseFloat(eps.end.lat), driverId: dId});
+        if (eps.start && eps.start.lng && eps.start.lat) pushEndpoint(parseFloat(eps.start.lng), parseFloat(eps.start.lat), dId, 'start');
+        if (eps.end && eps.end.lng && eps.end.lat) pushEndpoint(parseFloat(eps.end.lng), parseFloat(eps.end.lat), dId, 'end');
     }
 
-    const seenCoords = new Set();
     endpointsToDraw.forEach(ep => {
-        const key = `${ep.lng},${ep.lat}`;
-        if (!seenCoords.has(key)) {
-            seenCoords.add(key);
-            
-            let inspColor = '#ffffff';
-            if (ep.driverId) {
-                const dIdx = inspectors.findIndex(i => i.id === ep.driverId);
-                if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
-            } else if (currentInspectorFilter !== 'all') {
-                const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
-                if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
-            }
-            
-            const el = document.createElement('div');
-            el.className = 'marker start-end-marker';
-            
-            // Rebuilt hollow circle pin with 🏁 flag in top right
-            el.innerHTML = `
-                <div class="pin-visual" style="background-color: transparent; border: 3px solid ${inspColor}; border-radius: 50%; width: 20px; height: 20px;"></div>
-                <div class="marker-warning" style="font-size: 14px; line-height: 1; transform: translate(50%, -50%); top: 0; right: 0;">🏁</div>
-            `;
-            
-            const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([ep.lng, ep.lat]).addTo(map);
-            markers.push(m);
-            bounds.extend([ep.lng, ep.lat]);
+        let inspColor = '#ffffff';
+        if (ep.driverId) {
+            const dIdx = inspectors.findIndex(i => i.id === ep.driverId);
+            if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
+        } else if (currentInspectorFilter !== 'all') {
+            const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
+            if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
         }
+        
+        let emojisHtml = '';
+        if (ep.isStart) emojisHtml += `<div class="marker-warning" style="font-size: 18px; line-height: 1; transform: translate(-50%, -50%); top: 0; left: 0;">🏠</div>`;
+        if (ep.isEnd) emojisHtml += `<div class="marker-warning" style="font-size: 18px; line-height: 1; transform: translate(50%, -50%); top: 0; right: 0;">🏁</div>`;
+        
+        const el = document.createElement('div');
+        el.className = 'marker start-end-marker';
+        
+        el.innerHTML = `
+            <div class="pin-visual" style="background-color: transparent; border: 3px solid ${inspColor}; border-radius: 50%; width: 28px; height: 28px;"></div>
+            ${emojisHtml}
+        `;
+        
+        const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([ep.lng, ep.lat]).addTo(map);
+        markers.push(m);
+        bounds.extend([ep.lng, ep.lat]);
     });
 
     if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
