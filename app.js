@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.23
+// * Dashboard - V4.24
 // * FILE: app.js
-// * Changes: V4.23 - Restored local front-end geocoding to resolve newly typed 
-// * endpoint addresses into coordinates instantly. Fixed an overwrite bug in render()
-// * to ensure the back-end's provided routeStart/routeEnd lat/lng properties are 
-// * strictly respected so Mapbox can consistently draw the 🏁 pins.
+// * Changes: V4.24 - Patched the endpoint coordinate fallback logic in render(). 
+// * If the backend delivers a routeStart object with an address but no coordinates 
+// * (such as before a route is generated), the front end will now correctly borrow 
+// * the coordinates from the active Inspector's master profile to draw the 🏁 pins.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1392,17 +1392,28 @@ function render() {
         return item;
     };
 
-    let currentStart = routeStart;
-    let currentEnd = routeEnd;
+    let currentStart = routeStart ? { ...routeStart } : null;
+    let currentEnd = routeEnd ? { ...routeEnd } : null;
 
-    // Do not aggressively overwrite if backend successfully delivered routeStart / routeEnd
-    if (!currentStart && isSingleInspector) {
-        const insp = inspectors.find(i => i.id === currentInspectorFilter);
-        if (insp) currentStart = { address: insp.start || '', lat: insp.startLat, lng: insp.startLng };
+    let activeInsp = null;
+    if (isSingleInspector) {
+        activeInsp = inspectors.find(i => i.id === currentInspectorFilter);
+    } else if (!isManagerView) {
+        activeInsp = inspectors.find(i => i.id === driverParam) || (inspectors.length > 0 ? inspectors[0] : null);
     }
-    if (!currentEnd && isSingleInspector) {
-        const insp = inspectors.find(i => i.id === currentInspectorFilter);
-        if (insp) currentEnd = { address: insp.end || insp.start || '', lat: insp.endLat || insp.startLat, lng: insp.endLng || insp.startLng };
+
+    if (activeInsp) {
+        if (!currentStart) currentStart = { address: activeInsp.start || '' };
+        if (currentStart && !currentStart.lat && activeInsp.startLat) {
+            currentStart.lat = activeInsp.startLat;
+            currentStart.lng = activeInsp.startLng;
+        }
+
+        if (!currentEnd) currentEnd = { address: activeInsp.end || activeInsp.start || '' };
+        if (currentEnd && !currentEnd.lat) {
+            currentEnd.lat = activeInsp.endLat || activeInsp.startLat;
+            currentEnd.lng = activeInsp.endLng || activeInsp.startLng;
+        }
     }
 
     if (isSingleInspector) {
