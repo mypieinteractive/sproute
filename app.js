@@ -1,11 +1,10 @@
 // *
-// * Dashboard - V4.22
+// * Dashboard - V4.23
 // * FILE: app.js
-// * Changes: V4.22 - Rebuilt endpoint rows in Manager views to right-align 
-// * flag/text with the input. Removed localStorage address caching to fix 
-// * ghost typos overriding Google Sheet data. Fixed coordinate handoff 
-// * ensuring 🏁 pins are drawn. Added a smart polling lock to keep the 
-// * UI loading until the backend returns actively routed data.
+// * Changes: V4.23 - Restored local front-end geocoding to resolve newly typed 
+// * endpoint addresses into coordinates instantly. Fixed an overwrite bug in render()
+// * to ensure the back-end's provided routeStart/routeEnd lat/lng properties are 
+// * strictly respected so Mapbox can consistently draw the 🏁 pins.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1103,6 +1102,23 @@ window.handleEndpointOptimize = async function() {
     render();
 };
 
+// Local Front-End Geocoding to instantly resolve user-typed endpoint lat/lng
+async function geocodeAddress(addr) {
+    if (!addr) return null;
+    try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addr)}.json?access_token=${MAPBOX_TOKEN}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.features && data.features.length > 0) {
+            return {
+                lat: data.features[0].center[1],
+                lng: data.features[0].center[0]
+            };
+        }
+    } catch (e) { console.error("Geocoding error:", e); }
+    return null;
+}
+
 function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
@@ -1147,25 +1163,34 @@ function createEndpointRow(type, endpointData) {
 async function updateEndpointAddress(type, value) {
     if (!value.trim()) return;
 
+    // Resolve local coordinates instantly before passing to the backend
     let epObj = { address: value };
+    const geo = await geocodeAddress(value);
+    if (geo) {
+        epObj.lat = geo.lat;
+        epObj.lng = geo.lng;
+    }
     
     if (type === 'start') routeStart = epObj;
     if (type === 'end') routeEnd = epObj;
     markRouteDirty('endpoints', 0);
     render(); drawRoute(); 
     
-    if (!routeId) {
-        return; 
-    }
+    if (!routeId) return; 
     
     pushToHistory();
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
     
     try {
+        let payload = { action: 'updateEndpoint', routeId: routeId, type: type, address: value };
+        if (geo) {
+            payload.lat = geo.lat;
+            payload.lng = geo.lng;
+        }
         const res = await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'updateEndpoint', routeId: routeId, type: type, address: value })
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
         
@@ -1367,22 +1392,24 @@ function render() {
         return item;
     };
 
+    let currentStart = routeStart;
+    let currentEnd = routeEnd;
+
+    // Do not aggressively overwrite if backend successfully delivered routeStart / routeEnd
+    if (!currentStart && isSingleInspector) {
+        const insp = inspectors.find(i => i.id === currentInspectorFilter);
+        if (insp) currentStart = { address: insp.start || '', lat: insp.startLat, lng: insp.startLng };
+    }
+    if (!currentEnd && isSingleInspector) {
+        const insp = inspectors.find(i => i.id === currentInspectorFilter);
+        if (insp) currentEnd = { address: insp.end || insp.start || '', lat: insp.endLat || insp.startLat, lng: insp.endLng || insp.startLng };
+    }
+
     if (isSingleInspector) {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
         routedStops.sort(sortByEta);
 
-        let currentStart = routeStart;
-        let currentEnd = routeEnd;
-        
-        if (!routeId) {
-            const insp = inspectors.find(i => i.id === currentInspectorFilter);
-            if (insp) {
-                currentStart = { address: insp.start || '', lat: insp.startLat, lng: insp.startLng };
-                currentEnd = { address: insp.end || insp.start || '', lat: insp.endLat || insp.startLat, lng: insp.endLng || insp.startLng };
-            }
-        }
-        
         listContainer.appendChild(createEndpointRow('start', currentStart));
 
         if (unroutedStops.length > 0) {
@@ -1417,7 +1444,7 @@ function render() {
         const activeStopsCopy = [...activeStops].sort(sortByEta);
         const uniqueClusters = [...new Set(activeStopsCopy.map(s => s.cluster || 0))].sort();
         
-        listContainer.appendChild(createEndpointRow('start', routeStart));
+        listContainer.appendChild(createEndpointRow('start', currentStart));
         
         if (uniqueClusters.length > 1) {
             uniqueClusters.forEach(clusterId => {
@@ -1438,7 +1465,7 @@ function render() {
             activeStopsCopy.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
         }
         
-        listContainer.appendChild(createEndpointRow('end', routeEnd));
+        listContainer.appendChild(createEndpointRow('end', currentEnd));
         
     } else {
         const mainDiv = document.createElement('div');
@@ -1463,21 +1490,13 @@ function render() {
             }
         });
     } else {
-        let currentStart = routeStart;
-        let currentEnd = routeEnd;
-        if (!routeId && isSingleInspector) {
-            const insp = inspectors.find(i => i.id === currentInspectorFilter);
-            if (insp) {
-                currentStart = { lng: insp.startLng || (routeStart ? routeStart.lng : null), lat: insp.startLat || (routeStart ? routeStart.lat : null) };
-                currentEnd = { lng: insp.endLng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null)), lat: insp.endLat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null)) };
-            }
-        }
-        if (currentStart && currentStart.lng && currentStart.lat) endpointsToDraw.push({lng: parseFloat(currentStart.lng), lat: parseFloat(currentStart.lat)});
-        if (currentEnd && currentEnd.lng && currentEnd.lat) endpointsToDraw.push({lng: parseFloat(currentEnd.lng), lat: parseFloat(currentEnd.lat)});
+        if (currentStart && currentStart.lng && currentStart.lat && !isNaN(currentStart.lng)) endpointsToDraw.push({lng: parseFloat(currentStart.lng), lat: parseFloat(currentStart.lat)});
+        if (currentEnd && currentEnd.lng && currentEnd.lat && !isNaN(currentEnd.lng)) endpointsToDraw.push({lng: parseFloat(currentEnd.lng), lat: parseFloat(currentEnd.lat)});
     }
 
     const seenCoords = new Set();
     endpointsToDraw.forEach(ep => {
+        if (isNaN(ep.lng) || isNaN(ep.lat)) return; 
         const key = `${ep.lng},${ep.lat}`;
         if (!seenCoords.has(key)) {
             seenCoords.add(key);
