@@ -1,10 +1,11 @@
 // *
-// * Dashboard - V4.27
+// * Dashboard - V4.23
 // * FILE: app.js
-// * Changes: V4.27 - Stripped out the messy fallback logic that was accidentally 
-// * hooking into the companyAddress string. The app now strictly utilizes 
-// * payload.routeStart and payload.routeEnd right at loadData(), parsing them 
-// * immediately to guarantee Mapbox only draws the true Inspector coordinates.
+// * Changes: V4.23 - Implemented "Cascading Endpoints" architecture. Mapbox Autocomplete 
+// * Search added to start/end inputs. Added getActiveEndpoints() to cascade between 
+// * Route JSON and Inspector Default profiles. Rebuilt saveEndpointToBackend() to direct 
+// * updates to either the route JSON or the Inspector default profile. Redesigned 
+// * 🏁 map markers to use the hollow inspector-colored circle with top-right flag.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -41,16 +42,6 @@ let isAlteredRoute = false;
 
 let isPollingForRoute = false;
 let pollRetries = 0;
-
-// Helper to safely parse stringified JSON endpoint data from the spreadsheet
-function parseJsonEndpoint(val) {
-    if (!val) return null;
-    if (typeof val === 'object') return val;
-    if (typeof val === 'string' && val.trim().startsWith('{')) {
-        try { return JSON.parse(val); } catch(e) { return { address: val }; }
-    }
-    return { address: val };
-}
 
 // Custom Dark Mode Alerts & Confirms
 function customAlert(msg) {
@@ -437,9 +428,8 @@ async function loadData() {
             dirtyRoutes.add('all'); 
         }
 
-        // Strict endpoint extraction explicitly bypassing any companyAddress fallback string
-        routeStart = data.routeStart ? parseJsonEndpoint(data.routeStart) : null;
-        routeEnd = data.routeEnd ? parseJsonEndpoint(data.routeEnd) : null;
+        routeStart = data.routeStart || null;
+        routeEnd = data.routeEnd || null;
         
         if (data.isAlteredRoute) isAlteredRoute = true;
 
@@ -564,6 +554,155 @@ async function loadData() {
         if (overlay && !isPollingForRoute) overlay.style.display = 'none';
         updateUndoUI();
     }
+}
+
+// Mapbox Autocomplete Logic
+let geocodeTimeout;
+
+async function handleEndpointInput(e, type) {
+    checkEndpointModified();
+    clearTimeout(geocodeTimeout);
+    const val = e.target.value;
+    const dropdownId = `autocomplete-${type}`;
+    let dropdown = document.getElementById(dropdownId);
+    
+    if (!val.trim()) { 
+        if (dropdown) dropdown.innerHTML = ''; 
+        return; 
+    }
+    
+    geocodeTimeout = setTimeout(async () => {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&country=us&types=address,poi`;
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            renderAutocomplete(data.features, e.target, type);
+        } catch (err) { console.error("Autocomplete Error:", err); }
+    }, 300);
+}
+
+function renderAutocomplete(features, inputEl, type) {
+    let dropdown = document.getElementById(`autocomplete-${type}`);
+    if (!dropdown) {
+        dropdown = document.createElement('div');
+        dropdown.id = `autocomplete-${type}`;
+        dropdown.className = 'autocomplete-dropdown';
+        dropdown.style.position = 'absolute';
+        dropdown.style.background = 'var(--bg-panel, #1E293B)';
+        dropdown.style.border = '1px solid var(--border-color, #334155)';
+        dropdown.style.zIndex = '1000';
+        dropdown.style.width = '100%';
+        dropdown.style.maxHeight = '200px';
+        dropdown.style.overflowY = 'auto';
+        dropdown.style.borderRadius = '4px';
+        dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        inputEl.parentNode.appendChild(dropdown);
+    }
+    
+    dropdown.innerHTML = '';
+    if (features.length === 0) return;
+    
+    features.forEach(f => {
+        const item = document.createElement('div');
+        item.style.padding = '8px 10px';
+        item.style.cursor = 'pointer';
+        item.style.borderBottom = '1px solid var(--border-color, #334155)';
+        item.style.color = 'var(--text-main, #F8FAFC)';
+        item.style.fontSize = '13px';
+        item.innerText = f.place_name;
+        
+        item.onmouseenter = () => item.style.background = 'var(--blue, #3B82F6)';
+        item.onmouseleave = () => item.style.background = 'transparent';
+        
+        item.onmousedown = (e) => {
+            e.preventDefault(); // Prevents input blur from firing before click registers
+            inputEl.value = f.place_name;
+            dropdown.innerHTML = '';
+            selectEndpoint(type, f.place_name, f.center[1], f.center[0]);
+        };
+        dropdown.appendChild(item);
+    });
+}
+
+function handleEndpointBlur(type, inputEl) {
+    setTimeout(() => {
+        const dropdown = document.getElementById(`autocomplete-${type}`);
+        if (dropdown) dropdown.innerHTML = ''; 
+    }, 200);
+}
+
+async function selectEndpoint(type, address, lat, lng) {
+    let epObj = { address, lat, lng };
+    if (type === 'start') routeStart = epObj;
+    if (type === 'end') routeEnd = epObj;
+    markRouteDirty('endpoints', 0);
+    
+    const inspId = isManagerView ? currentInspectorFilter : driverParam;
+    const insp = inspectors.find(i => i.id === inspId);
+    if (insp) {
+        if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
+        if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
+    }
+    
+    render(); drawRoute();
+    saveEndpointToBackend(type, address, lat, lng);
+}
+
+async function saveEndpointToBackend(type, address, lat, lng) {
+    const inspId = isManagerView ? currentInspectorFilter : driverParam;
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+    
+    pushToHistory();
+    const overlay = document.getElementById('processing-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    
+    let action = hasRouted ? 'updateEndpoint' : 'updateInspectorDefault';
+    let payload = { action, type, address, lat, lng };
+    
+    if (hasRouted) {
+        payload.routeId = routeId; 
+    } else {
+        payload.driverId = inspId;
+    }
+    
+    try {
+        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+    } catch (e) {
+        console.error("Endpoint update failed:", e);
+        await customAlert("Failed to sync new address to server. Ensure connection is stable.");
+    } finally {
+        if (overlay) overlay.style.display = 'none';
+    }
+}
+
+// Cascading Endpoints Engine
+function getActiveEndpoints() {
+    if (isManagerView && currentInspectorFilter === 'all') return { start: null, end: null };
+    
+    const inspId = isManagerView ? currentInspectorFilter : driverParam;
+    const insp = inspectors.find(i => i.id === inspId);
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+    
+    let start = null; 
+    let end = null;
+    
+    if (hasRouted && routeStart && routeStart.address) {
+        start = routeStart;
+    } else if (insp) {
+        start = { address: insp.startAddress || insp.start || '', lat: insp.startLat, lng: insp.startLng };
+    }
+    
+    if (hasRouted && routeEnd && routeEnd.address) {
+        end = routeEnd;
+    } else if (insp) {
+        end = { address: insp.endAddress || insp.end || insp.startAddress || insp.start || '', lat: insp.endLat || insp.startLat, lng: insp.endLng || insp.startLng };
+    }
+    
+    return { start, end };
 }
 
 function updateRoutingUI() {
@@ -703,11 +842,9 @@ async function handleGenerateRoute() {
         }
     }
 
-    let startInput = document.getElementById('input-endpoint-start');
-    let endInput = document.getElementById('input-endpoint-end');
-    
-    let sAddr = startInput ? startInput.value : '';
-    let eAddr = endInput ? endInput.value : '';
+    const eps = getActiveEndpoints();
+    let sAddr = eps.start ? eps.start.address : '';
+    let eAddr = eps.end ? eps.end.address : '';
 
     try {
         const res = await fetch(WEB_APP_URL, {
@@ -761,6 +898,10 @@ async function handleStartOver() {
                 s.status = '';
             }
         });
+        
+        // Clearing routing removes routeStart/End forcing map back to defaults
+        routeStart = null;
+        routeEnd = null;
         
         dirtyRoutes.clear();
         render(); drawRoute(); updateSummary(); updateUndoUI();
@@ -1078,8 +1219,10 @@ function createRouteSubheading(clusterNum, clusterStops) {
 window.checkEndpointModified = function() {
     const sVal = document.getElementById('input-endpoint-start')?.value || '';
     const eVal = document.getElementById('input-endpoint-end')?.value || '';
-    const sOrig = routeStart?.address || '';
-    const eOrig = routeEnd?.address || '';
+    
+    const eps = getActiveEndpoints();
+    const sOrig = eps.start?.address || '';
+    const eOrig = eps.end?.address || '';
     
     const modified = (sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim());
     const isDirty = dirtyRoutes.has('endpoints_0');
@@ -1091,11 +1234,12 @@ window.checkEndpointModified = function() {
 };
 
 window.handleEndpointOptimize = async function() {
-    const sVal = document.getElementById('input-endpoint-start')?.value || '';
-    const eVal = document.getElementById('input-endpoint-end')?.value || '';
+    const eps = getActiveEndpoints();
+    let sVal = document.getElementById('input-endpoint-start')?.value || '';
+    let eVal = document.getElementById('input-endpoint-end')?.value || '';
     
-    if (routeStart) routeStart.address = sVal; else routeStart = {address: sVal};
-    if (routeEnd) routeEnd.address = eVal; else routeEnd = {address: eVal};
+    if (routeStart) routeStart.address = sVal; else routeStart = { address: sVal, lat: eps.start?.lat, lng: eps.start?.lng };
+    if (routeEnd) routeEnd.address = eVal; else routeEnd = { address: eVal, lat: eps.end?.lat, lng: eps.end?.lng };
 
     await finalizeSync('optimize', sVal, eVal);
     
@@ -1113,26 +1257,9 @@ window.handleEndpointOptimize = async function() {
     render();
 };
 
-// Local Front-End Geocoding to instantly resolve user-typed endpoint lat/lng
-async function geocodeAddress(addr) {
-    if (!addr) return null;
-    try {
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addr)}.json?access_token=${MAPBOX_TOKEN}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.features && data.features.length > 0) {
-            return {
-                lat: data.features[0].center[1],
-                lng: data.features[0].center[0]
-            };
-        }
-    } catch (e) { console.error("Geocoding error:", e); }
-    return null;
-}
-
 function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
-    const placeholder = type === 'start' ? 'Enter Start Address...' : 'Enter End Address...';
+    const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
     const inputId = `input-endpoint-${type}`;
     const labelText = type === 'start' ? 'Start' : 'End';
     
@@ -1149,7 +1276,9 @@ function createEndpointRow(type, endpointData) {
             <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">🏁</div>
             <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
                 ${optBtnHtml}
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; flex:1;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
+                <div style="position:relative; width:100%; flex:1;">
+                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="handleEndpointInput(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                </div>
             </div>
             <div class="stop-actions" style="width: 40px;"></div>
         `;
@@ -1164,53 +1293,12 @@ function createEndpointRow(type, endpointData) {
                 ${optBtnHtml}
                 <div style="font-size:18px; margin-right: 8px;">🏁</div>
                 <span style="font-weight:bold; color:var(--text-main); font-size:14px; white-space:nowrap; margin-right: 12px;">${labelText}:</span>
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%; max-width: 350px;" value="${displayAddr}" placeholder="${placeholder}" oninput="checkEndpointModified()" onblur="updateEndpointAddress('${type}', this.value)">
+                <div style="position:relative; width:100%; max-width: 350px;">
+                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" oninput="handleEndpointInput(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                </div>
             </div>
         `;
         return el;
-    }
-}
-
-async function updateEndpointAddress(type, value) {
-    if (!value.trim()) return;
-
-    // Resolve local coordinates instantly before passing to the backend
-    let epObj = { address: value };
-    const geo = await geocodeAddress(value);
-    if (geo) {
-        epObj.lat = geo.lat;
-        epObj.lng = geo.lng;
-    }
-    
-    if (type === 'start') routeStart = epObj;
-    if (type === 'end') routeEnd = epObj;
-    markRouteDirty('endpoints', 0);
-    render(); drawRoute(); 
-    
-    if (!routeId) return; 
-    
-    pushToHistory();
-    const overlay = document.getElementById('processing-overlay');
-    if (overlay) overlay.style.display = 'flex';
-    
-    try {
-        let payload = { action: 'updateEndpoint', routeId: routeId, type: type, address: value };
-        if (geo) {
-            payload.lat = geo.lat;
-            payload.lng = geo.lng;
-        }
-        const res = await fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        
-        if (data.error) throw new Error(data.error);
-    } catch (e) {
-        console.error("Endpoint update failed:", e);
-        await customAlert("Failed to sync new address to server. Ensure connection is stable.");
-    } finally {
-        if (overlay) overlay.style.display = 'none';
     }
 }
 
@@ -1290,7 +1378,6 @@ function render() {
         const isRoutedStop = statusStr === 'routed' || statusStr === 'completed';
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
         
-        // Wipe ETAs if route logic is dirty or marked universally out-of-sync by the backend
         if (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) {
             etaTime = '--';
         }
@@ -1403,19 +1490,19 @@ function render() {
         return item;
     };
 
-    let currentStart = routeStart ? { ...routeStart } : null;
-    let currentEnd = routeEnd ? { ...routeEnd } : null;
-
-    if (isSingleInspector) {
+    if (isSingleInspector || !isManagerView) {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
         routedStops.sort(sortByEta);
 
-        listContainer.appendChild(createEndpointRow('start', currentStart));
+        let eps = getActiveEndpoints();
+        listContainer.appendChild(createEndpointRow('start', eps.start));
 
         if (unroutedStops.length > 0) {
-            const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
-            listContainer.appendChild(el);
+            if (isManagerView) {
+                const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
+                listContainer.appendChild(el);
+            }
             const unroutedDiv = document.createElement('div');
             unroutedDiv.id = 'unrouted-list';
             unroutedDiv.style.minHeight = '30px'; 
@@ -1430,7 +1517,7 @@ function render() {
                 if (cStops.length > 0) {
                     listContainer.appendChild(createRouteSubheading(clusterId, cStops));
                     const routedDiv = document.createElement('div');
-                    routedDiv.id = `routed-list-${clusterId}`;
+                    routedDiv.id = isManagerView ? `routed-list-${clusterId}` : `driver-list-${clusterId}`;
                     routedDiv.className = 'routed-group-container';
                     routedDiv.style.minHeight = '30px';
                     listContainer.appendChild(routedDiv);
@@ -1439,34 +1526,7 @@ function render() {
             });
         }
         
-        listContainer.appendChild(createEndpointRow('end', currentEnd));
-        
-    } else if (viewMode === 'inspector') {
-        const activeStopsCopy = [...activeStops].sort(sortByEta);
-        const uniqueClusters = [...new Set(activeStopsCopy.map(s => s.cluster || 0))].sort();
-        
-        listContainer.appendChild(createEndpointRow('start', currentStart));
-        
-        if (uniqueClusters.length > 1) {
-            uniqueClusters.forEach(clusterId => {
-                const cStops = activeStopsCopy.filter(s => (s.cluster || 0) === clusterId);
-                if (cStops.length > 0) {
-                    listContainer.appendChild(createRouteSubheading(clusterId, cStops));
-                    const routedDiv = document.createElement('div');
-                    routedDiv.id = `driver-list-${clusterId}`;
-                    routedDiv.className = 'routed-group-container';
-                    listContainer.appendChild(routedDiv);
-                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
-                }
-            });
-        } else {
-            const mainDiv = document.createElement('div');
-            mainDiv.id = 'main-list-container';
-            listContainer.appendChild(mainDiv);
-            activeStopsCopy.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
-        }
-        
-        listContainer.appendChild(createEndpointRow('end', currentEnd));
+        listContainer.appendChild(createEndpointRow('end', eps.end));
         
     } else {
         const mainDiv = document.createElement('div');
@@ -1481,33 +1541,45 @@ function render() {
         const activeDriverIds = new Set(activeStops.map(s => s.driverId));
         inspectors.forEach(insp => {
             if (activeDriverIds.has(insp.id)) {
-                let iStart = insp.routeStart ? parseJsonEndpoint(insp.routeStart) : null;
-                let iEnd = insp.routeEnd ? parseJsonEndpoint(insp.routeEnd) : null;
-                
-                let sLng = (iStart && iStart.lng) ? iStart.lng : (routeStart ? routeStart.lng : null);
-                let sLat = (iStart && iStart.lat) ? iStart.lat : (routeStart ? routeStart.lat : null);
-                let eLng = (iEnd && iEnd.lng) ? iEnd.lng : (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
-                let eLat = (iEnd && iEnd.lat) ? iEnd.lat : (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
-                
-                if (sLng && sLat && !isNaN(sLng)) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat)});
-                if (eLng && eLat && !isNaN(eLng)) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat)});
+                let sLng = insp.startLng; let sLat = insp.startLat;
+                let eLng = insp.endLng || insp.startLng; let eLat = insp.endLat || insp.startLat;
+                if (sLng && sLat) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat), driverId: insp.id});
+                if (eLng && eLat) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat), driverId: insp.id});
             }
         });
     } else {
-        if (currentStart && currentStart.lng && currentStart.lat && !isNaN(currentStart.lng)) endpointsToDraw.push({lng: parseFloat(currentStart.lng), lat: parseFloat(currentStart.lat)});
-        if (currentEnd && currentEnd.lng && currentEnd.lat && !isNaN(currentEnd.lng)) endpointsToDraw.push({lng: parseFloat(currentEnd.lng), lat: parseFloat(currentEnd.lat)});
+        let eps = getActiveEndpoints();
+        let cInsp = inspectors.find(i => i.id === (isManagerView ? currentInspectorFilter : driverParam));
+        let dId = cInsp ? cInsp.id : null;
+        if (eps.start && eps.start.lng && eps.start.lat) endpointsToDraw.push({lng: parseFloat(eps.start.lng), lat: parseFloat(eps.start.lat), driverId: dId});
+        if (eps.end && eps.end.lng && eps.end.lat) endpointsToDraw.push({lng: parseFloat(eps.end.lng), lat: parseFloat(eps.end.lat), driverId: dId});
     }
 
     const seenCoords = new Set();
     endpointsToDraw.forEach(ep => {
-        if (isNaN(ep.lng) || isNaN(ep.lat)) return; 
         const key = `${ep.lng},${ep.lat}`;
         if (!seenCoords.has(key)) {
             seenCoords.add(key);
+            
+            let inspColor = '#ffffff';
+            if (ep.driverId) {
+                const dIdx = inspectors.findIndex(i => i.id === ep.driverId);
+                if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
+            } else if (currentInspectorFilter !== 'all') {
+                const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
+                if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
+            }
+            
             const el = document.createElement('div');
             el.className = 'marker start-end-marker';
-            el.innerHTML = `<div style="font-size: 24px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)); transform: translateY(-10px);">🏁</div>`;
-            const m = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([ep.lng, ep.lat]).addTo(map);
+            
+            // Rebuilt hollow circle pin with 🏁 flag in top right
+            el.innerHTML = `
+                <div class="pin-visual" style="background-color: transparent; border: 3px solid ${inspColor}; border-radius: 50%; width: 20px; height: 20px;"></div>
+                <div class="marker-warning" style="font-size: 14px; line-height: 1; transform: translate(50%, -50%); top: 0; right: 0;">🏁</div>
+            `;
+            
+            const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([ep.lng, ep.lat]).addTo(map);
             markers.push(m);
             bounds.extend([ep.lng, ep.lat]);
         }
@@ -1591,13 +1663,15 @@ async function handleCalculate() {
             return; 
         }
 
+        const eps = getActiveEndpoints();
+
         let payload = {
             action: 'calculate',
             routeId: routeId,
             driver: driverParam,
             startTime: currentStartTime,
-            startAddr: routeStart && routeStart.address ? routeStart.address : null,
-            endAddr: routeEnd && routeEnd.address ? routeEnd.address : null,
+            startAddr: eps.start?.address || null,
+            endAddr: eps.end?.address || null,
             isManager: isManagerView,
             stops: stopsToCalculate.map(s => minifyStop(s, (s.cluster || 0) + 1))
         };
@@ -1769,21 +1843,16 @@ function drawRoute() {
             let coords = cStops.map(s => [parseFloat(s.lng), parseFloat(s.lat)]);
             
             let dId = key.split('_')[0];
-            let rStart = routeStart;
-            let rEnd = routeEnd;
+            let eps = getActiveEndpoints();
+            let rStart = eps.start;
+            let rEnd = eps.end;
 
-            if (dId !== 'unassigned') {
+            // Connect specific inspector endpoints if manager is viewing all
+            if (isManagerView && currentInspectorFilter === 'all' && dId !== 'unassigned') {
                 const insp = inspectors.find(i => i.id === dId);
                 if (insp) {
-                    let iStart = insp.routeStart ? parseJsonEndpoint(insp.routeStart) : null;
-                    let iEnd = insp.routeEnd ? parseJsonEndpoint(insp.routeEnd) : null;
-
-                    if (!rStart || !rStart.lat) {
-                        rStart = (iStart && iStart.lat) ? {lat: iStart.lat, lng: iStart.lng} : (routeStart ? {lat: routeStart.lat, lng: routeStart.lng} : null);
-                    }
-                    if (!rEnd || !rEnd.lat) {
-                        rEnd = (iEnd && iEnd.lat) ? {lat: iEnd.lat, lng: iEnd.lng} : (routeEnd ? {lat: routeEnd.lat, lng: routeEnd.lng} : null);
-                    }
+                    rStart = { lng: insp.startLng, lat: insp.startLat };
+                    rEnd = { lng: insp.endLng || insp.startLng, lat: insp.endLat || insp.startLat };
                 }
             }
 
@@ -1824,15 +1893,17 @@ function setNavPref(p, la, ln) { localStorage.setItem('navPref', p); document.ge
 function launchMaps(p, la, ln) { window.location.href = p === 'google' ? `comgooglemaps://?daddr=${la},${ln}` : `maps://maps.apple.com/?daddr=${la},${ln}`; }
 
 async function finalizeSync(type, directStart = null, directEnd = null) {
-    const startAddr = directStart !== null ? directStart : (document.getElementById('start-addr')?.value || '');
-    const endAddr = directEnd !== null ? directEnd : (document.getElementById('end-addr')?.value || '');
+    const eps = getActiveEndpoints();
+    const startAddr = directStart !== null ? directStart : (document.getElementById('input-endpoint-start')?.value || '');
+    const endAddr = directEnd !== null ? directEnd : (document.getElementById('input-endpoint-end')?.value || '');
+    
     const modal = document.getElementById('modal-overlay');
     if(modal) modal.style.display = 'none';
     
-    let sLat = routeStart && routeStart.lat ? routeStart.lat : null;
-    let sLng = routeStart && routeStart.lng ? routeStart.lng : null;
-    let eLat = routeEnd && routeEnd.lat ? routeEnd.lat : null;
-    let eLng = routeEnd && routeEnd.lng ? routeEnd.lng : null;
+    let sLat = routeStart && routeStart.lat ? routeStart.lat : eps.start?.lat || null;
+    let sLng = routeStart && routeStart.lng ? routeStart.lng : eps.start?.lng || null;
+    let eLat = routeEnd && routeEnd.lat ? routeEnd.lat : eps.end?.lat || null;
+    let eLng = routeEnd && routeEnd.lng ? routeEnd.lng : eps.end?.lng || null;
 
     let payload = { 
         action: type, routeId: routeId, driver: driverParam, 
