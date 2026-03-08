@@ -1,11 +1,11 @@
 // *
-// * Dashboard - V4.24
+// * Dashboard - V4.25
 // * FILE: app.js
-// * Changes: V4.24 - Added auto-commit to endpoint text inputs on Enter/Blur using 
-// * the top Mapbox suggestion. Added auto-select text on input focus. Hid the 
-// * Re-Optimize button when no active routes exist. Matched start/end map pin 
-// * sizes to standard pins, and updated emojis (🏠 for Start top-left, 🏁 for 
-// * End top-right) preventing overlap when coordinates are identical.
+// * Changes: V4.25 - Removed Re-Optimize button from endpoint rows. Added Manager route-reset 
+// * warning before altering actively routed endpoints. Added dynamic header Re-Optimize 
+// * button and "Changes Made" badge for Inspector view. Fixed text selection flashing by 
+// * overriding onmouseup. Patched visual scrolling bugs by adjusting sticky margins and 
+// * enforcing strict z-indexes to cover fa-grip-lines.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -412,7 +412,6 @@ async function loadData() {
         const res = await fetch(`${WEB_APP_URL}${queryParams}`);
         const data = await res.json();
         
-        // Polling logic for async backend processing
         if (data.status === 'processing' || data.status === 'queued') {
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'flex';
@@ -424,7 +423,6 @@ async function loadData() {
             routeId = data.routeId;
         }
 
-        // Blank out ETAs if backend explicitly says calculations are out of sync
         if (data.needsRecalculation) {
             isAlteredRoute = true;
             dirtyRoutes.add('all'); 
@@ -449,7 +447,6 @@ async function loadData() {
             };
         });
 
-        // Smart Polling Lock: Wait until the backend actually returns routed data for the selected driver
         if (isPollingForRoute) {
             const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed'));
             if (!driverHasRouted && pollRetries < 15) {
@@ -457,7 +454,7 @@ async function loadData() {
                 const overlay = document.getElementById('processing-overlay');
                 if (overlay) overlay.style.display = 'flex';
                 setTimeout(loadData, 5000);
-                return; // Exit here so it doesn't render the unrouted array
+                return;
             } else {
                 isPollingForRoute = false; 
             }
@@ -569,7 +566,7 @@ function commitTopSuggestion(type, inputEl) {
         if (latestSuggestions[type]) {
             const top = latestSuggestions[type];
             inputEl.value = top.place_name;
-            selectEndpoint(type, top.place_name, top.center[1], top.center[0]);
+            selectEndpoint(type, top.place_name, top.center[1], top.center[0], inputEl);
         }
     }
 }
@@ -643,7 +640,7 @@ function renderAutocomplete(features, inputEl, type) {
             latestSuggestions[type] = f; 
             inputEl.value = f.place_name;
             dropdown.innerHTML = '';
-            selectEndpoint(type, f.place_name, f.center[1], f.center[0]);
+            selectEndpoint(type, f.place_name, f.center[1], f.center[0], inputEl);
         };
         dropdown.appendChild(item);
     });
@@ -657,21 +654,66 @@ function handleEndpointBlur(type, inputEl) {
     }, 200);
 }
 
-async function selectEndpoint(type, address, lat, lng) {
+async function selectEndpoint(type, address, lat, lng, inputEl) {
+    const inspId = isManagerView ? currentInspectorFilter : driverParam;
+    const insp = inspectors.find(i => i.id === inspId);
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+
+    if (isManagerView && hasRouted) {
+        const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
+        if (!proceed) {
+            const eps = getActiveEndpoints();
+            if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
+            return;
+        }
+    }
+    
     let epObj = { address, lat, lng };
     if (type === 'start') routeStart = epObj;
     if (type === 'end') routeEnd = epObj;
-    markRouteDirty('endpoints', 0);
-    
-    const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    const insp = inspectors.find(i => i.id === inspId);
+
     if (insp) {
         if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
         if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
     }
     
-    render(); drawRoute();
-    saveEndpointToBackend(type, address, lat, lng);
+    if (isManagerView && hasRouted) {
+        await executeRouteReset(insp.id);
+    } else {
+        markRouteDirty('endpoints', 0);
+        render(); drawRoute(); updateSummary();
+        saveEndpointToBackend(type, address, lat, lng);
+    }
+}
+
+async function executeRouteReset(driverId) {
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
+    
+    try {
+        await fetch(WEB_APP_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({ action: 'resetRoute', driverId: driverId, routeId: routeId }) 
+        });
+        
+        historyStack = []; 
+        stops.forEach(s => {
+            if (s.driverId === driverId && (s.status||'').toLowerCase() === 'routed') {
+                s.eta = ''; s.dist = ''; s.status = '';
+            }
+        });
+        
+        routeStart = null;
+        routeEnd = null;
+        
+        dirtyRoutes.clear();
+        render(); drawRoute(); updateSummary(); updateUndoUI();
+    } catch(e) { 
+        await customAlert("Error resetting the route."); 
+    } finally { 
+        if(overlay) overlay.style.display = 'none'; 
+    }
 }
 
 async function saveEndpointToBackend(type, address, lat, lng) {
@@ -744,12 +786,36 @@ function updateRoutingUI() {
     const btnStartOver = document.getElementById('btn-header-start-over');
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
+
+    // Dynamic Inspector Header Additions
+    if (!document.getElementById('btn-header-optimize-insp')) {
+        const optBtn = document.createElement('button');
+        optBtn.id = 'btn-header-optimize-insp';
+        optBtn.className = 'header-action-btn';
+        optBtn.style.cssText = 'background: #2C3D4F; color: white; display: none;';
+        optBtn.innerText = 'Re-Optimize';
+        optBtn.onclick = () => handleEndpointOptimize();
+        if (routingControls) routingControls.appendChild(optBtn);
+    }
+    
+    if (!document.getElementById('badge-changes-made')) {
+        const badge = document.createElement('div');
+        badge.id = 'badge-changes-made';
+        badge.style.cssText = 'background-color: var(--red, #e6194B); color: yellow; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; display: none; align-items: center; justify-content: center; margin-right: 8px;';
+        badge.innerText = 'Changes Made';
+        if (routingControls) routingControls.insertBefore(badge, routingControls.firstChild); 
+    }
+
+    const optInspBtn = document.getElementById('btn-header-optimize-insp');
+    const badgeChanges = document.getElementById('badge-changes-made');
     
     // Default Hide
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
     if(btnRecalc) btnRecalc.style.display = 'none';
     if(btnRestore) btnRestore.style.display = 'none';
+    if(optInspBtn) optInspBtn.style.display = 'none';
+    if(badgeChanges) badgeChanges.style.display = 'none';
 
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
@@ -789,12 +855,26 @@ function updateRoutingUI() {
             if(btnStartOver) btnStartOver.style.display = 'flex';
         }
     } else {
-        if(routingControls) routingControls.style.display = 'none';
+        if(routingControls) routingControls.style.display = 'flex';
         
-        if (isAlteredRoute && !isDirty) {
-            if(btnRestore) btnRestore.style.display = 'flex';
-        } else if (isDirty || (isAlteredRoute && isDirty)) { 
-             if(btnRecalc) btnRecalc.style.display = 'flex';
+        let showRecalc = false;
+        let showOpt = false;
+        let showBadge = false;
+
+        if (isDirty) {
+            showRecalc = true;
+            showBadge = true;
+            if (dirtyRoutes.has('endpoints_0') || PERMISSION_REOPTIMIZE) showOpt = true;
+        } else if (isAlteredRoute) {
+            if(btnRestore) btnRestore.style.display = 'flex'; 
+        }
+        
+        if(btnRecalc) btnRecalc.style.display = showRecalc ? 'flex' : 'none';
+        if(optInspBtn) optInspBtn.style.display = showOpt ? 'flex' : 'none';
+        if(badgeChanges) badgeChanges.style.display = showBadge ? 'flex' : 'none';
+
+        if (!showRecalc && !showOpt && !isAlteredRoute) {
+            if(routingControls) routingControls.style.display = 'none';
         }
     }
 }
@@ -902,42 +982,9 @@ async function handleGenerateRoute() {
 
 async function handleStartOver() {
     if(!(await customConfirm("Clear All Routes For This Inspector?"))) return;
-    
     const insp = inspectors.find(i => i.id === currentInspectorFilter);
     if (!insp) return;
-
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-    
-    try {
-        await fetch(WEB_APP_URL, { 
-            method: 'POST', 
-            body: JSON.stringify({ action: 'resetRoute', driverId: insp.id, routeId: routeId }) 
-        });
-        
-        historyStack = []; 
-        
-        stops.forEach(s => {
-            if (s.driverId === insp.id && (s.status||'').toLowerCase() === 'routed') {
-                s.eta = '';
-                s.dist = '';
-                s.status = '';
-            }
-        });
-        
-        // Clearing routing removes routeStart/End forcing map back to defaults
-        routeStart = null;
-        routeEnd = null;
-        
-        dirtyRoutes.clear();
-        render(); drawRoute(); updateSummary(); updateUndoUI();
-    } catch(e) { 
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Error resetting the route. Please try again."); 
-        console.error(e);
-    } finally { 
-        if(overlay) overlay.style.display = 'none'; 
-    }
+    await executeRouteReset(insp.id);
 }
 
 async function handleRestoreOriginal() {
@@ -1238,6 +1285,10 @@ function createRouteSubheading(clusterNum, clusterStops) {
     
     const el = document.createElement('div');
     el.className = 'list-subheading';
+    el.style.position = 'sticky';
+    el.style.top = '0';
+    el.style.zIndex = '15';
+    el.style.marginTop = '-1px';
     el.innerHTML = `<span>ROUTE ${clusterNum + 1}</span><span class="route-summary-text">${totalMi.toFixed(1)} mi | ${hrs} hrs | ${clusterStops.length} stops | ${dueText}</span>`;
     return el;
 }
@@ -1251,22 +1302,15 @@ window.checkEndpointModified = function() {
     const eOrig = eps.end?.address || '';
     
     const modified = (sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim());
-    const isDirty = dirtyRoutes.has('endpoints_0');
-
-    // Only allow opt if there is actually an active routed state
-    const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
-    const canOpt = (isManagerView || PERMISSION_REOPTIMIZE) && hasRouted;
+    if (modified) markRouteDirty('endpoints', 0);
     
-    document.querySelectorAll('.btn-endpoint-opt').forEach(btn => {
-        btn.style.display = ((modified || isDirty) && canOpt) ? 'block' : 'none';
-    });
+    updateRoutingUI();
 };
 
 window.handleEndpointOptimize = async function() {
     const eps = getActiveEndpoints();
-    let sVal = document.getElementById('input-endpoint-start')?.value || '';
-    let eVal = document.getElementById('input-endpoint-end')?.value || '';
+    let sVal = document.getElementById('input-endpoint-start')?.value || eps.start?.address;
+    let eVal = document.getElementById('input-endpoint-end')?.value || eps.end?.address;
     
     if (routeStart) routeStart.address = sVal; else routeStart = { address: sVal, lat: eps.start?.lat, lng: eps.start?.lng };
     if (routeEnd) routeEnd.address = eVal; else routeEnd = { address: eVal, lat: eps.end?.lat, lng: eps.end?.lng };
@@ -1294,25 +1338,14 @@ function createEndpointRow(type, endpointData) {
     const labelText = type === 'start' ? 'Start' : 'End';
     const rowIcon = type === 'start' ? '🏠' : '🏁';
     
-    const isDirty = dirtyRoutes.has('endpoints_0');
-    
-    const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
-    const canOpt = (isManagerView || PERMISSION_REOPTIMIZE) && hasRouted;
-    
-    const displayStyle = (isDirty && canOpt) ? 'block' : 'none';
-    
-    const optBtnHtml = `<button class="header-action-btn btn-endpoint-opt" style="display:${displayStyle}; background:#2C3D4F; color:white; flex-shrink:0; width:auto; padding:0 12px; margin-right: 8px;" onmousedown="event.preventDefault(); handleEndpointOptimize()">Re-Optimize</button>`;
-    
     if (!isManagerView) {
         const el = document.createElement('div');
         el.className = 'stop-item static-endpoint compact';
         el.innerHTML = `
             <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${rowIcon}</div>
             <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
-                ${optBtnHtml}
                 <div style="position:relative; width:100%; flex:1;">
-                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 </div>
             </div>
             <div class="stop-actions" style="width: 40px;"></div>
@@ -1325,11 +1358,10 @@ function createEndpointRow(type, endpointData) {
         el.style.padding = '8px 10px';
         el.innerHTML = `
             <div style="display:flex; flex:1; align-items:center; justify-content:flex-end;">
-                ${optBtnHtml}
                 <div style="font-size:18px; margin-right: 8px;">${rowIcon}</div>
                 <span style="font-weight:bold; color:var(--text-main); font-size:14px; white-space:nowrap; margin-right: 12px;">${labelText}:</span>
                 <div style="position:relative; width:100%; max-width: 350px;">
-                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 </div>
             </div>
         `;
@@ -1357,6 +1389,10 @@ function render() {
     if (isManagerView) {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
+        header.style.position = 'sticky';
+        header.style.top = '0';
+        header.style.zIndex = '20';
+        header.style.marginTop = '-1px';
         
         const sortIcon = (col) => isAllInspectors ? getSortIcon(col) : '';
         const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
