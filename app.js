@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.25
+// * Dashboard - V4.26
 // * FILE: app.js
-// * Changes: V4.25 - Fixed a data mapping mismatch in the endpoint fallback logic. 
-// * The front end now correctly maps nested backend coordinate objects 
-// * (e.g., insp.routeStart.lat) alongside flat properties to ensure Mapbox 
-// * can always locate the start/end coordinates and draw the 🏁 pins.
+// * Changes: V4.26 - Added parseJsonEndpoint() helper. If the backend passes the 
+// * inspector's start/end locations as stringified JSON objects from the spreadsheet 
+// * (e.g., '{"lat":...}'), the front end now successfully parses the string into a 
+// * usable object to extract the coordinates for the map flags.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -41,6 +41,16 @@ let isAlteredRoute = false;
 
 let isPollingForRoute = false;
 let pollRetries = 0;
+
+// Helper to safely parse stringified JSON endpoint data from the spreadsheet
+function parseJsonEndpoint(val) {
+    if (!val) return {};
+    if (typeof val === 'object') return val;
+    if (typeof val === 'string' && val.trim().startsWith('{')) {
+        try { return JSON.parse(val); } catch(e) { return { address: val }; }
+    }
+    return { address: val };
+}
 
 // Custom Dark Mode Alerts & Confirms
 function customAlert(msg) {
@@ -1402,21 +1412,24 @@ function render() {
         activeInsp = inspectors.find(i => i.id === driverParam) || (inspectors.length > 0 ? inspectors[0] : null);
     }
 
-    // Comprehensive Fallback: Check nested objects AND flat properties
+    // Comprehensive Fallback: Check parsed spreadsheet data AND flat properties
     if (activeInsp) {
         let iStart = activeInsp.routeStart || {};
         let iEnd = activeInsp.routeEnd || {};
         
-        if (!currentStart) currentStart = { address: iStart.address || activeInsp.start || '' };
+        let pStart = parseJsonEndpoint(activeInsp.start);
+        let pEnd = parseJsonEndpoint(activeInsp.end);
+        
+        if (!currentStart) currentStart = { address: iStart.address || pStart.address || activeInsp.start || '' };
         if (!currentStart.lat) {
-            currentStart.lat = iStart.lat || activeInsp.startLat;
-            currentStart.lng = iStart.lng || activeInsp.startLng;
+            currentStart.lat = iStart.lat || pStart.lat || activeInsp.startLat;
+            currentStart.lng = iStart.lng || pStart.lng || activeInsp.startLng;
         }
 
-        if (!currentEnd) currentEnd = { address: iEnd.address || activeInsp.end || iStart.address || activeInsp.start || '' };
+        if (!currentEnd) currentEnd = { address: iEnd.address || pEnd.address || activeInsp.end || iStart.address || pStart.address || activeInsp.start || '' };
         if (!currentEnd.lat) {
-            currentEnd.lat = iEnd.lat || activeInsp.endLat || iStart.lat || activeInsp.startLat;
-            currentEnd.lng = iEnd.lng || activeInsp.endLng || iStart.lng || activeInsp.startLng;
+            currentEnd.lat = iEnd.lat || pEnd.lat || activeInsp.endLat || iStart.lat || pStart.lat || activeInsp.startLat;
+            currentEnd.lng = iEnd.lng || pEnd.lng || activeInsp.endLng || iStart.lng || pStart.lng || activeInsp.startLng;
         }
     }
 
@@ -1497,11 +1510,13 @@ function render() {
             if (activeDriverIds.has(insp.id)) {
                 let iStart = insp.routeStart || {};
                 let iEnd = insp.routeEnd || {};
+                let pStart = parseJsonEndpoint(insp.start);
+                let pEnd = parseJsonEndpoint(insp.end);
                 
-                let sLng = iStart.lng || insp.startLng || (routeStart ? routeStart.lng : null);
-                let sLat = iStart.lat || insp.startLat || (routeStart ? routeStart.lat : null);
-                let eLng = iEnd.lng || insp.endLng || iStart.lng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
-                let eLat = iEnd.lat || insp.endLat || iStart.lat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
+                let sLng = iStart.lng || pStart.lng || insp.startLng || (routeStart ? routeStart.lng : null);
+                let sLat = iStart.lat || pStart.lat || insp.startLat || (routeStart ? routeStart.lat : null);
+                let eLng = iEnd.lng || pEnd.lng || insp.endLng || iStart.lng || pStart.lng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
+                let eLat = iEnd.lat || pEnd.lat || insp.endLat || iStart.lat || pStart.lat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
                 
                 if (sLng && sLat && !isNaN(sLng)) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat)});
                 if (eLng && eLat && !isNaN(eLng)) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat)});
@@ -1791,17 +1806,19 @@ function drawRoute() {
                 if (insp) {
                     let iStart = insp.routeStart || {};
                     let iEnd = insp.routeEnd || {};
-                    
+                    let pStart = parseJsonEndpoint(insp.start);
+                    let pEnd = parseJsonEndpoint(insp.end);
+
                     if (!rStart || !rStart.lat) {
-                        rStart = { 
-                            lat: iStart.lat || insp.startLat || (routeStart?.lat), 
-                            lng: iStart.lng || insp.startLng || (routeStart?.lng) 
+                        rStart = {
+                            lat: iStart.lat || pStart.lat || insp.startLat || (routeStart?.lat),
+                            lng: iStart.lng || pStart.lng || insp.startLng || (routeStart?.lng)
                         };
                     }
                     if (!rEnd || !rEnd.lat) {
-                        rEnd = { 
-                            lat: iEnd.lat || insp.endLat || iStart.lat || insp.startLat || (routeEnd?.lat), 
-                            lng: iEnd.lng || insp.endLng || iStart.lng || insp.startLng || (routeEnd?.lng) 
+                        rEnd = {
+                            lat: iEnd.lat || pEnd.lat || insp.endLat || iStart.lat || pStart.lat || insp.startLat || (routeEnd?.lat),
+                            lng: iEnd.lng || pEnd.lng || insp.endLng || iStart.lng || pStart.lng || insp.startLng || (routeEnd?.lng)
                         };
                     }
                 }
