@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.26
+// * Dashboard - V4.27
 // * FILE: app.js
-// * Changes: V4.26 - Added parseJsonEndpoint() helper. If the backend passes the 
-// * inspector's start/end locations as stringified JSON objects from the spreadsheet 
-// * (e.g., '{"lat":...}'), the front end now successfully parses the string into a 
-// * usable object to extract the coordinates for the map flags.
+// * Changes: V4.27 - Stripped out the messy fallback logic that was accidentally 
+// * hooking into the companyAddress string. The app now strictly utilizes 
+// * payload.routeStart and payload.routeEnd right at loadData(), parsing them 
+// * immediately to guarantee Mapbox only draws the true Inspector coordinates.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -44,7 +44,7 @@ let pollRetries = 0;
 
 // Helper to safely parse stringified JSON endpoint data from the spreadsheet
 function parseJsonEndpoint(val) {
-    if (!val) return {};
+    if (!val) return null;
     if (typeof val === 'object') return val;
     if (typeof val === 'string' && val.trim().startsWith('{')) {
         try { return JSON.parse(val); } catch(e) { return { address: val }; }
@@ -437,8 +437,9 @@ async function loadData() {
             dirtyRoutes.add('all'); 
         }
 
-        routeStart = data.routeStart || null;
-        routeEnd = data.routeEnd || null;
+        // Strict endpoint extraction explicitly bypassing any companyAddress fallback string
+        routeStart = data.routeStart ? parseJsonEndpoint(data.routeStart) : null;
+        routeEnd = data.routeEnd ? parseJsonEndpoint(data.routeEnd) : null;
         
         if (data.isAlteredRoute) isAlteredRoute = true;
 
@@ -1405,34 +1406,6 @@ function render() {
     let currentStart = routeStart ? { ...routeStart } : null;
     let currentEnd = routeEnd ? { ...routeEnd } : null;
 
-    let activeInsp = null;
-    if (isSingleInspector) {
-        activeInsp = inspectors.find(i => i.id === currentInspectorFilter);
-    } else if (!isManagerView) {
-        activeInsp = inspectors.find(i => i.id === driverParam) || (inspectors.length > 0 ? inspectors[0] : null);
-    }
-
-    // Comprehensive Fallback: Check parsed spreadsheet data AND flat properties
-    if (activeInsp) {
-        let iStart = activeInsp.routeStart || {};
-        let iEnd = activeInsp.routeEnd || {};
-        
-        let pStart = parseJsonEndpoint(activeInsp.start);
-        let pEnd = parseJsonEndpoint(activeInsp.end);
-        
-        if (!currentStart) currentStart = { address: iStart.address || pStart.address || activeInsp.start || '' };
-        if (!currentStart.lat) {
-            currentStart.lat = iStart.lat || pStart.lat || activeInsp.startLat;
-            currentStart.lng = iStart.lng || pStart.lng || activeInsp.startLng;
-        }
-
-        if (!currentEnd) currentEnd = { address: iEnd.address || pEnd.address || activeInsp.end || iStart.address || pStart.address || activeInsp.start || '' };
-        if (!currentEnd.lat) {
-            currentEnd.lat = iEnd.lat || pEnd.lat || activeInsp.endLat || iStart.lat || pStart.lat || activeInsp.startLat;
-            currentEnd.lng = iEnd.lng || pEnd.lng || activeInsp.endLng || iStart.lng || pStart.lng || activeInsp.startLng;
-        }
-    }
-
     if (isSingleInspector) {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
@@ -1508,15 +1481,13 @@ function render() {
         const activeDriverIds = new Set(activeStops.map(s => s.driverId));
         inspectors.forEach(insp => {
             if (activeDriverIds.has(insp.id)) {
-                let iStart = insp.routeStart || {};
-                let iEnd = insp.routeEnd || {};
-                let pStart = parseJsonEndpoint(insp.start);
-                let pEnd = parseJsonEndpoint(insp.end);
+                let iStart = insp.routeStart ? parseJsonEndpoint(insp.routeStart) : null;
+                let iEnd = insp.routeEnd ? parseJsonEndpoint(insp.routeEnd) : null;
                 
-                let sLng = iStart.lng || pStart.lng || insp.startLng || (routeStart ? routeStart.lng : null);
-                let sLat = iStart.lat || pStart.lat || insp.startLat || (routeStart ? routeStart.lat : null);
-                let eLng = iEnd.lng || pEnd.lng || insp.endLng || iStart.lng || pStart.lng || insp.startLng || (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
-                let eLat = iEnd.lat || pEnd.lat || insp.endLat || iStart.lat || pStart.lat || insp.startLat || (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
+                let sLng = (iStart && iStart.lng) ? iStart.lng : (routeStart ? routeStart.lng : null);
+                let sLat = (iStart && iStart.lat) ? iStart.lat : (routeStart ? routeStart.lat : null);
+                let eLng = (iEnd && iEnd.lng) ? iEnd.lng : (routeEnd ? routeEnd.lng : (routeStart ? routeStart.lng : null));
+                let eLat = (iEnd && iEnd.lat) ? iEnd.lat : (routeEnd ? routeEnd.lat : (routeStart ? routeStart.lat : null));
                 
                 if (sLng && sLat && !isNaN(sLng)) endpointsToDraw.push({lng: parseFloat(sLng), lat: parseFloat(sLat)});
                 if (eLng && eLat && !isNaN(eLng)) endpointsToDraw.push({lng: parseFloat(eLng), lat: parseFloat(eLat)});
@@ -1804,22 +1775,14 @@ function drawRoute() {
             if (dId !== 'unassigned') {
                 const insp = inspectors.find(i => i.id === dId);
                 if (insp) {
-                    let iStart = insp.routeStart || {};
-                    let iEnd = insp.routeEnd || {};
-                    let pStart = parseJsonEndpoint(insp.start);
-                    let pEnd = parseJsonEndpoint(insp.end);
+                    let iStart = insp.routeStart ? parseJsonEndpoint(insp.routeStart) : null;
+                    let iEnd = insp.routeEnd ? parseJsonEndpoint(insp.routeEnd) : null;
 
                     if (!rStart || !rStart.lat) {
-                        rStart = {
-                            lat: iStart.lat || pStart.lat || insp.startLat || (routeStart?.lat),
-                            lng: iStart.lng || pStart.lng || insp.startLng || (routeStart?.lng)
-                        };
+                        rStart = (iStart && iStart.lat) ? {lat: iStart.lat, lng: iStart.lng} : (routeStart ? {lat: routeStart.lat, lng: routeStart.lng} : null);
                     }
                     if (!rEnd || !rEnd.lat) {
-                        rEnd = {
-                            lat: iEnd.lat || pEnd.lat || insp.endLat || iStart.lat || pStart.lat || insp.startLat || (routeEnd?.lat),
-                            lng: iEnd.lng || pEnd.lng || insp.endLng || iStart.lng || pStart.lng || insp.startLng || (routeEnd?.lng)
-                        };
+                        rEnd = (iEnd && iEnd.lat) ? {lat: iEnd.lat, lng: iEnd.lng} : (routeEnd ? {lat: routeEnd.lat, lng: routeEnd.lng} : null);
                     }
                 }
             }
