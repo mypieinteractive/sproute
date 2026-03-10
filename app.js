@@ -1,11 +1,11 @@
 // *
-// * Dashboard - V4.26
+// * Dashboard - V4.27
 // * FILE: app.js
-// * Changes: V4.26 - Refactored for Partitioned JSON Batch Architecture. Implemented 
-// * Ingress/Egress translation dictionaries for single-character status codes (P, R, C, D, V, O). 
-// * Enforced strict string handling for dynamic dynamic BlobID-Index rowIds. Updated 
-// * reassignment logic to clear frontend state and execute fresh doGet to fetch appended 
-// * orders and new rowIds after tombstoning.
+// * Changes: V4.27 - Implemented custom UI email dispatch sequence. Added extraction 
+// * for defaultEmailMessage, companyEmail, and managerEmail from root payload. Integrated 
+// * routeState (Ready, Staging, Dispatched) and routeTargetId into stop parsing. Built 
+// * dynamic Glide-styled email configuration modal. Added handleDispatchRoute webhook 
+// * firing. Configured manager view to strictly hide orders once routeState is 'Dispatched'.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -47,6 +47,10 @@ let sortableUnrouted = null;
 let currentRouteCount = 1; 
 let currentInspectorFilter = 'all';
 
+let defaultEmailMessage = "";
+let companyEmail = "";
+let managerEmail = "";
+
 let routeStart = null;
 let routeEnd = null;
 
@@ -65,10 +69,12 @@ function customAlert(msg) {
         const m = document.getElementById('modal-overlay');
         m.style.display = 'flex';
         document.getElementById('modal-content').innerHTML = `
-            <h3 style="margin-top:0;">Alert</h3>
-            <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
-            <div style="display:flex; justify-content:flex-end;">
-                <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-alert-ok">OK</button>
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left;">
+                <h3 style="margin-top:0;">Alert</h3>
+                <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
+                <div style="display:flex; justify-content:flex-end;">
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-alert-ok">OK</button>
+                </div>
             </div>`;
         document.getElementById('modal-alert-ok').onclick = () => {
             m.style.display = 'none';
@@ -82,11 +88,13 @@ function customConfirm(msg) {
         const m = document.getElementById('modal-overlay');
         m.style.display = 'flex';
         document.getElementById('modal-content').innerHTML = `
-            <h3 style="margin-top:0;">Confirm</h3>
-            <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
-            <div style="display:flex; gap:10px; justify-content:flex-end;">
-                <button style="padding:10px 20px; border:none; border-radius:6px; background:#444; color:white; cursor:pointer;" id="modal-confirm-cancel">Cancel</button>
-                <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-confirm-ok">OK</button>
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left;">
+                <h3 style="margin-top:0;">Confirm</h3>
+                <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:#444; color:white; cursor:pointer;" id="modal-confirm-cancel">Cancel</button>
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-confirm-ok">OK</button>
+                </div>
             </div>`;
         document.getElementById('modal-confirm-ok').onclick = () => { m.style.display = 'none'; resolve(true); };
         document.getElementById('modal-confirm-cancel').onclick = () => { m.style.display = 'none'; resolve(false); };
@@ -167,7 +175,9 @@ function expandStop(minStop) {
         cluster: Math.max(0, clusterIdx),
         address: minStop.a, client: minStop.c, app: minStop.p, dueDate: minStop.d, type: minStop.t,
         eta: minStop.e, dist: minStop.D, lat: minStop.l, lng: minStop.g, status: minStop.s, 
-        durationSecs: minStop.u, rowId: minStop.r
+        durationSecs: minStop.u, rowId: minStop.r,
+        routeState: minStop.routeState || 'Pending',
+        routeTargetId: minStop.routeTargetId || null
     };
 }
 
@@ -298,6 +308,8 @@ function isActiveStop(s) {
     const status = (s.status || '').toLowerCase();
     
     if (isManagerView) {
+        // Core Logic Toggle: Completely hide dispatched routes from manager view
+        if (s.routeState === 'Dispatched') return false;
         active = (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
         active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
@@ -458,7 +470,9 @@ async function loadData() {
                 cluster: exp.cluster || 0,
                 manualCluster: false,
                 _hasExplicitCluster: s.R !== undefined,
-                hiddenInInspector: false
+                hiddenInInspector: false,
+                routeState: exp.routeState || s.routeState || 'Pending',
+                routeTargetId: exp.routeTargetId || s.routeTargetId || null
             };
         });
 
@@ -507,6 +521,10 @@ async function loadData() {
         historyStack = [];
 
         if (!Array.isArray(data)) {
+            if (data.defaultEmailMessage) defaultEmailMessage = data.defaultEmailMessage;
+            if (data.companyEmail) companyEmail = data.companyEmail;
+            if (data.managerEmail) managerEmail = data.managerEmail;
+
             inspectors = data.inspectors || []; 
             inspectors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
@@ -715,7 +733,7 @@ async function executeRouteReset(driverId) {
         historyStack = []; 
         stops.forEach(s => {
             if (s.driverId === driverId && (s.status||'').toLowerCase() === 'routed') {
-                s.eta = ''; s.dist = ''; s.status = 'Pending';
+                s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending';
             }
         });
         
@@ -788,6 +806,124 @@ function getActiveEndpoints() {
     return { start, end };
 }
 
+// Trigger Custom Email Modal UI
+function handleOpenEmailModal() {
+    const insp = inspectors.find(i => i.id === currentInspectorFilter);
+    if (!insp) return;
+
+    const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && s.routeTargetId);
+    if(activeInspStops.length === 0) return;
+
+    const targetRouteId = activeInspStops[0].routeTargetId;
+
+    const m = document.getElementById('modal-overlay');
+    m.style.display = 'flex';
+
+    const modalHtml = `
+        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif;">
+            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 15px; font-weight: bold;">Customize Email Message</h3>
+            
+            <textarea id="email-body-text" style="width: 100%; height: 220px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 12px; font-family: inherit; font-size: 13px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: vertical;">${defaultEmailMessage}</textarea>
+            
+            <div style="margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px;">
+                <input type="checkbox" id="cc-me-checkbox" style="margin-top: 4px; accent-color: #7b93b8;">
+                <label for="cc-me-checkbox" style="font-size: 14px; cursor: pointer; color: #e5e5e5;">
+                    CC me<br>
+                    <span style="font-size: 12px; color: #9a9a9a;">${managerEmail || 'manager@example.com'}</span>
+                </label>
+            </div>
+
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
+                <input type="checkbox" id="cc-company-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8;">
+                <label for="cc-company-checkbox" style="font-size: 14px; cursor: pointer; color: #e5e5e5;">
+                    CC the Company Email<br>
+                    <span style="font-size: 12px; color: #9a9a9a;">${companyEmail || 'company@example.com'}</span>
+                </label>
+            </div>
+
+            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="cc-additional-checkbox" onchange="document.getElementById('additional-cc-wrapper').style.display = this.checked ? 'block' : 'none'" style="accent-color: #7b93b8;">
+                    <label for="cc-additional-checkbox" style="font-size: 14px; cursor: pointer; color: #e5e5e5;">Additional CC</label>
+                </div>
+                <div id="additional-cc-wrapper" style="display: none; padding-left: 24px;">
+                    <input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <div style="background: #1e1e1e; border: 1px solid #333; padding: 14px; border-radius: 6px; font-size: 13px; color: #fff; margin-bottom: 24px; line-height: 1.4;">
+                A list of orders and the map image will be sent to the Inspector(s), along with a direct link to open the interactive map on their device.
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-start;">
+                <button id="btn-submit-dispatch" style="padding: 10px 20px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">Submit</button>
+                <button id="btn-cancel-dispatch" style="padding: 10px 20px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('modal-content').innerHTML = modalHtml;
+
+    document.getElementById('btn-cancel-dispatch').onclick = () => {
+        m.style.display = 'none';
+    };
+
+    document.getElementById('btn-submit-dispatch').onclick = async () => {
+        const btn = document.getElementById('btn-submit-dispatch');
+        btn.innerText = 'Dispatching...';
+        btn.disabled = true;
+
+        const customBody = document.getElementById('email-body-text').value;
+        const ccCompany = document.getElementById('cc-company-checkbox').checked;
+        const ccMe = document.getElementById('cc-me-checkbox').checked;
+        const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
+        const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
+
+        const payload = {
+            action: "dispatchRoute",
+            routeId: targetRouteId,
+            driverId: currentInspectorFilter,
+            companyId: companyParam || '',
+            customBody: customBody,
+            ccCompany: ccCompany,
+            ccMe: ccMe,
+            ccEmail: ccEmail
+        };
+
+        try {
+            const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+            const result = await res.json();
+            
+            if (result.success) {
+                m.style.display = 'none';
+                
+                stops.forEach(s => {
+                    if (s.driverId === currentInspectorFilter && s.routeTargetId === targetRouteId) {
+                        s.routeState = 'Dispatched';
+                    }
+                });
+                render(); drawRoute(); updateSummary();
+                
+                const toast = document.createElement('div');
+                toast.innerText = 'Route Sent!';
+                toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 300);
+                }, 1000);
+            } else {
+                throw new Error("Dispatch failed");
+            }
+        } catch (e) {
+            btn.innerText = 'Submit';
+            btn.disabled = false;
+            await customAlert("Failed to dispatch route. Please try again.");
+        }
+    };
+}
+
 function updateRoutingUI() {
     const activeStops = stops.filter(s => isActiveStop(s));
     const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed').length;
@@ -802,7 +938,17 @@ function updateRoutingUI() {
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
 
-    // Dynamic Inspector Header Additions
+    // Dynamic Header Buttons Setup
+    if (!document.getElementById('btn-header-send-route')) {
+        const sendBtn = document.createElement('button');
+        sendBtn.id = 'btn-header-send-route';
+        sendBtn.className = 'header-action-btn';
+        sendBtn.style.cssText = 'background: white; color: #1E293B; display: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; border: 1px solid #CBD5E1; cursor: pointer; align-items: center; gap: 8px;';
+        sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Route(s)';
+        sendBtn.onclick = () => handleOpenEmailModal();
+        if (routingControls) routingControls.appendChild(sendBtn);
+    }
+
     if (!document.getElementById('btn-header-optimize-insp')) {
         const optBtn = document.createElement('button');
         optBtn.id = 'btn-header-optimize-insp';
@@ -823,6 +969,7 @@ function updateRoutingUI() {
 
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const badgeChanges = document.getElementById('badge-changes-made');
+    const btnSend = document.getElementById('btn-header-send-route');
     
     // Default Hide
     if(btnGen) btnGen.style.display = 'none';
@@ -831,6 +978,7 @@ function updateRoutingUI() {
     if(btnRestore) btnRestore.style.display = 'none';
     if(optInspBtn) optInspBtn.style.display = 'none';
     if(badgeChanges) badgeChanges.style.display = 'none';
+    if(btnSend) btnSend.style.display = 'none';
 
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
@@ -860,15 +1008,26 @@ function updateRoutingUI() {
             if(routingControls) routingControls.style.display = 'none';
         }
 
+        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed'));
+        const isReady = activeInspStops.length > 0 && activeInspStops.some(s => s.routeState === 'Ready');
+        const isStaging = activeInspStops.some(s => s.routeState === 'Staging') || isDirty;
+
         if (unroutedCount > 0 && routedCount === 0) {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } else if (isDirty) {
+        } else if (isStaging || isDirty) {
+            // Edits were made or backend says Staging - hide email, show editing tools
             if(btnRecalc) btnRecalc.style.display = 'flex';
+            if(btnStartOver) btnStartOver.style.display = 'flex';
+        } else if (isReady) {
+            // Clean route freshly generated - show Send button
+            if(btnSend) btnSend.style.display = 'flex';
+            if(btnStartOver) btnStartOver.style.display = 'flex'; 
         } else if (routedCount > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
         }
+
     } else {
         if(routingControls) routingControls.style.display = 'flex';
         
@@ -1196,7 +1355,6 @@ async function triggerBulkUnroute() {
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
     const stopIdx = stops.findIndex(s => s.id === rowId);
     if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
-    // Sending the exact rowId string to the backend as requested
     const payload = { action: 'updateOrder', rowId: rowId, updates: { "HKAwZ": newDriverName, "xuPjx": newDriverId } };
     return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
 }
@@ -1228,12 +1386,9 @@ async function handleInspectorChange(e, rowId, selectEl) {
             }
         });
 
-        // Await all updates to process the reassignment payloads
         await Promise.all(idsToUpdate.map(id => processReassignDriver(id, newDriverName, newDriverId)));
         
         updateInspectorDropdown(); 
-        
-        // Critical: Force a fresh data pull because the reassigned Row IDs will be completely new dynamic strings
         await loadData();
         
     } catch (err) { 
@@ -1474,7 +1629,6 @@ function render() {
         }
 
         if (isManagerView) {
-            // Apply a safe lowercase class name corresponding to the translated text string
             item.className = `glide-row ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
@@ -1819,7 +1973,6 @@ async function toggleComplete(e, id) {
     stops[idx].status = newStatus;
     render(); drawRoute(); updateSummary();
     
-    // Push single-character translated egress status back to backend
     try {
         await fetch(WEB_APP_URL, {
             method: 'POST',
