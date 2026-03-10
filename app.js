@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.28
+// * Dashboard - V4.29
 // * FILE: app.js
-// * Changes: V4.28 - Refactored the minifyStop() function to compile outbound route 
-// * payloads into the strict 14-index tuple array format instead of standard objects, 
-// * drastically reducing payload size and conforming to the new backend architecture.
+// * Changes: V4.29 - Updated expandStop() to unpack the new backend rawTuple arrays 
+// * (14-index schema) while preserving routeState and routeTargetId, keeping a fallback 
+// * for legacy minified objects. Updated processReassignDriver() to pass clean JSON 
+// * keys (driverName, driverId) in the updates payload instead of legacy Glide column IDs.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -160,6 +161,27 @@ const MASTER_PALETTE = [
 
 function expandStop(minStop) {
     if (minStop.address) return minStop; 
+    
+    if (minStop.rawTuple && Array.isArray(minStop.rawTuple)) {
+        const t = minStop.rawTuple;
+        let clusterIdx = 0;
+        if (typeof t[2] === 'string' && t[2].startsWith('R:')) {
+            clusterIdx = parseInt(t[2].split(':')[1]) - 1;
+        } else if (!isNaN(parseInt(t[2]))) {
+            clusterIdx = parseInt(t[2]) - 1;
+        }
+        return {
+            id: t[0],
+            seq: t[1],
+            cluster: Math.max(0, clusterIdx),
+            address: t[3], client: t[4], app: t[5], dueDate: t[6], type: t[7],
+            eta: t[8], dist: t[9], lat: t[10], lng: t[11], status: t[12], 
+            durationSecs: t[13], rowId: t[0],
+            routeState: minStop.routeState || 'Pending',
+            routeTargetId: minStop.routeTargetId || null
+        };
+    }
+
     let rawCluster = minStop.R;
     let clusterIdx = 0;
     if (typeof rawCluster === 'string' && rawCluster.startsWith('R:')) {
@@ -180,22 +202,21 @@ function expandStop(minStop) {
 }
 
 function minifyStop(s, routeNum) {
-    // Pack into strict 14-index tuple array format for the backend
     return [
-        s.rowId || s.id || "",                                  // [0] rowId
-        Number(s.seq) || 0,                                     // [1] sequence
-        'R:' + routeNum,                                        // [2] routeLabel
-        s.address || "",                                        // [3] address
-        s.client || "",                                         // [4] client
-        s.app || "",                                            // [5] app
-        s.dueDate || "",                                        // [6] dueDate
-        s.type || "",                                           // [7] type
-        s.eta || "",                                            // [8] eta
-        s.dist || "",                                           // [9] distance
-        s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       // [10] lat
-        s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0,       // [11] lng
-        getStatusCode(s.status),                                // [12] status
-        Number(s.durationSecs) || 0                             // [13] durationSecs
+        s.rowId || s.id || "",                                  
+        Number(s.seq) || 0,                                     
+        'R:' + routeNum,                                        
+        s.address || "",                                        
+        s.client || "",                                         
+        s.app || "",                                            
+        s.dueDate || "",                                        
+        s.type || "",                                           
+        s.eta || "",                                            
+        s.dist || "",                                           
+        s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
+        s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0,       
+        getStatusCode(s.status),                                
+        Number(s.durationSecs) || 0                             
     ];
 }
 
@@ -1349,7 +1370,7 @@ async function triggerBulkUnroute() {
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
     const stopIdx = stops.findIndex(s => s.id === rowId);
     if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
-    const payload = { action: 'updateOrder', rowId: rowId, updates: { "HKAwZ": newDriverName, "xuPjx": newDriverId } };
+    const payload = { action: 'updateOrder', rowId: rowId, updates: { driverName: newDriverName, driverId: newDriverId } };
     return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
 }
 
