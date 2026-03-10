@@ -1,11 +1,11 @@
 // *
-// * Dashboard - V4.25
+// * Dashboard - V4.26
 // * FILE: app.js
-// * Changes: V4.25 - Removed Re-Optimize button from endpoint rows. Added Manager route-reset 
-// * warning before altering actively routed endpoints. Added dynamic header Re-Optimize 
-// * button and "Changes Made" badge for Inspector view. Fixed text selection flashing by 
-// * overriding onmouseup. Patched visual scrolling bugs by adjusting sticky margins and 
-// * enforcing strict z-indexes to cover fa-grip-lines.
+// * Changes: V4.26 - Refactored for Partitioned JSON Batch Architecture. Implemented 
+// * Ingress/Egress translation dictionaries for single-character status codes (P, R, C, D, V, O). 
+// * Enforced strict string handling for dynamic dynamic BlobID-Index rowIds. Updated 
+// * reassignment logic to clear frontend state and execute fresh doGet to fetch appended 
+// * orders and new rowIds after tombstoning.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -24,6 +24,20 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+
+// Status Code Translation Dictionaries
+const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed' };
+const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O' };
+
+function getStatusText(code) {
+    if (!code) return 'Pending';
+    return STATUS_MAP_TO_TEXT[String(code).toUpperCase()] || 'Pending';
+}
+
+function getStatusCode(text) {
+    if (!text) return 'P';
+    return STATUS_MAP_TO_CODE[String(text).toLowerCase()] || 'P';
+}
 
 let COMPANY_SERVICE_DELAY = 0; 
 let PERMISSION_MODIFY = true;
@@ -170,7 +184,7 @@ function minifyStop(s, routeNum) {
         D: s.dist, 
         l: s.lat ? parseFloat(s.lat).toFixed(5) : 0, 
         g: s.lng ? parseFloat(s.lng).toFixed(5) : 0, 
-        s: s.status, 
+        s: getStatusCode(s.status), 
         u: s.durationSecs, 
         r: s.rowId || s.id
     };
@@ -284,9 +298,9 @@ function isActiveStop(s) {
     const status = (s.status || '').toLowerCase();
     
     if (isManagerView) {
-        active = (status === '' || status === 'routed' || status === 'completed');
+        active = (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
-        active = status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
+        active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
         if (s.hiddenInInspector) active = false;
     }
     
@@ -440,6 +454,7 @@ async function loadData() {
             return {
                 ...exp,
                 id: exp.rowId || exp.id,
+                status: getStatusText(exp.status),
                 cluster: exp.cluster || 0,
                 manualCluster: false,
                 _hasExplicitCluster: s.R !== undefined,
@@ -700,7 +715,7 @@ async function executeRouteReset(driverId) {
         historyStack = []; 
         stops.forEach(s => {
             if (s.driverId === driverId && (s.status||'').toLowerCase() === 'routed') {
-                s.eta = ''; s.dist = ''; s.status = '';
+                s.eta = ''; s.dist = ''; s.status = 'Pending';
             }
         });
         
@@ -823,7 +838,7 @@ function updateRoutingUI() {
         let showHint = false;
         const allValidStops = stops.filter(s => {
             const status = (s.status || '').toLowerCase();
-            return status !== 'cancelled' && status !== 'deleted' && !status.includes('unfound');
+            return status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
         });
 
         for (const insp of inspectors) {
@@ -1159,7 +1174,7 @@ async function triggerBulkUnroute() {
                 if ((stops[idx].status || '').toLowerCase() === 'routed') {
                     markRouteDirty(stops[idx].driverId, stops[idx].cluster);
                 }
-                stops[idx].status = '';
+                stops[idx].status = 'Pending';
                 if (!isManagerView) stops[idx].hiddenInInspector = true; 
             }
             return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
@@ -1181,6 +1196,7 @@ async function triggerBulkUnroute() {
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
     const stopIdx = stops.findIndex(s => s.id === rowId);
     if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
+    // Sending the exact rowId string to the backend as requested
     const payload = { action: 'updateOrder', rowId: rowId, updates: { "HKAwZ": newDriverName, "xuPjx": newDriverId } };
     return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
 }
@@ -1212,10 +1228,14 @@ async function handleInspectorChange(e, rowId, selectEl) {
             }
         });
 
-        for (const id of idsToUpdate) await processReassignDriver(id, newDriverName, newDriverId); 
+        // Await all updates to process the reassignment payloads
+        await Promise.all(idsToUpdate.map(id => processReassignDriver(id, newDriverName, newDriverId)));
         
         updateInspectorDropdown(); 
-        render(); drawRoute(); updateSummary(); updateRouteTimes();
+        
+        // Critical: Force a fresh data pull because the reassigned Row IDs will be completely new dynamic strings
+        await loadData();
+        
     } catch (err) { 
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error reassigning orders. Please try again."); 
@@ -1454,7 +1474,8 @@ function render() {
         }
 
         if (isManagerView) {
-            item.className = `glide-row ${s.status} ${currentDisplayMode}`;
+            // Apply a safe lowercase class name corresponding to the translated text string
+            item.className = `glide-row ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
             let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (inspectors.length > 0) {
@@ -1504,7 +1525,7 @@ function render() {
                 ${handleHtml}
             `;
         } else {
-            item.className = `stop-item ${s.status} ${currentDisplayMode}`;
+            item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
             
             let distStr = s.dist ? String(s.dist) : '--';
             if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
@@ -1537,7 +1558,7 @@ function render() {
 
         if(s.lng && s.lat) {
             const el = document.createElement('div');
-            el.className = `marker ${s.status}`; 
+            el.className = `marker ${s.status.toLowerCase().replace(' ', '-')}`; 
             
             const style = getVisualStyle(s);
             el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};"><span>${displayIndex}</span></div>`;
@@ -1677,7 +1698,7 @@ function render() {
 }
 
 function updateSummary() {
-    const active = stops.filter(s => isActiveStop(s) && s.status !== 'completed');
+    const active = stops.filter(s => isActiveStop(s) && s.status !== 'Completed');
     let totalMi = 0;
     let totalSecs = 0;
     
@@ -1790,12 +1811,21 @@ async function handleCalculate() {
     }
 }
 
-function toggleComplete(e, id) {
+async function toggleComplete(e, id) {
     e.stopPropagation();
     pushToHistory();
     const idx = stops.findIndex(s => s.id == id);
-    stops[idx].status = (stops[idx].status === 'completed') ? 'Routed' : 'completed';
+    const newStatus = (stops[idx].status.toLowerCase() === 'completed') ? 'Routed' : 'Completed';
+    stops[idx].status = newStatus;
     render(); drawRoute(); updateSummary();
+    
+    // Push single-character translated egress status back to backend
+    try {
+        await fetch(WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'updateOrder', rowId: id, updates: { status: getStatusCode(newStatus) } })
+        });
+    } catch(err) { console.error("Toggle Complete Error", err); }
 }
 
 let start_pos, box_el;
@@ -1904,7 +1934,6 @@ function drawRoute() {
         routedStops = activeStops;
     }
     
-    // Allow lines to be drawn even if there's only 1 routed stop connecting to endpoints
     if (routedStops.length === 0) return; 
 
     routedStops.sort(sortByEta);
@@ -1928,7 +1957,6 @@ function drawRoute() {
             let rStart = eps.start;
             let rEnd = eps.end;
 
-            // Connect specific inspector endpoints if manager is viewing all
             if (isManagerView && currentInspectorFilter === 'all' && dId !== 'unassigned') {
                 const insp = inspectors.find(i => i.id === dId);
                 if (insp) {
@@ -2091,7 +2119,7 @@ function initSortable() {
                     if (evt.to.id === 'unrouted-list') {
                         isMovedToUnrouted = true;
                         const idx = stops.findIndex(s => s.id === stopId);
-                        if (idx > -1) stops[idx].status = ''; 
+                        if (idx > -1) stops[idx].status = 'Pending'; 
                         
                         const overlay = document.getElementById('processing-overlay');
                         if(overlay) overlay.style.display = 'flex';
