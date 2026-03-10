@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.29
+// * Dashboard - V4.30
 // * FILE: app.js
-// * Changes: V4.29 - Updated expandStop() to unpack the new backend rawTuple arrays 
-// * (14-index schema) while preserving routeState and routeTargetId, keeping a fallback 
-// * for legacy minified objects. Updated processReassignDriver() to pass clean JSON 
-// * keys (driverName, driverId) in the updates payload instead of legacy Glide column IDs.
+// * Changes: V4.30 - Patched expandStop() to use the spread operator (...minStop) 
+// * when unpacking rawTuple arrays. This ensures root-level properties like driverId, 
+// * driverName, and companyId are safely preserved, fixing the infinite polling loop 
+// * and invisible order bugs on route generation.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -160,8 +160,10 @@ const MASTER_PALETTE = [
 ];
 
 function expandStop(minStop) {
+    // 1. Direct Object Fallback (Unrouted / Pre-Generation)
     if (minStop.address) return minStop; 
     
+    // 2. V5 rawTuple Extraction (Routed / Post-Generation)
     if (minStop.rawTuple && Array.isArray(minStop.rawTuple)) {
         const t = minStop.rawTuple;
         let clusterIdx = 0;
@@ -171,17 +173,17 @@ function expandStop(minStop) {
             clusterIdx = parseInt(t[2]) - 1;
         }
         return {
+            ...minStop, // CRITICAL FIX: Preserves driverId, driverName, routeState, routeTargetId
             id: t[0],
             seq: t[1],
             cluster: Math.max(0, clusterIdx),
             address: t[3], client: t[4], app: t[5], dueDate: t[6], type: t[7],
             eta: t[8], dist: t[9], lat: t[10], lng: t[11], status: t[12], 
-            durationSecs: t[13], rowId: t[0],
-            routeState: minStop.routeState || 'Pending',
-            routeTargetId: minStop.routeTargetId || null
+            durationSecs: t[13], rowId: t[0]
         };
     }
 
+    // 3. Legacy Object Fallback (Pre-V5 Architecture)
     let rawCluster = minStop.R;
     let clusterIdx = 0;
     if (typeof rawCluster === 'string' && rawCluster.startsWith('R:')) {
@@ -190,14 +192,13 @@ function expandStop(minStop) {
         clusterIdx = parseInt(rawCluster) - 1;
     }
     return {
+        ...minStop,
         id: minStop.r || minStop.i,
         seq: minStop.i,
         cluster: Math.max(0, clusterIdx),
         address: minStop.a, client: minStop.c, app: minStop.p, dueDate: minStop.d, type: minStop.t,
         eta: minStop.e, dist: minStop.D, lat: minStop.l, lng: minStop.g, status: minStop.s, 
-        durationSecs: minStop.u, rowId: minStop.r,
-        routeState: minStop.routeState || 'Pending',
-        routeTargetId: minStop.routeTargetId || null
+        durationSecs: minStop.u, rowId: minStop.r
     };
 }
 
