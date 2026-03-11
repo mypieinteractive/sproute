@@ -1,10 +1,9 @@
 // *
-// * Dashboard - V4.32
+// * Dashboard - V4.33
 // * FILE: app.js
-// * Changes: V4.32 - Updated isActiveStop to perfectly hide 'Dispatched' orders from 
-// * Manager View (The Hand-Off). Hid ETA column in 'All' view and Inspector column in 
-// * Single view. Disabled mobile two-finger map lock. Hidden sidebar select hint on 
-// * mobile. Updated Inspector view to show ETA | Client. Overhauled Email Modal UI.
+// * Changes: V4.33 - Updated Email Modal hint text to dynamically show Inspector name 
+// * and email. Added `addCc` boolean to the dispatchRoute payload for backend routing 
+// * to Column G. Added fallback text for missing company or inspector emails.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -323,7 +322,7 @@ function isActiveStop(s) {
     const status = (s.status || '').toLowerCase();
     
     if (isManagerView) {
-        if (s.routeState === 'Dispatched' || status === 'dispatched') return false; // Strictly hands-off
+        if (s.routeState === 'Dispatched' || status === 'dispatched') return false;
         active = (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
         active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
@@ -833,6 +832,9 @@ function handleOpenEmailModal() {
 
     const m = document.getElementById('modal-overlay');
     m.style.display = 'flex';
+    
+    const displayCompanyEmail = companyEmail ? companyEmail : 'Company Email Not Found';
+    const displayDriverEmail = insp.email ? insp.email : '[Email not provided]';
 
     const modalHtml = `
         <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif;">
@@ -844,7 +846,7 @@ function handleOpenEmailModal() {
                 <input type="checkbox" id="cc-company-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
                 <label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">
                     CC the Company Email<br>
-                    <span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${companyEmail}</span>
+                    <span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${displayCompanyEmail}</span>
                 </label>
             </div>
 
@@ -859,7 +861,7 @@ function handleOpenEmailModal() {
             </div>
 
             <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">
-                A list of orders and the map image will be sent to the <span style="color: var(--blue, #3B82F6); font-weight: bold;">Inspector</span>, along with a direct link to open the interactive map on their device.
+                A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: bold;">${insp.name} at ${displayDriverEmail}</span>, along with a direct link to open the interactive map on their device.
             </div>
 
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
@@ -892,6 +894,7 @@ function handleOpenEmailModal() {
             companyId: companyParam || '',
             customBody: customBody,
             ccCompany: ccCompany,
+            addCc: addCcChecked, // Sent as boolean for Column G mapping
             ccEmail: ccEmail
         };
 
