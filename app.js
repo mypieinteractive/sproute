@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.7
+// * Dashboard - V6.5
 // * FILE: app.js
-// * Changes: State machine UI rule compliance (Re-Calculate vs Re-Optimize), simplified Bulk Actions
+// * Changes: Dynamic Mapbox line layers, Start/End pin styling, Empty State handling, and robust silent save routeTargetId extraction.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -133,15 +133,17 @@ function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
-// Option B: Comprehensive Silent Save
-function silentSaveRouteState() {
-    if (!routeId) return;
+// Option B: Comprehensive Silent Save with Dynamic Target ID Extraction
+async function silentSaveRouteState() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    if (inspId === 'all') return;
+    if (inspId === 'all' || !inspId) return;
     
-    // Capture ALL stops belonging to this route JSON blob (Routed AND Pending), explicitly dropping Deleted/Cancelled
-    let routeStops = stops.filter(s => s.routeTargetId === String(routeId) && s.status.toLowerCase() !== 'deleted' && s.status.toLowerCase() !== 'cancelled');
+    const activeInspStops = stops.filter(s => s.driverId === inspId && s.routeTargetId);
+    if (activeInspStops.length === 0) return;
     
+    const targetRouteId = activeInspStops[0].routeTargetId;
+    
+    let routeStops = stops.filter(s => s.routeTargetId === targetRouteId && s.status.toLowerCase() !== 'deleted' && s.status.toLowerCase() !== 'cancelled');
     if (routeStops.length === 0) return;
 
     let minified = routeStops.map(s => {
@@ -162,14 +164,16 @@ function silentSaveRouteState() {
         ];
     });
     
-    fetch(WEB_APP_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-            action: 'saveRoute',
-            routeId: routeId,
-            stops: minified
-        })
-    }).catch(e => console.log("Silent save error", e));
+    try {
+        await fetch(WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'saveRoute',
+                routeId: targetRouteId,
+                stops: minified
+            })
+        });
+    } catch(e) { console.log("Silent save error", e); }
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -253,8 +257,11 @@ function sortByEta(a, b) {
 }
 
 function updateInspectorDropdown() {
-    const filterSelect = document.getElementById('inspector-filter');
-    if (!filterSelect || !isManagerView || inspectors.length === 0) return;
+    const filterSelect = document.getElementById('inspector-dropdown-wrapper');
+    const selectEl = document.getElementById('inspector-filter');
+    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
+    
+    if (!selectEl || !isManagerView || inspectors.length === 0) return;
 
     const validInspectorIds = new Set();
     stops.forEach(s => {
@@ -264,7 +271,19 @@ function updateInspectorDropdown() {
         }
     });
 
-    const currentVal = filterSelect.value || 'all';
+    if (validInspectorIds.size === 0) {
+        if (filterSelect) filterSelect.style.display = 'none';
+        if (sidebarDriverEl) {
+            sidebarDriverEl.innerText = "Upload a CSV to begin";
+            sidebarDriverEl.style.display = 'block';
+        }
+        return;
+    }
+
+    if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
+    if (filterSelect) filterSelect.style.display = 'block';
+
+    const currentVal = selectEl.value || 'all';
     let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
     inspectors.forEach((i, idx) => { 
@@ -274,17 +293,18 @@ function updateInspectorDropdown() {
         }
     });
     
-    filterSelect.innerHTML = filterHtml;
+    selectEl.innerHTML = filterHtml;
+    
     if (currentVal !== 'all' && !validInspectorIds.has(currentVal)) {
-        filterSelect.value = 'all';
+        selectEl.value = 'all';
         handleInspectorFilterChange('all');
     } else {
-        filterSelect.value = currentVal;
+        selectEl.value = currentVal;
         if (currentVal !== 'all') {
             const inspIdx = inspectors.findIndex(i => i.id === currentVal);
-            if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
+            if (inspIdx > -1) selectEl.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
         } else {
-            filterSelect.style.color = 'var(--text-main)';
+            selectEl.style.color = 'var(--text-main)';
         }
     }
 }
@@ -511,9 +531,7 @@ async function loadData() {
 
         stops.forEach(s => {
             if (s.routeState === 'Staging' && s.driverId) {
-                if (!s.eta || s.eta === '--' || s.eta === '') {
-                    markRouteDirty(s.driverId, s.cluster);
-                }
+                if (!s.eta || s.eta === '--' || s.eta === '') markRouteDirty(s.driverId, s.cluster);
             }
         });
 
@@ -598,18 +616,25 @@ async function loadData() {
             const filterSelect = document.getElementById('inspector-dropdown-wrapper');
 
             if (isManagerView && data.tier && data.tier.toLowerCase() !== 'individual') {
-                if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
-                if (sidebarLogo) sidebarLogo.style.display = 'none'; 
-                if (filterSelect) filterSelect.style.display = 'block';
-                updateInspectorDropdown(); 
+                let hasValidStops = stops.some(s => s.status.toLowerCase() !== 'deleted' && s.status.toLowerCase() !== 'cancelled');
+                
+                if (!hasValidStops) {
+                    if (filterSelect) filterSelect.style.display = 'none';
+                    if (sidebarDriverEl) { sidebarDriverEl.innerText = "Upload a CSV to begin"; sidebarDriverEl.style.display = 'block'; }
+                } else {
+                    if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
+                    if (sidebarLogo) sidebarLogo.style.display = 'none'; 
+                    if (filterSelect) filterSelect.style.display = 'block';
+                    updateInspectorDropdown(); 
+                }
             } else {
                 if (sidebarDriverEl) sidebarDriverEl.innerText = displayName;
             }
             
             updateRouteButtonColors();
             
-            let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
-            if (!hasValidStops && data.companyAddress) {
+            let validStopsCheck = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
+            if (!validStopsCheck && data.companyAddress) {
                 const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.companyAddress)}.json?access_token=${MAPBOX_TOKEN}`;
                 fetch(geoUrl).then(r => r.json()).then(geo => {
                     if (geo.features && geo.features.length > 0) {
@@ -1026,14 +1051,21 @@ function handleOpenEmailModal() {
 
 function updateRoutingUI() {
     const activeStops = stops.filter(s => isActiveStop(s));
-    const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
-    const routedCount = routedStops.length;
-    const unroutedCount = activeStops.length - routedCount;
-    const isDirty = dirtyRoutes.size > 0;
-    const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
-
-    // Verify if route is entirely unrouted
-    const isEntirelyPending = activeStops.length > 0 && activeStops.every(s => (s.status||'').toLowerCase() === 'pending');
+    
+    let inspStops = isManagerView ? activeStops.filter(s => s.driverId === currentInspectorFilter) : activeStops;
+    let inspRoutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
+    let inspUnroutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'pending');
+    
+    let inspRoutedCount = inspRoutedStops.length;
+    let inspUnroutedCount = inspUnroutedStops.length;
+    
+    let isInspDirty = false;
+    for (let s of inspStops) {
+        if (dirtyRoutes.has(`${s.driverId}_${s.cluster||0}`) || dirtyRoutes.has('all')) {
+            isInspDirty = true; break;
+        }
+    }
+    if (dirtyRoutes.has('endpoints_0')) isInspDirty = true;
 
     const routingControls = document.getElementById('routing-controls');
     const hintEl = document.getElementById('inspector-select-hint');
@@ -1042,7 +1074,7 @@ function updateRoutingUI() {
     if (oldSidebarBtn) oldSidebarBtn.remove();
 
     const btnGen = document.getElementById('btn-header-generate');
-    const btnStartOver = document.getElementById('btn-header-start-over'); // "Undo Routing"
+    const btnStartOver = document.getElementById('btn-header-start-over');
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
 
@@ -1086,7 +1118,6 @@ function updateRoutingUI() {
     if(btnStartOver) btnStartOver.style.order = '6'; 
     if(btnSend) btnSend.style.order = '7'; 
     
-    // Hide all first to prevent visual bugs
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
     if(btnRecalc) btnRecalc.style.display = 'none';
@@ -1097,6 +1128,7 @@ function updateRoutingUI() {
 
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
+        
         let showHint = false;
         const allValidStops = stops.filter(s => {
             const status = (s.status || '').toLowerCase();
@@ -1104,7 +1136,10 @@ function updateRoutingUI() {
         });
 
         for (const insp of inspectors) {
-            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) { showHint = true; break; }
+            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) {
+                showHint = true; 
+                break;
+            }
         }
         if (hintEl) hintEl.style.display = (showHint && viewMode !== 'managermobile') ? 'block' : 'none';
         return;
@@ -1113,41 +1148,41 @@ function updateRoutingUI() {
     if (hintEl) hintEl.style.display = 'none';
 
     if (isManagerView) {
-        if (unroutedCount > 25) {
+        if (inspUnroutedCount > 25) {
             if(routingControls) routingControls.style.display = 'flex';
         } else {
             if(routingControls) routingControls.style.display = 'none';
         }
 
-        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter);
-        const isStaging = activeInspStops.some(s => s.routeState === 'Staging') || isDirty;
-        const isDispatched = activeInspStops.some(s => s.routeState === 'Dispatched');
+        let isStaging = inspRoutedStops.some(s => s.routeState === 'Staging') || isInspDirty;
 
-        if (isEntirelyPending || (unroutedCount > 0 && routedCount === 0)) {
+        if (inspUnroutedCount > 0 && inspRoutedCount === 0) {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
         } else if (isStaging) {
             if(btnStartOver) btnStartOver.style.display = 'flex'; 
             
-            // Mutually exclusive: Show Re-Optimize if endpoint touched, else Re-Calculate
-            if (isEndpointsDirty) {
+            if (dirtyRoutes.has('endpoints_0')) {
                 if(optInspBtn) optInspBtn.style.display = 'flex';
             } else {
-                if(btnRecalc) btnRecalc.style.display = (viewMode === 'managermobile' && !isDirty) ? 'none' : 'flex';
+                if(btnRecalc) btnRecalc.style.display = (viewMode === 'managermobile' && !isInspDirty) ? 'none' : 'flex';
             }
-        } else if (routedCount > 0) {
-            // It is Ready or Dispatched
+        } else if (inspRoutedCount > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
-            if(btnSend && !isDispatched) btnSend.style.display = 'flex';
+            if(btnSend) btnSend.style.display = 'flex';
         }
 
     } else {
         if(routingControls) routingControls.style.display = 'flex';
-        let showRecalc = false; let showOpt = false; let showBadge = false;
+        
+        let showRecalc = false;
+        let showOpt = false;
+        let showBadge = false;
 
-        if (isDirty) {
-            showRecalc = true; showBadge = true;
+        if (isInspDirty) {
+            showRecalc = true;
+            showBadge = true;
             if (dirtyRoutes.has('endpoints_0') || PERMISSION_REOPTIMIZE) showOpt = true;
         } else if (isAlteredRoute) {
             if(btnRestore) btnRestore.style.display = 'flex'; 
@@ -1407,22 +1442,38 @@ async function triggerBulkDelete() {
     if(!(await customConfirm("Delete selected orders?"))) return;
     pushToHistory();
     
-    selectedIds.forEach(id => {
-        const idx = stops.findIndex(s => s.id === id);
-        if (idx > -1) {
-            if ((stops[idx].status || '').toLowerCase() === 'routed' || (stops[idx].status || '').toLowerCase() === 'dispatched') {
-                markRouteDirty(stops[idx].driverId, stops[idx].cluster);
-            }
-            stops[idx].status = 'Deleted';
-        }
-    });
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
 
-    selectedIds.clear(); 
-    updateInspectorDropdown(); 
-    
-    reorderStopsFromDOM();
-    render(); drawRoute(); updateSummary(); updateRouteTimes();
-    silentSaveRouteState(); // Writes array to G without deleted items
+    try {
+        selectedIds.forEach(id => {
+            const s = stops.find(st => st.id === id);
+            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
+                markRouteDirty(s.driverId, s.cluster);
+            }
+        });
+
+        const deletePromises = Array.from(selectedIds).map(id => {
+            const idx = stops.findIndex(s => s.id === id);
+            if (idx > -1) stops[idx].status = 'Deleted';
+            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', rowId: id }) });
+        });
+        
+        await Promise.all(deletePromises);
+        
+        selectedIds.clear(); 
+        updateInspectorDropdown(); 
+        
+        reorderStopsFromDOM();
+        render(); drawRoute(); updateSummary(); updateRouteTimes();
+        await silentSaveRouteState();
+
+    } catch (err) {
+        if(overlay) overlay.style.display = 'none';
+        await customAlert("Error deleting orders. Please try again.");
+    } finally {
+        if(overlay) overlay.style.display = 'none';
+    }
 }
 
 async function triggerBulkUnroute() { 
@@ -1444,7 +1495,7 @@ async function triggerBulkUnroute() {
     
     reorderStopsFromDOM();
     render(); drawRoute(); updateSummary(); updateRouteTimes();
-    silentSaveRouteState(); // Writes array to G with "P" statuses
+    await silentSaveRouteState();
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
@@ -1890,14 +1941,14 @@ function render() {
         }
         
         let emojisHtml = '';
-        if (ep.isStart) emojisHtml += `<div style="position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 16px;">🏠</div>`;
-        if (ep.isEnd) emojisHtml += `<div style="position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 16px;">🏁</div>`;
+        if (ep.isStart) emojisHtml += `<div style="position: absolute; top: -20px; left: -16px; font-size: 24px;">🏠</div>`;
+        if (ep.isEnd) emojisHtml += `<div style="position: absolute; top: -20px; right: -16px; left: auto; font-size: 24px;">🏁</div>`;
         
         const el = document.createElement('div');
         el.className = 'marker start-end-marker';
         
         el.innerHTML = `
-            <div class="pin-visual" style="background-color: ${inspColor}; border: 2px solid #ffffff; border-radius: 50%; width: 14px; height: 14px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>
+            <div class="pin-visual" style="background-color: ${inspColor}; border: 2px solid #000000; border-radius: 50%; width: 14px; height: 14px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>
             ${emojisHtml}
         `;
         
@@ -2144,9 +2195,9 @@ function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padd
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
 
 function drawRoute() { 
-    if (map.getLayer('route-line-0')) map.removeLayer('route-line-0');
-    if (map.getLayer('route-line-1')) map.removeLayer('route-line-1');
-    if (map.getLayer('route-line-2')) map.removeLayer('route-line-2');
+    ['r0-clean', 'r0-dirty', 'r1-base-clean', 'r1-base-dirty', 'r1-top-clean', 'r1-top-dirty', 'r2-base-clean', 'r2-base-dirty', 'r2-top-clean', 'r2-top-dirty'].forEach(l => {
+        if (map.getLayer(l)) map.removeLayer(l);
+    });
     if (map.getSource('route')) map.removeSource('route');
 
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
@@ -2178,6 +2229,8 @@ function drawRoute() {
             
             let dId = key.split('_')[0];
             let clusterIndex = parseInt(key.split('_')[1]);
+            let isRouteDirty = dirtyRoutes.has(key) || dirtyRoutes.has('all');
+            
             let eps = getActiveEndpoints();
             let rStart = eps.start;
             let rEnd = eps.end;
@@ -2196,7 +2249,7 @@ function drawRoute() {
             if (coords.length > 1) {
                 features.push({
                     "type": "Feature",
-                    "properties": { "color": style.line, "clusterIdx": clusterIndex }, 
+                    "properties": { "color": style.line, "clusterIdx": clusterIndex, "isDirty": isRouteDirty }, 
                     "geometry": { "type": "LineString", "coordinates": coords }
                 });
             }
@@ -2205,32 +2258,28 @@ function drawRoute() {
 
     map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
     
-    map.addLayer({ 
-        "id": "route-line-0", 
-        "type": "line", 
-        "source": "route", 
-        "filter": ["==", "clusterIdx", 0],
-        "layout": { "line-join": "round", "line-cap": "round" }, 
-        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6 } 
-    }); 
-    
-    map.addLayer({ 
-        "id": "route-line-1", 
-        "type": "line", 
-        "source": "route", 
-        "filter": ["==", "clusterIdx", 1],
-        "layout": { "line-join": "round", "line-cap": "round" }, 
-        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [2, 2] } 
-    }); 
-    
-    map.addLayer({ 
-        "id": "route-line-2", 
-        "type": "line", 
-        "source": "route", 
-        "filter": ["==", "clusterIdx", 2],
-        "layout": { "line-join": "round", "line-cap": "round" }, 
-        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [0.5, 2] } 
-    }); 
+    const addLineLayer = (id, filter, color, width, isDashed) => {
+        let paint = { "line-color": color, "line-width": width, "line-opacity": 0.8 };
+        if (isDashed) paint["line-dasharray"] = [2, 2];
+        map.addLayer({
+            "id": id, "type": "line", "source": "route",
+            "filter": filter, "layout": { "line-join": "round", "line-cap": "round" },
+            "paint": paint
+        });
+    };
+
+    addLineLayer("r0-clean", ["all", ["==", "clusterIdx", 0], ["==", "isDirty", false]], ["get", "color"], 5, false);
+    addLineLayer("r0-dirty", ["all", ["==", "clusterIdx", 0], ["==", "isDirty", true]], ["get", "color"], 5, true);
+
+    addLineLayer("r1-base-clean", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], ["get", "color"], 7, false);
+    addLineLayer("r1-base-dirty", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], ["get", "color"], 7, true);
+    addLineLayer("r1-top-clean", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "#000000", 3, false);
+    addLineLayer("r1-top-dirty", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "#000000", 3, true);
+
+    addLineLayer("r2-base-clean", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], ["get", "color"], 7, false);
+    addLineLayer("r2-base-dirty", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], ["get", "color"], 7, true);
+    addLineLayer("r2-top-clean", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "#ffffff", 3, false);
+    addLineLayer("r2-top-dirty", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "#ffffff", 3, true);
 }
 
 function openNav(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { showNavChoice(la, ln, addr); } else { launchMaps(p, la, ln, addr); } }
