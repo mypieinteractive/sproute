@@ -58,7 +58,7 @@
                 <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 15px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; background-image: none; appearance: none;"></select>
                 <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-main); pointer-events: none; font-size: 13px;"></i>
             </div>
-            <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 12px; white-space: nowrap;">&lt;- Select an Inspector to Route</span>
+            <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 12px; white-space: nowrap;"><- Select an Inspector to Route</span>
         </div>
 
         <div style="display: flex; gap: 8px; justify-content: flex-end; flex: 1;">
@@ -133,7 +133,7 @@
             <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
             <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
         </div>
-        <button id="btn-undo-incremental" onclick="undoLastAction()"><i class="fa-solid fa-rotate-left"></i></button>
+        <button id="btn-undo-incremental" onclick="undoLastAction()"><i class="fa-solid fa-reply"></i></button>
     </div>
     
     <div id="stop-list"></div>
