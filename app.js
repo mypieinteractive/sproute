@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.0
+// * Dashboard - V6.1
 // * FILE: app.js
-// * Changes: 
+// * Changes: Mobile UI button refinements, Address+ZIP navigation using Universal Links, Base64 email map pin injection, Manager Mobile Re-Calculate hiding
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -913,8 +913,54 @@ function handleOpenEmailModal() {
         const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
         const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
 
-        // Capture Mapbox Canvas as Base64 Image
+        // Capture Mapbox Canvas as Base64 Image - WITH TEMPORARY PINS
+        const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
+        const inspColor = dIdx > -1 ? MASTER_PALETTE[dIdx % MASTER_PALETTE.length] : MASTER_PALETTE[0];
+
+        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'completed' || s.status.toLowerCase() === 'dispatched'));
+        
+        const geojsonStops = {
+            type: 'FeatureCollection',
+            features: activeInspStops.filter(s => s.lat && s.lng).map(s => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [parseFloat(s.lng), parseFloat(s.lat)] },
+                properties: { cluster: s.cluster || 0 }
+            }))
+        };
+
+        if (map.getSource('temp-snapshot-pins')) {
+            map.getSource('temp-snapshot-pins').setData(geojsonStops);
+        } else {
+            map.addSource('temp-snapshot-pins', { type: 'geojson', data: geojsonStops });
+            map.addLayer({
+                id: 'temp-snapshot-circles',
+                type: 'circle',
+                source: 'temp-snapshot-pins',
+                paint: {
+                    'circle-radius': 12,
+                    'circle-color': [
+                        'match',
+                        ['get', 'cluster'],
+                        0, inspColor,
+                        1, '#000000',
+                        '#ffffff'
+                    ],
+                    'circle-stroke-width': 3,
+                    'circle-stroke-color': inspColor
+                }
+            });
+        }
+
+        // Wait briefly for WebGL to render the new layer
+        await new Promise(resolve => {
+            map.once('idle', resolve);
+            setTimeout(resolve, 800); // safety fallback
+        });
+
         const mapBase64 = map.getCanvas().toDataURL('image/png');
+
+        if (map.getLayer('temp-snapshot-circles')) map.removeLayer('temp-snapshot-circles');
+        if (map.getSource('temp-snapshot-pins')) map.removeSource('temp-snapshot-pins');
 
         const payload = {
             action: "dispatchRoute",
@@ -987,7 +1033,7 @@ function updateRoutingUI() {
         sendBtn.id = 'btn-header-send-route';
         sendBtn.className = 'header-action-btn';
         sendBtn.style.cssText = 'background: #2E4053; color: white; display: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; cursor: pointer; align-items: center; gap: 8px;';
-        sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Route(s)';
+        sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>';
         sendBtn.onclick = () => handleOpenEmailModal();
         if (routingControls) routingControls.appendChild(sendBtn);
     }
@@ -997,7 +1043,7 @@ function updateRoutingUI() {
         optBtn.id = 'btn-header-optimize-insp';
         optBtn.className = 'header-action-btn';
         optBtn.style.cssText = 'background: #2C3D4F; color: white; display: none;';
-        optBtn.innerText = 'Re-Optimize';
+        optBtn.innerHTML = '<span>Re-Optimize</span>';
         optBtn.onclick = () => handleEndpointOptimize();
         if (routingControls) routingControls.appendChild(optBtn);
     }
@@ -1063,12 +1109,20 @@ function updateRoutingUI() {
         const isReady = activeInspStops.length > 0 && activeInspStops.some(s => s.routeState === 'Ready');
         const isStaging = activeInspStops.some(s => s.routeState === 'Staging') || isDirty;
 
+        let showRecalcAndStartOver = false;
+        if (viewMode === 'managermobile') {
+            showRecalcAndStartOver = isDirty; // V6.1 Rule: Only show on mobile if truly dirty
+        } else {
+            showRecalcAndStartOver = isStaging;
+        }
+
         if (unroutedCount > 0 && routedCount === 0) {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } else if (isStaging || isDirty) {
-            if(btnRecalc) btnRecalc.style.display = 'flex';
+        } else if (showRecalcAndStartOver || isStaging) {
+            // Keep Start Over visible if in staging, but strictly hide Recalc on mobile if not dirty
+            if(btnRecalc) btnRecalc.style.display = (viewMode === 'managermobile' && !isDirty) ? 'none' : 'flex';
             if(btnStartOver) btnStartOver.style.display = 'flex';
         } else if (isReady) {
             if(btnSend) btnSend.style.display = 'flex';
@@ -1755,7 +1809,7 @@ function render() {
                 <div class="due-date-container ${urgencyClass}">${dueFmt}</div>
                 <div class="stop-actions">
                     <i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>
-                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.lat}','${s.lng}')"></i>
+                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
                 </div>
             `;
         }
@@ -2226,10 +2280,24 @@ function drawRoute() {
     }); 
 }
 
-function openNav(e, la, ln) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { showNavChoice(la, ln); } else { launchMaps(p, la, ln); } }
-function showNavChoice(la, ln) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<h3>Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold;" onclick="setNavPref('google','${la}','${ln}')">Google Maps</button><button style="padding:12px; border:none; border-radius:6px; background:#444; color:#fff" onclick="setNavPref('apple','${la}','${ln}')">Apple Maps</button></div>`; }
-function setNavPref(p, la, ln) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; launchMaps(p, la, ln); }
-function launchMaps(p, la, ln) { window.location.href = p === 'google' ? `comgooglemaps://?daddr=${la},${ln}` : `maps://maps.apple.com/?daddr=${la},${ln}`; }
+function openNav(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { showNavChoice(la, ln, addr); } else { launchMaps(p, la, ln, addr); } }
+function showNavChoice(la, ln, addr) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<h3>Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:none; border-radius:6px; background:#444; color:#fff" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div>`; }
+function setNavPref(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; launchMaps(p, la, ln, addr); }
+function launchMaps(p, la, ln, addr) { 
+    let destination = `${la},${ln}`;
+    if (addr) {
+        const parts = addr.split(',');
+        const street = parts[0].trim();
+        const zipMatch = addr.match(/\b\d{5}(?:-\d{4})?\b/);
+        if (zipMatch) {
+            destination = encodeURIComponent(`${street}, ${zipMatch[0]}`);
+        } else {
+            destination = encodeURIComponent(addr); // Fallback to full string if no zip found
+        }
+    }
+    // Using standard Universal Links instead of Custom URI schemes
+    window.location.href = p === 'google' ? `https://www.google.com/maps/dir/?api=1&destination=${destination}` : `https://maps.apple.com/?daddr=${destination}`; 
+}
 
 async function finalizeSync(type, directStart = null, directEnd = null) {
     const eps = getActiveEndpoints();
