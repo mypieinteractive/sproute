@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.5
+// * Dashboard - V6.6
 // * FILE: app.js
-// * Changes: Dynamic Mapbox line layers, Start/End pin styling, Empty State handling, and robust silent save routeTargetId extraction.
+// * Changes: Bulletproof Silent Save Array Sync, Send Route UI logic fix, Removed redundant fetch actions on active routes
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -119,13 +119,13 @@ function pushToHistory() {
     updateUndoUI();
 }
 
-function undoLastAction() {
+async function undoLastAction() {
     if (historyStack.length === 0) return;
     const last = historyStack.pop();
     stops = last.stops;
     dirtyRoutes = new Set(last.dirty);
     render(); drawRoute(); updateSummary(); updateRouteTimes(); updateUndoUI();
-    silentSaveRouteState(); 
+    await silentSaveRouteState(); 
 }
 
 function updateUndoUI() {
@@ -133,7 +133,7 @@ function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
-// Option B: Comprehensive Silent Save with Dynamic Target ID Extraction
+// Option B: Comprehensive Silent Save - Safely includes ALL items including Pending and Deleted
 async function silentSaveRouteState() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     if (inspId === 'all' || !inspId) return;
@@ -143,7 +143,8 @@ async function silentSaveRouteState() {
     
     const targetRouteId = activeInspStops[0].routeTargetId;
     
-    let routeStops = stops.filter(s => s.routeTargetId === targetRouteId && s.status.toLowerCase() !== 'deleted' && s.status.toLowerCase() !== 'cancelled');
+    // Explicitly KEEP cancelled and deleted items so they save to the blob properly
+    let routeStops = stops.filter(s => s.routeTargetId === targetRouteId);
     if (routeStops.length === 0) return;
 
     let minified = routeStops.map(s => {
@@ -531,7 +532,9 @@ async function loadData() {
 
         stops.forEach(s => {
             if (s.routeState === 'Staging' && s.driverId) {
-                if (!s.eta || s.eta === '--' || s.eta === '') markRouteDirty(s.driverId, s.cluster);
+                if (!s.eta || s.eta === '--' || s.eta === '') {
+                    markRouteDirty(s.driverId, s.cluster);
+                }
             }
         });
 
@@ -1054,10 +1057,11 @@ function updateRoutingUI() {
     
     let inspStops = isManagerView ? activeStops.filter(s => s.driverId === currentInspectorFilter) : activeStops;
     let inspRoutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
-    let inspUnroutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'pending');
     
-    let inspRoutedCount = inspRoutedStops.length;
-    let inspUnroutedCount = inspUnroutedStops.length;
+    let isReady = false;
+    if (inspRoutedStops.length > 0) {
+        isReady = inspRoutedStops.some(s => s.routeState.toLowerCase() === 'ready');
+    }
     
     let isInspDirty = false;
     for (let s of inspStops) {
@@ -1066,6 +1070,9 @@ function updateRoutingUI() {
         }
     }
     if (dirtyRoutes.has('endpoints_0')) isInspDirty = true;
+
+    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched').length;
+    const unroutedCount = activeStops.length - routedCount;
 
     const routingControls = document.getElementById('routing-controls');
     const hintEl = document.getElementById('inspector-select-hint');
@@ -1148,19 +1155,21 @@ function updateRoutingUI() {
     if (hintEl) hintEl.style.display = 'none';
 
     if (isManagerView) {
-        if (inspUnroutedCount > 25) {
+        if (inspStops.filter(s => s.status.toLowerCase() === 'pending').length > 25) {
             if(routingControls) routingControls.style.display = 'flex';
         } else {
             if(routingControls) routingControls.style.display = 'none';
         }
 
-        let isStaging = inspRoutedStops.some(s => s.routeState === 'Staging') || isInspDirty;
+        const isStaging = inspRoutedStops.some(s => s.routeState.toLowerCase() === 'staging') || isInspDirty;
 
-        if (inspUnroutedCount > 0 && inspRoutedCount === 0) {
+        if (inspStops.filter(s => s.status.toLowerCase() === 'pending').length > 0 && inspRoutedStops.length === 0) {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } else if (isStaging) {
+        } 
+        
+        if (isStaging) {
             if(btnStartOver) btnStartOver.style.display = 'flex'; 
             
             if (dirtyRoutes.has('endpoints_0')) {
@@ -1168,8 +1177,12 @@ function updateRoutingUI() {
             } else {
                 if(btnRecalc) btnRecalc.style.display = (viewMode === 'managermobile' && !isInspDirty) ? 'none' : 'flex';
             }
-        } else if (inspRoutedCount > 0) {
+        } else if (inspRoutedStops.length > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
+        }
+
+        // Clean, precise trigger for the Send Route button
+        if (isReady && !isInspDirty && !isStaging) {
             if(btnSend) btnSend.style.display = 'flex';
         }
 
@@ -1451,22 +1464,15 @@ async function triggerBulkDelete() {
             if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
                 markRouteDirty(s.driverId, s.cluster);
             }
+            if (s) s.status = 'Deleted'; // Strictly change state locally
         });
 
-        const deletePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => s.id === id);
-            if (idx > -1) stops[idx].status = 'Deleted';
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', rowId: id }) });
-        });
-        
-        await Promise.all(deletePromises);
-        
         selectedIds.clear(); 
         updateInspectorDropdown(); 
         
         reorderStopsFromDOM();
         render(); drawRoute(); updateSummary(); updateRouteTimes();
-        await silentSaveRouteState();
+        await silentSaveRouteState(); // Writes array to G including 'D' status
 
     } catch (err) {
         if(overlay) overlay.style.display = 'none';
@@ -1487,6 +1493,7 @@ async function triggerBulkUnroute() {
                 markRouteDirty(stops[idx].driverId, stops[idx].cluster);
             }
             stops[idx].status = 'Pending';
+            stops[idx].eta = '';
             if (!isManagerView) stops[idx].hiddenInInspector = true; 
         }
     });
@@ -1495,7 +1502,7 @@ async function triggerBulkUnroute() {
     
     reorderStopsFromDOM();
     render(); drawRoute(); updateSummary(); updateRouteTimes();
-    await silentSaveRouteState();
+    await silentSaveRouteState(); // Writes array to G with "P" statuses
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
@@ -2038,6 +2045,9 @@ async function handleCalculate() {
 
         const eps = getActiveEndpoints();
 
+        // Critical Fix: Pass the ENTIRE stop array for this route (Including P and D) to perfectly preserve them in E and G
+        let allRouteStops = stops.filter(s => s.routeTargetId === String(routeId) && s.status.toLowerCase() !== 'cancelled');
+
         let payload = {
             action: 'calculate',
             routeId: routeId,
@@ -2046,7 +2056,7 @@ async function handleCalculate() {
             startAddr: eps.start?.address || null,
             endAddr: eps.end?.address || null,
             isManager: isManagerView,
-            stops: validStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
+            stops: allRouteStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
         };
 
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
@@ -2320,6 +2330,9 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
         isManager: isManagerView
     };
 
+    // Critical Fix: Pass the ENTIRE stop array for this route (Including P and D) to perfectly preserve them during Optimization
+    let allRouteStops = stops.filter(s => s.routeTargetId === String(routeId) && s.status.toLowerCase() !== 'cancelled');
+
     if (isManagerView && currentInspectorFilter !== 'all') {
         let clusteredArrays = [];
         for(let i = 0; i < currentRouteCount; i++) {
@@ -2330,6 +2343,7 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
         }
         payload.routeClusters = clusteredArrays;
         payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
+        payload.stops = allRouteStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
     } else {
         payload.stops = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
     }
@@ -2340,9 +2354,22 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
     try {
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json(); 
-        stops = data.updatedStops.map(s => {
+        
+        if (data.error) throw new Error(data.error);
+
+        const returnedStopsMap = new Map();
+        data.updatedStops.forEach(s => {
             let exp = expandStop(s);
-            return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false, routeState: 'Ready' };
+            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false });
+        });
+
+        stops = stops.map(s => {
+            if (returnedStopsMap.has(s.id)) {
+                let updated = returnedStopsMap.get(s.id);
+                updated.routeState = 'Ready'; 
+                return updated;
+            }
+            return s;
         });
         
         if (!isManagerView) isAlteredRoute = true;
@@ -2423,13 +2450,13 @@ function initSortable() {
                         const idx = stops.findIndex(s => s.id === stopId);
                         if (idx > -1) {
                             stops[idx].status = 'Pending'; 
-                            stops[idx].routeState = 'Pending';
+                            stops[idx].eta = '';
                         }
                     }
                     
                     reorderStopsFromDOM();
                     render(); 
-                    silentSaveRouteState();
+                    await silentSaveRouteState();
                     
                     if (isMovedToUnrouted) {
                         drawRoute(); updateSummary(); updateRouteTimes();
@@ -2456,7 +2483,7 @@ function initSortable() {
                 filter: '.static-endpoint, .list-subheading',
                 animation: 150,
                 onStart: () => pushToHistory(),
-                onEnd: (evt) => {
+                onEnd: async (evt) => {
                     const stopId = evt.item.id.replace('item-', '');
                     const stop = stops.find(s => s.id === stopId);
                     if (stop) {
@@ -2473,7 +2500,7 @@ function initSortable() {
 
                     reorderStopsFromDOM();
                     render(); 
-                    silentSaveRouteState();
+                    await silentSaveRouteState();
                 }
             });
             sortableInstances.push(inst);
