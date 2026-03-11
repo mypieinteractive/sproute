@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.30
+// * Dashboard - V4.31
 // * FILE: app.js
-// * Changes: V4.30 - Patched expandStop() to use the spread operator (...minStop) 
-// * when unpacking rawTuple arrays. This ensures root-level properties like driverId, 
-// * driverName, and companyId are safely preserved, fixing the infinite polling loop 
-// * and invisible order bugs on route generation.
+// * Changes: V4.31 - Implemented flex-order to strictly position the Send Route button 
+// * right of Undo. Split Mapbox routing layer into 3 distinct dashed/dotted visual styles. 
+// * Added dirtyRoutes.clear() on successful route generation polling to restore blank ETAs. 
+// * Overhauled Email Modal UI (larger fonts, better padding, removed CC Me, dynamic company email).
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -70,7 +70,7 @@ function customAlert(msg) {
         document.getElementById('modal-content').innerHTML = `
             <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left;">
                 <h3 style="margin-top:0;">Alert</h3>
-                <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
+                <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
                     <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-alert-ok">OK</button>
                 </div>
@@ -89,7 +89,7 @@ function customConfirm(msg) {
         document.getElementById('modal-content').innerHTML = `
             <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left;">
                 <h3 style="margin-top:0;">Confirm</h3>
-                <p style="font-size: 14px; margin-bottom: 20px;">${msg}</p>
+                <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
                     <button style="padding:10px 20px; border:none; border-radius:6px; background:#444; color:white; cursor:pointer;" id="modal-confirm-cancel">Cancel</button>
                     <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-confirm-ok">OK</button>
@@ -160,10 +160,8 @@ const MASTER_PALETTE = [
 ];
 
 function expandStop(minStop) {
-    // 1. Direct Object Fallback (Unrouted / Pre-Generation)
     if (minStop.address) return minStop; 
     
-    // 2. V5 rawTuple Extraction (Routed / Post-Generation)
     if (minStop.rawTuple && Array.isArray(minStop.rawTuple)) {
         const t = minStop.rawTuple;
         let clusterIdx = 0;
@@ -173,7 +171,7 @@ function expandStop(minStop) {
             clusterIdx = parseInt(t[2]) - 1;
         }
         return {
-            ...minStop, // CRITICAL FIX: Preserves driverId, driverName, routeState, routeTargetId
+            ...minStop, 
             id: t[0],
             seq: t[1],
             cluster: Math.max(0, clusterIdx),
@@ -183,7 +181,6 @@ function expandStop(minStop) {
         };
     }
 
-    // 3. Legacy Object Fallback (Pre-V5 Architecture)
     let rawCluster = minStop.R;
     let clusterIdx = 0;
     if (typeof rawCluster === 'string' && rawCluster.startsWith('R:')) {
@@ -506,6 +503,7 @@ async function loadData() {
                 return;
             } else {
                 isPollingForRoute = false; 
+                dirtyRoutes.clear(); 
             }
         }
 
@@ -841,43 +839,35 @@ function handleOpenEmailModal() {
 
     const modalHtml = `
         <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif;">
-            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 15px; font-weight: bold;">Customize Email Message</h3>
+            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: bold;">Customize Email Message</h3>
             
-            <textarea id="email-body-text" style="width: 100%; height: 220px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 12px; font-family: inherit; font-size: 13px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: vertical;">${defaultEmailMessage}</textarea>
+            <textarea id="email-body-text" style="width: 100%; height: 220px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px 16px 28px 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: vertical;">${defaultEmailMessage}</textarea>
             
-            <div style="margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px;">
-                <input type="checkbox" id="cc-me-checkbox" style="margin-top: 4px; accent-color: #7b93b8;">
-                <label for="cc-me-checkbox" style="font-size: 14px; cursor: pointer; color: #e5e5e5;">
-                    CC me<br>
-                    <span style="font-size: 12px; color: #9a9a9a;">${managerEmail || 'manager@example.com'}</span>
-                </label>
-            </div>
-
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
-                <input type="checkbox" id="cc-company-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8;">
-                <label for="cc-company-checkbox" style="font-size: 14px; cursor: pointer; color: #e5e5e5;">
+                <input type="checkbox" id="cc-company-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
+                <label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">
                     CC the Company Email<br>
-                    <span style="font-size: 12px; color: #9a9a9a;">${companyEmail || 'company@example.com'}</span>
+                    <span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${companyEmail}</span>
                 </label>
             </div>
 
-            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="cc-additional-checkbox" onchange="document.getElementById('additional-cc-wrapper').style.display = this.checked ? 'block' : 'none'" style="accent-color: #7b93b8;">
-                    <label for="cc-additional-checkbox" style="font-size: 14px; cursor: pointer; color: #e5e5e5;">Additional CC</label>
+                    <input type="checkbox" id="cc-additional-checkbox" onchange="document.getElementById('additional-cc-wrapper').style.display = this.checked ? 'block' : 'none'" style="accent-color: #7b93b8; transform: scale(1.2);">
+                    <label for="cc-additional-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">Additional CC</label>
                 </div>
-                <div id="additional-cc-wrapper" style="display: none; padding-left: 24px;">
-                    <input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                <div id="additional-cc-wrapper" style="display: none; padding-left: 28px;">
+                    <input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;">
                 </div>
             </div>
 
-            <div style="background: #1e1e1e; border: 1px solid #333; padding: 14px; border-radius: 6px; font-size: 13px; color: #fff; margin-bottom: 24px; line-height: 1.4;">
-                A list of orders and the map image will be sent to the Inspector(s), along with a direct link to open the interactive map on their device.
+            <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">
+                A list of orders and the map image will be sent to the <span style="color: var(--blue, #3B82F6); font-weight: bold;">Inspector</span>, along with a direct link to open the interactive map on their device.
             </div>
 
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
-                <button id="btn-submit-dispatch" style="padding: 10px 20px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">Submit</button>
-                <button id="btn-cancel-dispatch" style="padding: 10px 20px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">Cancel</button>
+                <button id="btn-submit-dispatch" style="padding: 12px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Submit</button>
+                <button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Cancel</button>
             </div>
         </div>
     `;
@@ -895,7 +885,6 @@ function handleOpenEmailModal() {
 
         const customBody = document.getElementById('email-body-text').value;
         const ccCompany = document.getElementById('cc-company-checkbox').checked;
-        const ccMe = document.getElementById('cc-me-checkbox').checked;
         const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
         const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
 
@@ -906,7 +895,6 @@ function handleOpenEmailModal() {
             companyId: companyParam || '',
             customBody: customBody,
             ccCompany: ccCompany,
-            ccMe: ccMe,
             ccEmail: ccEmail
         };
 
@@ -989,6 +977,15 @@ function updateRoutingUI() {
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const badgeChanges = document.getElementById('badge-changes-made');
     const btnSend = document.getElementById('btn-header-send-route');
+
+    // Apply strict CSS Flex-Order to force visual positioning from left to right
+    if(badgeChanges) badgeChanges.style.order = '1';
+    if(btnGen) btnGen.style.order = '2';
+    if(btnRecalc) btnRecalc.style.order = '3';
+    if(optInspBtn) optInspBtn.style.order = '4';
+    if(btnRestore) btnRestore.style.order = '5';
+    if(btnStartOver) btnStartOver.style.order = '6'; // Undo Routing
+    if(btnSend) btnSend.style.order = '7'; // Send Route permanently locked to the right of Undo Routing
     
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
@@ -2092,7 +2089,8 @@ function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padd
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
 
 function drawRoute() { 
-    if (map.getSource('route')) map.getSource('route').setData({ "type": "FeatureCollection", "features": [] });
+    // Clean up the old un-split Mapbox layer if it still exists
+    if (map.getLayer('route')) map.removeLayer('route');
 
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     let routedStops = [];
@@ -2103,7 +2101,10 @@ function drawRoute() {
         routedStops = activeStops;
     }
     
-    if (routedStops.length === 0) return; 
+    if (routedStops.length === 0) {
+        if (map.getSource('route')) map.getSource('route').setData({ "type": "FeatureCollection", "features": [] });
+        return; 
+    }
 
     routedStops.sort(sortByEta);
 
@@ -2122,6 +2123,7 @@ function drawRoute() {
             let coords = cStops.map(s => [parseFloat(s.lng), parseFloat(s.lat)]);
             
             let dId = key.split('_')[0];
+            let clusterIndex = parseInt(key.split('_')[1]);
             let eps = getActiveEndpoints();
             let rStart = eps.start;
             let rEnd = eps.end;
@@ -2140,27 +2142,47 @@ function drawRoute() {
             if (coords.length > 1) {
                 features.push({
                     "type": "Feature",
-                    "properties": { "color": style.line }, 
+                    "properties": { "color": style.line, "clusterIdx": clusterIndex }, 
                     "geometry": { "type": "LineString", "coordinates": coords }
                 });
             }
         }
     });
 
+    // Feed new features to source and draw the 3 distinct styled layers
     if (map.getSource('route')) {
         map.getSource('route').setData({ "type": "FeatureCollection", "features": features }); 
     } else { 
         map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
+        
+        // Route 1 - Solid
         map.addLayer({ 
-            "id": "route", 
+            "id": "route-line-0", 
             "type": "line", 
             "source": "route", 
+            "filter": ["==", "clusterIdx", 0],
             "layout": { "line-join": "round", "line-cap": "round" }, 
-            "paint": { 
-                "line-color": ["get", "color"], 
-                "line-width": 4, 
-                "line-opacity": 0.5 
-            } 
+            "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6 } 
+        }); 
+        
+        // Route 2 - Dashed
+        map.addLayer({ 
+            "id": "route-line-1", 
+            "type": "line", 
+            "source": "route", 
+            "filter": ["==", "clusterIdx", 1],
+            "layout": { "line-join": "round", "line-cap": "round" }, 
+            "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [2, 2] } 
+        }); 
+        
+        // Route 3 - Dotted
+        map.addLayer({ 
+            "id": "route-line-2", 
+            "type": "line", 
+            "source": "route", 
+            "filter": ["==", "clusterIdx", 2],
+            "layout": { "line-join": "round", "line-cap": "round" }, 
+            "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [0.5, 2] } 
         }); 
     } 
 }
