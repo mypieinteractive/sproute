@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.3
+// * Dashboard - V6.4
 // * FILE: app.js
-// * Changes: RouteState persistence fix, unified endpoint UI, refined Start/End map pins, sticky subheading inline styles cleared
+// * Changes: Isolated dirty states per-route, comprehensive Option B JSON array syncing for unrouted orders
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -133,17 +133,44 @@ function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
-// Option B: Silent Save Function
+// Option B: Comprehensive Silent Save
 function silentSaveRouteState() {
     if (!routeId) return;
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     if (inspId === 'all') return;
     
-    let routedStops = stops.filter(s => s.routeTargetId === String(routeId) && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'dispatched' || s.status.toLowerCase() === 'completed'));
+    // Capture ALL stops belonging to this route JSON blob (Routed AND Pending), explicitly dropping Deleted/Cancelled
+    let routeStops = stops.filter(s => s.routeTargetId === String(routeId) && s.status.toLowerCase() !== 'deleted' && s.status.toLowerCase() !== 'cancelled');
     
-    if (routedStops.length === 0) return;
+    if (routeStops.length === 0) return;
 
-    let minified = routedStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
+    let minified = routeStops.map(s => {
+        let rNum = (s.cluster || 0) + 1;
+        let outEta = s.eta;
+        let outDist = s.dist;
+        let outDur = s.durationSecs;
+        
+        // Wipe ETAs explicitly in the payload ONLY for routes that are dirty, isolating the changes
+        const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
+        if (dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) {
+            outEta = '';
+            outDist = '';
+            outDur = 0;
+        }
+        
+        // Wipe ETAs for any stop moved to Pending (unrouted)
+        if (s.status.toLowerCase() === 'pending') {
+            outEta = '';
+            outDist = '';
+            outDur = 0;
+        }
+
+        return [
+            s.rowId || s.id || "", Number(s.seq) || 0, 'R:' + rNum, s.address || "", s.client || "", s.app || "",                                            
+            s.dueDate || "", s.type || "", outEta || "", outDist || "", s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
+            s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(outDur) || 0                             
+        ];
+    });
     
     fetch(WEB_APP_URL, {
         method: 'POST',
@@ -492,10 +519,12 @@ async function loadData() {
             };
         });
 
-        // Ensure routes that were silently saved in a 'Staging' state render as dirty immediately
+        // Smart Staging Check: Only flag routes as dirty if their ETAs were wiped by a prior silent save.
         stops.forEach(s => {
             if (s.routeState === 'Staging' && s.driverId) {
-                markRouteDirty(s.driverId, s.cluster);
+                if (!s.eta || s.eta === '--' || s.eta === '') {
+                    markRouteDirty(s.driverId, s.cluster);
+                }
             }
         });
 
@@ -1100,21 +1129,17 @@ function updateRoutingUI() {
             if(routingControls) routingControls.style.display = 'none';
         }
 
-        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched'));
-        const isStaging = activeInspStops.some(s => s.routeState === 'Staging') || isDirty;
-
         if (unroutedCount > 0 && routedCount === 0) {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } else if ((viewMode === 'managermobile' && isDirty) || (viewMode !== 'managermobile' && isStaging)) {
+        } 
+        
+        if (isDirty) {
             if(btnRecalc) btnRecalc.style.display = 'flex';
             if(btnStartOver) btnStartOver.style.display = 'flex';
         } else if (routedCount > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
-        }
-
-        if (routedCount > 0 && !isDirty && !isStaging) {
             if(btnSend) btnSend.style.display = 'flex';
         }
 
@@ -1425,36 +1450,22 @@ async function triggerBulkUnroute() {
     if(!(await customConfirm("Remove selected orders from route?"))) return;
     pushToHistory();
     
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    try {
-        const unroutePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => s.id === id);
-            if (idx > -1) {
-                if ((stops[idx].status || '').toLowerCase() === 'routed' || (stops[idx].status || '').toLowerCase() === 'dispatched') {
-                    markRouteDirty(stops[idx].driverId, stops[idx].cluster);
-                }
-                stops[idx].status = 'Pending';
-                if (!isManagerView) stops[idx].hiddenInInspector = true; 
+    selectedIds.forEach(id => {
+        const idx = stops.findIndex(s => s.id === id);
+        if (idx > -1) {
+            if ((stops[idx].status || '').toLowerCase() === 'routed' || (stops[idx].status || '').toLowerCase() === 'dispatched') {
+                markRouteDirty(stops[idx].driverId, stops[idx].cluster);
             }
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
-        });
-        
-        await Promise.all(unroutePromises);
-        
-        selectedIds.clear(); 
-        
-        reorderStopsFromDOM();
-        render(); drawRoute(); updateSummary(); updateRouteTimes();
-        silentSaveRouteState();
-        
-    } catch (err) {
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Error removing orders from the route. Please try again.");
-    } finally {
-        if(overlay) overlay.style.display = 'none';
-    }
+            stops[idx].status = 'Pending';
+            if (!isManagerView) stops[idx].hiddenInInspector = true; 
+        }
+    });
+    
+    selectedIds.clear(); 
+    
+    reorderStopsFromDOM();
+    render(); drawRoute(); updateSummary(); updateRouteTimes();
+    silentSaveRouteState();
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
@@ -1975,27 +1986,23 @@ async function handleCalculate() {
 
     try {
         const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-        const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
-        let stopsToCalculate = [];
-
-        // In Manager View, Calculate expects ALL routed stops for a given driver to ensure none are deleted from the backend JSON array.
-        if (dirtyRoutes.size === 0) { 
-            if (overlay) overlay.style.display = 'none';
-            return; 
-        }
-
-        const inspId = isManagerView ? currentInspectorFilter : driverParam;
         
+        const inspId = isManagerView ? currentInspectorFilter : driverParam;
+        let validStops = [];
+
         if (isManagerView && inspId !== 'all') {
-            stopsToCalculate = activeStops.filter(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'completed'));
+            validStops = activeStops.filter(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'completed'));
         } else {
-            stopsToCalculate = activeStops.filter(s => ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'completed'));
+            validStops = activeStops.filter(s => ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'completed'));
         }
 
-        if (stopsToCalculate.length === 0) { 
+        let stopsToCalculate = validStops.filter(s => {
+            const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
+            return dirtyRoutes.has(routeKey) || dirtyRoutes.has('all');
+        });
+
+        if (stopsToCalculate.length === 0 && !dirtyRoutes.has('endpoints_0')) { 
             if (overlay) overlay.style.display = 'none';
-            dirtyRoutes.clear();
-            render(); drawRoute(); updateSummary();
             return; 
         }
 
@@ -2009,7 +2016,7 @@ async function handleCalculate() {
             startAddr: eps.start?.address || null,
             endAddr: eps.end?.address || null,
             isManager: isManagerView,
-            stops: stopsToCalculate.map(s => minifyStop(s, (s.cluster || 0) + 1))
+            stops: validStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
         };
 
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
@@ -2023,11 +2030,10 @@ async function handleCalculate() {
             returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false });
         });
 
-        // Ensure newly calculated stops explicitly overwrite the local routeState back to 'Ready'
         stops = stops.map(s => {
             if (returnedStopsMap.has(s.id)) {
                 let updated = returnedStopsMap.get(s.id);
-                updated.routeState = 'Ready';
+                updated.routeState = 'Ready'; 
                 return updated;
             }
             return s;
@@ -2391,13 +2397,6 @@ function initSortable() {
                             stops[idx].status = 'Pending'; 
                             stops[idx].routeState = 'Pending';
                         }
-                        
-                        const overlay = document.getElementById('processing-overlay');
-                        if(overlay) overlay.style.display = 'flex';
-                        try {
-                            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: stopId }) });
-                        } catch (e) { console.error(e); }
-                        finally { if(overlay) overlay.style.display = 'none'; }
                     }
                     
                     reorderStopsFromDOM();
