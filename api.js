@@ -1,11 +1,12 @@
 // *
-// * Dashboard - V6.5
+// * Dashboard - V6.6
 // * FILE: api.js
 // * Description: Handles all Fetch requests to the Apps Script backend.
 // *
 
-import { Config, State, expandStop, minifyStop, getStatusCode, markRouteDirty, pushToHistory } from './state.js';
-import { render, drawRoute, updateSummary, updateUndoUI, updateInspectorDropdown, updateRouteButtonColors, getActiveEndpoints, updateSelectionUI, updateRouteTimes, customAlert, customConfirm } from './ui.js';
+import { Config, State, expandStop, minifyStop, getStatusCode, markRouteDirty, getStatusText, isActiveStop } from './state.js';
+import { render, updateSummary, updateUndoUI, updateInspectorDropdown, updateRouteButtonColors, getActiveEndpoints, updateSelectionUI, updateRouteTimes, customAlert, customConfirm } from './ui.js';
+import { drawRoute, map } from './map.js';
 import { initSortable, reorderStopsFromDOM } from './drag-drop.js';
 
 export function silentSaveRouteState() {
@@ -26,6 +27,7 @@ export function silentSaveRouteState() {
         if (State.dirtyRoutes.has(routeKey) || State.dirtyRoutes.has('all') || s.status.toLowerCase() === 'pending') {
             outEta = ''; outDist = ''; outDur = 0;
         }
+
         return [
             s.rowId || s.id || "", Number(s.seq) || 0, 'R:' + rNum, s.address || "", s.client || "", s.app || "",                                            
             s.dueDate || "", s.type || "", outEta || "", outDist || "", s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
@@ -78,18 +80,6 @@ export async function loadData() {
                 routeState: exp.routeState || s.routeState || 'Pending', routeTargetId: exp.routeTargetId || s.routeTargetId || null
             };
         });
-
-        function getStatusText(code) {
-            if (!code) return 'Pending';
-            let c = String(code).trim().toUpperCase();
-            if (c === 'S' || c === 'DISPATCHED') return 'Dispatched';
-            if (c === 'R' || c === 'ROUTED') return 'Routed';
-            if (c === 'C' || c === 'COMPLETED') return 'Completed';
-            if (c === 'D' || c === 'DELETED') return 'Deleted';
-            if (c === 'V' || c === 'O') return 'Validation Failed';
-            if (c === 'P' || c === 'PENDING') return 'Pending';
-            return Config.STATUS_MAP_TO_TEXT[c] || 'Pending';
-        }
 
         State.stops.forEach(s => {
             if (s.routeState === 'Staging' && s.driverId) {
@@ -185,24 +175,11 @@ export async function loadData() {
             }
             updateRouteButtonColors();
             
-            let hasValidStops = State.stops.filter(s => {
-                let status = (s.status || '').toLowerCase().trim();
-                let routeState = (s.routeState || '').toLowerCase().trim();
-                if (State.isManagerView && (routeState === 'dispatched' || status === 'dispatched' || status === 's')) return false;
-                if (State.isManagerView) return (status === 'pending' || status === 'routed' || status === 'completed');
-                let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
-                if (s.hiddenInInspector) active = false;
-                return active;
-            }).filter(s => s.lng && s.lat).length > 0;
-
+            let hasValidStops = State.stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
             if (!hasValidStops && data.companyAddress) {
                 const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.companyAddress)}.json?access_token=${Config.MAPBOX_TOKEN}`;
                 fetch(geoUrl).then(r => r.json()).then(geo => {
-                    import('./map.js').then(MapCtrl => {
-                        if (geo.features && geo.features.length > 0) {
-                            MapCtrl.map.flyTo({ center: geo.features[0].center, zoom: 11 });
-                        }
-                    });
+                    if (geo.features && geo.features.length > 0) map.flyTo({ center: geo.features[0].center, zoom: 11 });
                 }).catch(err => console.error("Geocoding failed for company address.", err));
             }
         }
@@ -223,16 +200,7 @@ export async function handleCalculate() {
     if (overlay) overlay.style.display = 'flex';
 
     try {
-        const activeStops = State.stops.filter(s => {
-            const status = (s.status || '').toLowerCase().trim();
-            const routeState = (s.routeState || '').toLowerCase().trim();
-            if (State.isManagerView && (routeState === 'dispatched' || status === 'dispatched' || status === 's')) return false;
-            if (State.isManagerView) return (status === 'pending' || status === 'routed' || status === 'completed');
-            let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
-            if (s.hiddenInInspector) active = false;
-            return active;
-        }).filter(s => s.lng && s.lat);
-        
+        const activeStops = State.stops.filter(s => isActiveStop(s) && s.lng && s.lat);
         const inspId = State.isManagerView ? State.currentInspectorFilter : State.driverParam;
         let validStops = [];
 
@@ -253,7 +221,6 @@ export async function handleCalculate() {
         }
 
         const eps = getActiveEndpoints();
-
         let payload = {
             action: 'calculate', routeId: State.routeId, driver: State.driverParam,
             startTime: State.currentStartTime, startAddr: eps.start?.address || null, endAddr: eps.end?.address || null,
@@ -293,9 +260,107 @@ export async function handleCalculate() {
     }
 }
 
+export async function handleGenerateRoute() {
+    if (State.currentInspectorFilter === 'all') return;
+    const insp = State.inspectors.find(i => i.id === State.currentInspectorFilter);
+    if (!insp) return;
+
+    const overlay = document.getElementById('processing-overlay');
+    if(overlay) overlay.style.display = 'flex';
+
+    let clusteredArrays = [];
+    for(let i = 0; i < State.currentRouteCount; i++) {
+        let itemsInCluster = State.stops.filter(s => isActiveStop(s) && s.lng && s.lat && s.cluster === i && (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed' && (s.status||'').toLowerCase() !== 'dispatched');
+        if (itemsInCluster.length > 0) {
+            clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
+        }
+    }
+
+    const eps = getActiveEndpoints();
+    let sAddr = eps.start ? eps.start.address : '';
+    let eAddr = eps.end ? eps.end.address : '';
+
+    try {
+        const res = await fetch(Config.WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
+        });
+        const data = await res.json();
+        
+        if (data.status === 'queued' || data.success) {
+            fetch(Config.WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'processQueue', routeId: State.routeId, driverId: insp.id })
+            }).catch(err => { console.log("Ignored expected timeout from processQueue"); });
+            
+            State.isPollingForRoute = true;
+            State.pollRetries = 0;
+            setTimeout(loadData, 5000);
+        } else { await loadData(); }
+    } catch (e) {
+        if(overlay) overlay.style.display = 'none';
+        await customAlert("Generation encountered an error. Please wait a moment and try again.");
+    } 
+}
+
+export async function finalizeSync(type, directStart = null, directEnd = null) {
+    const eps = getActiveEndpoints();
+    const startAddr = directStart !== null ? directStart : (document.getElementById('input-endpoint-start')?.value || '');
+    const endAddr = directEnd !== null ? directEnd : (document.getElementById('input-endpoint-end')?.value || '');
+    
+    const modal = document.getElementById('modal-overlay');
+    if(modal) modal.style.display = 'none';
+    
+    let sLat = State.routeStart && State.routeStart.lat ? State.routeStart.lat : eps.start?.lat || null;
+    let sLng = State.routeStart && State.routeStart.lng ? State.routeStart.lng : eps.start?.lng || null;
+    let eLat = State.routeEnd && State.routeEnd.lat ? State.routeEnd.lat : eps.end?.lat || null;
+    let eLng = State.routeEnd && State.routeEnd.lng ? State.routeEnd.lng : eps.end?.lng || null;
+
+    let payload = { 
+        action: type, routeId: State.routeId, driver: State.driverParam, 
+        startTime: State.currentStartTime, startAddr: startAddr, endAddr: endAddr,
+        startLat: sLat, startLng: sLng, endLat: eLat, endLng: eLng,
+        isManager: State.isManagerView
+    };
+
+    if (State.isManagerView && State.currentInspectorFilter !== 'all') {
+        let clusteredArrays = [];
+        for(let i = 0; i < State.currentRouteCount; i++) {
+            let itemsInCluster = State.stops.filter(s => s.cluster === i);
+            if (itemsInCluster.length > 0) clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
+        }
+        payload.routeClusters = clusteredArrays;
+        payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
+    } else {
+        payload.stops = State.stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
+    }
+
+    const overlay = document.getElementById('processing-overlay');
+    if (overlay) overlay.style.display = 'flex';
+
+    try {
+        const res = await fetch(Config.WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const data = await res.json(); 
+        State.stops = data.updatedStops.map(s => {
+            let exp = expandStop(s);
+            return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false, routeState: 'Ready' };
+        });
+        
+        if (!State.isManagerView) State.isAlteredRoute = true;
+        State.historyStack = [];
+        State.dirtyRoutes.clear();
+        render(); drawRoute(); updateSummary();
+    } catch (e) { 
+        if (overlay) overlay.style.display = 'none';
+        await customAlert("Error updating locations. Please try again."); 
+    } finally {
+        if (overlay) overlay.style.display = 'none';
+    }
+}
+
 export async function toggleComplete(e, id) {
+    import('./ui.js').then(ui => ui.pushToHistory());
     e.stopPropagation();
-    pushToHistory();
     const idx = State.stops.findIndex(s => s.id == id);
     const isCurrentlyCompleted = State.stops[idx].status.toLowerCase() === 'completed';
     const newStatus = isCurrentlyCompleted ? (State.stops[idx].routeState === 'Dispatched' ? 'Dispatched' : 'Routed') : 'Completed';
@@ -309,7 +374,7 @@ export async function toggleComplete(e, id) {
 
 export async function triggerBulkComplete() { 
     if(!(await customConfirm("Mark selected orders as completed?"))) return;
-    pushToHistory();
+    import('./ui.js').then(ui => ui.pushToHistory());
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
@@ -333,7 +398,7 @@ export async function triggerBulkComplete() {
 
 export async function triggerBulkDelete() { 
     if(!(await customConfirm("Delete selected orders?"))) return;
-    pushToHistory();
+    import('./ui.js').then(ui => ui.pushToHistory());
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
@@ -355,7 +420,6 @@ export async function triggerBulkDelete() {
         updateInspectorDropdown(); 
         reorderStopsFromDOM(); render(); drawRoute(); updateSummary(); updateRouteTimes();
         silentSaveRouteState();
-
     } catch (err) {
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error deleting orders. Please try again.");
@@ -366,35 +430,22 @@ export async function triggerBulkDelete() {
 
 export async function triggerBulkUnroute() { 
     if(!(await customConfirm("Remove selected orders from route?"))) return;
-    pushToHistory();
+    import('./ui.js').then(ui => ui.pushToHistory());
     
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    try {
-        const unroutePromises = Array.from(State.selectedIds).map(id => {
-            const idx = State.stops.findIndex(s => s.id === id);
-            if (idx > -1) {
-                if ((State.stops[idx].status || '').toLowerCase() === 'routed' || (State.stops[idx].status || '').toLowerCase() === 'dispatched') {
-                    markRouteDirty(State.stops[idx].driverId, State.stops[idx].cluster);
-                }
-                State.stops[idx].status = 'Pending';
-                if (!State.isManagerView) State.stops[idx].hiddenInInspector = true; 
+    State.selectedIds.forEach(id => {
+        const idx = State.stops.findIndex(s => s.id === id);
+        if (idx > -1) {
+            if ((State.stops[idx].status || '').toLowerCase() === 'routed' || (State.stops[idx].status || '').toLowerCase() === 'dispatched') {
+                markRouteDirty(State.stops[idx].driverId, State.stops[idx].cluster);
             }
-            return fetch(Config.WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
-        });
-        
-        await Promise.all(unroutePromises);
-        State.selectedIds.clear(); 
-        reorderStopsFromDOM(); render(); drawRoute(); updateSummary(); updateRouteTimes();
-        silentSaveRouteState();
-        
-    } catch (err) {
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Error removing orders from the route. Please try again.");
-    } finally {
-        if(overlay) overlay.style.display = 'none';
-    }
+            State.stops[idx].status = 'Pending';
+            if (!State.isManagerView) State.stops[idx].hiddenInInspector = true; 
+        }
+    });
+    
+    State.selectedIds.clear(); 
+    reorderStopsFromDOM(); render(); drawRoute(); updateSummary(); updateRouteTimes();
+    silentSaveRouteState();
 }
 
 export async function processReassignDriver(rowId, newDriverName, newDriverId) {
@@ -416,7 +467,7 @@ export async function handleInspectorChange(e, rowId, selectEl) {
         } else { render(); return; }
     }
     
-    pushToHistory();
+    import('./ui.js').then(ui => ui.pushToHistory());
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
     
@@ -432,7 +483,6 @@ export async function handleInspectorChange(e, rowId, selectEl) {
         await Promise.all(idsToUpdate.map(id => processReassignDriver(id, newDriverName, newDriverId)));
         updateInspectorDropdown(); 
         await loadData();
-        
     } catch (err) { 
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error reassigning orders. Please try again."); 
@@ -465,114 +515,6 @@ export async function handleEndpointOptimize() {
     render();
 }
 
-export async function finalizeSync(type, directStart = null, directEnd = null) {
-    const eps = getActiveEndpoints();
-    const startAddr = directStart !== null ? directStart : (document.getElementById('input-endpoint-start')?.value || '');
-    const endAddr = directEnd !== null ? directEnd : (document.getElementById('input-endpoint-end')?.value || '');
-    
-    const modal = document.getElementById('modal-overlay');
-    if(modal) modal.style.display = 'none';
-    
-    let sLat = State.routeStart && State.routeStart.lat ? State.routeStart.lat : eps.start?.lat || null;
-    let sLng = State.routeStart && State.routeStart.lng ? State.routeStart.lng : eps.start?.lng || null;
-    let eLat = State.routeEnd && State.routeEnd.lat ? State.routeEnd.lat : eps.end?.lat || null;
-    let eLng = State.routeEnd && State.routeEnd.lng ? State.routeEnd.lng : eps.end?.lng || null;
-
-    let payload = { 
-        action: type, routeId: State.routeId, driver: State.driverParam, 
-        startTime: State.currentStartTime, startAddr: startAddr, endAddr: endAddr,
-        startLat: sLat, startLng: sLng, endLat: eLat, endLng: eLng,
-        isManager: State.isManagerView
-    };
-
-    if (State.isManagerView && State.currentInspectorFilter !== 'all') {
-        let clusteredArrays = [];
-        for(let i = 0; i < State.currentRouteCount; i++) {
-            let itemsInCluster = State.stops.filter(s => s.cluster === i);
-            if (itemsInCluster.length > 0) {
-                clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
-            }
-        }
-        payload.routeClusters = clusteredArrays;
-        payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
-    } else {
-        payload.stops = State.stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
-    }
-
-    const overlay = document.getElementById('processing-overlay');
-    if (overlay) overlay.style.display = 'flex';
-
-    try {
-        const res = await fetch(Config.WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const data = await res.json(); 
-        State.stops = data.updatedStops.map(s => {
-            let exp = expandStop(s);
-            return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false, routeState: 'Ready' };
-        });
-        
-        if (!State.isManagerView) State.isAlteredRoute = true;
-        State.historyStack = [];
-        State.dirtyRoutes.clear();
-        render(); drawRoute(); updateSummary();
-    } catch (e) { 
-        if (overlay) overlay.style.display = 'none';
-        await customAlert("Error updating locations. Please try again."); 
-    } finally {
-        if (overlay) overlay.style.display = 'none';
-    }
-}
-
-export async function handleGenerateRoute() {
-    if (State.currentInspectorFilter === 'all') return;
-    const insp = State.inspectors.find(i => i.id === State.currentInspectorFilter);
-    if (!insp) return;
-
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    let clusteredArrays = [];
-    for(let i = 0; i < State.currentRouteCount; i++) {
-        let itemsInCluster = State.stops.filter(s => {
-            let status = (s.status||'').toLowerCase();
-            return isActiveStop(s) && s.lng && s.lat && s.cluster === i && status !== 'routed' && status !== 'completed' && status !== 'dispatched';
-        });
-        if (itemsInCluster.length > 0) {
-            clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
-        }
-    }
-
-    const eps = getActiveEndpoints();
-    let sAddr = eps.start ? eps.start.address : '';
-    let eAddr = eps.end ? eps.end.address : '';
-
-    try {
-        const res = await fetch(Config.WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
-        });
-        
-        const data = await res.json();
-        
-        if (data.status === 'queued' || data.success) {
-            fetch(Config.WEB_APP_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'processQueue', routeId: State.routeId, driverId: insp.id })
-            }).catch(err => {
-                console.log("Ignored expected timeout from processQueue", err);
-            });
-            
-            State.isPollingForRoute = true;
-            State.pollRetries = 0;
-            setTimeout(loadData, 5000);
-        } else {
-            await loadData();
-        }
-    } catch (e) {
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Generation encountered an error. Please wait a moment and try again.");
-    } 
-}
-
 export async function handleStartOver() {
     if(!(await customConfirm("Clear All Routes For This Inspector?"))) return;
     const insp = State.inspectors.find(i => i.id === State.currentInspectorFilter);
@@ -586,17 +528,13 @@ export async function executeRouteReset(driverId) {
     
     try {
         await fetch(Config.WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'resetRoute', driverId: driverId, routeId: State.routeId }) });
-        
         State.historyStack = []; 
         State.stops.forEach(s => {
             if (s.driverId === driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched')) {
                 s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending';
             }
         });
-        
-        State.routeStart = null;
-        State.routeEnd = null;
-        
+        State.routeStart = null; State.routeEnd = null;
         State.dirtyRoutes.clear();
         render(); drawRoute(); updateSummary(); updateUndoUI();
     } catch(e) { 
@@ -608,7 +546,6 @@ export async function executeRouteReset(driverId) {
 
 export async function handleRestoreOriginal() {
     if(!(await customConfirm("Restore the original route layout planned by the manager?"))) return;
-    
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
@@ -628,7 +565,7 @@ export async function saveEndpointToBackend(type, address, lat, lng) {
     const activeStops = State.stops.filter(s => isActiveStop(s));
     const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
     
-    pushToHistory();
+    import('./ui.js').then(ui => ui.pushToHistory());
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
     
