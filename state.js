@@ -1,13 +1,8 @@
 // *
-// * Dashboard - V6.5
+// * Dashboard - V6.6
 // * FILE: state.js
-// * Description: Core configuration, shared mutable State object, and helper utilities.
+// * Description: Core configuration, shared mutable State object, and helper utilities. (Zero Imports)
 // *
-
-import { render, updateSummary, updateUndoUI } from './ui.js';
-import { drawRoute } from './map.js';
-import { silentSaveRouteState } from './api.js';
-import { updateRouteTimes } from './ui.js';
 
 export const Config = {
     MAPBOX_TOKEN: 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA',
@@ -140,20 +135,35 @@ export function markRouteDirty(driverId, clusterIdx) {
     State.dirtyRoutes.add(`${driverId || 'unassigned'}_${clusterIdx || 0}`);
 }
 
-export function pushToHistory() {
-    State.historyStack.push({
-        stops: JSON.parse(JSON.stringify(State.stops)),
-        dirty: new Set(State.dirtyRoutes)
-    });
-    if (State.historyStack.length > 20) State.historyStack.shift();
-    updateUndoUI();
-}
+export function getVisualStyle(stopData) {
+    const isRouted = (stopData.status || '').toLowerCase() === 'routed' || (stopData.status || '').toLowerCase() === 'completed' || (stopData.status || '').toLowerCase() === 'dispatched';
+    
+    let inspectorIndex = 0;
+    if (stopData.driverId) {
+        const idx = State.inspectors.findIndex(i => i.id === stopData.driverId);
+        if (idx !== -1) inspectorIndex = idx;
+    }
+    
+    const baseColor = Config.MASTER_PALETTE[inspectorIndex % Config.MASTER_PALETTE.length];
+    const cluster = stopData.cluster || 0;
+    const hasRoutedForInsp = State.stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
+    
+    const isPreviewingClusters = State.isManagerView && State.currentInspectorFilter !== 'all' && State.currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
+    const isSinglePreview = State.isManagerView && State.currentInspectorFilter !== 'all' && State.currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
+    
+    let bgHex, borderHex = baseColor, textHex;
+    
+    if (isRouted || isPreviewingClusters) {
+        if (cluster === 0) { bgHex = baseColor; textHex = '#ffffff'; }
+        else if (cluster === 1) { bgHex = '#000000'; textHex = '#ffffff'; }
+        else { bgHex = '#ffffff'; textHex = '#000000'; }
+    } else if (isSinglePreview) {
+        bgHex = baseColor; textHex = '#ffffff';
+    } else {
+        bgHex = 'transparent'; textHex = baseColor;
+    }
 
-export function undoLastAction() {
-    if (State.historyStack.length === 0) return;
-    const last = State.historyStack.pop();
-    State.stops = last.stops;
-    State.dirtyRoutes = new Set(last.dirty);
-    render(); drawRoute(); updateSummary(); updateRouteTimes(); updateUndoUI();
-    silentSaveRouteState(); 
+    let bgFinal = bgHex;
+    if (bgHex !== 'transparent') bgFinal = bgHex.startsWith('#') ? hexToRgba(bgHex, 0.75) : bgHex;
+    return { bg: bgFinal, border: borderHex, text: textHex, line: borderHex };
 }
