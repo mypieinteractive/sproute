@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V4.35
+// * Dashboard - V4.37
 // * FILE: app.js
-// * Changes: V4.35 - Enabled preserveDrawingBuffer in Mapbox config to allow canvas 
-// * extraction. Added mapBase64 capture to the handleOpenEmailModal submit function 
-// * and injected it into the dispatchRoute webhook payload.
+// * Changes: V4.37 - Moved Send Route button back to header (styled #2E4053, aligned right of Undo).
+// * Centered ETA column text in manager view. Bulletproofed getStatusText dictionary to catch 
+// * any variation of "S" from the backend to fix Dispatched ghosting. Locked routed stops out 
+// * of the liveClusterUpdate K-means loop so they don't revert to unrouted layouts.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -23,13 +24,20 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
-// Status Code Translation Dictionaries
 const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
 const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
 
+// Bulletproofed dictionary to catch any raw backend variations
 function getStatusText(code) {
     if (!code) return 'Pending';
-    return STATUS_MAP_TO_TEXT[String(code).toUpperCase()] || 'Pending';
+    let c = String(code).trim().toUpperCase();
+    if (c === 'S' || c === 'DISPATCHED') return 'Dispatched';
+    if (c === 'R' || c === 'ROUTED') return 'Routed';
+    if (c === 'C' || c === 'COMPLETED') return 'Completed';
+    if (c === 'D' || c === 'DELETED') return 'Deleted';
+    if (c === 'V' || c === 'O') return 'Validation Failed';
+    if (c === 'P' || c === 'PENDING') return 'Pending';
+    return STATUS_MAP_TO_TEXT[c] || 'Pending';
 }
 
 function getStatusCode(text) {
@@ -146,7 +154,7 @@ const mapConfig = {
     zoom: 11, 
     attributionControl: false,
     boxZoom: false,
-    preserveDrawingBuffer: true // Required to extract base64 images from the WebGL canvas
+    preserveDrawingBuffer: true 
 };
 const map = new mapboxgl.Map(mapConfig);
 
@@ -323,22 +331,20 @@ function updateRouteButtonColors() {
 }
 
 function isActiveStop(s) {
-    let active = true;
-    const status = (s.status || '').toLowerCase();
-    
+    const status = (s.status || '').toLowerCase().trim();
+    const routeState = (s.routeState || '').toLowerCase().trim();
+
     if (isManagerView) {
-        if (s.routeState === 'Dispatched' || status === 'dispatched') return false;
-        active = (status === 'pending' || status === 'routed' || status === 'completed');
+        // Enforce strict hand-off override
+        if (routeState === 'dispatched' || status === 'dispatched' || status === 's') {
+            return false;
+        }
+        return (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
-        active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
+        let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
         if (s.hiddenInInspector) active = false;
+        return active;
     }
-    
-    if (isManagerView && currentInspectorFilter !== 'all') {
-        if (s.driverId !== currentInspectorFilter) active = false;
-    }
-    
-    return active;
 }
 
 function hexToRgba(hex, alpha) {
@@ -969,30 +975,24 @@ function updateRoutingUI() {
     const routingControls = document.getElementById('routing-controls');
     const hintEl = document.getElementById('inspector-select-hint');
     
-    const oldHeaderBtn = document.getElementById('btn-header-send-route');
-    if (oldHeaderBtn) oldHeaderBtn.remove();
+    // Purge old sidebar Send button if it still exists from V4.34
+    const oldSidebarBtn = document.getElementById('btn-sidebar-send-route');
+    if (oldSidebarBtn) oldSidebarBtn.remove();
 
     const btnGen = document.getElementById('btn-header-generate');
     const btnStartOver = document.getElementById('btn-header-start-over');
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
 
-    let btnSend = document.getElementById('btn-sidebar-send-route');
-    if (!btnSend) {
-        btnSend = document.createElement('button');
-        btnSend.id = 'btn-sidebar-send-route';
-        btnSend.className = 'header-action-btn';
-        btnSend.style.cssText = 'background: white; color: #1E293B; display: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; font-size: 15px; border: 1px solid #CBD5E1; cursor: pointer; align-items: center; justify-content: center; gap: 8px; width: 90%; margin: 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
-        btnSend.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Route(s)';
-        btnSend.onclick = () => handleOpenEmailModal();
-        
-        const filterWrap = document.getElementById('inspector-dropdown-wrapper');
-        if (filterWrap && filterWrap.parentNode) {
-            filterWrap.parentNode.insertBefore(btnSend, filterWrap.nextSibling);
-        } else {
-            const sidebar = document.getElementById('sidebar');
-            if (sidebar) sidebar.insertBefore(btnSend, sidebar.firstChild);
-        }
+    // Create the Header Send Route Button (matching sizing)
+    if (!document.getElementById('btn-header-send-route')) {
+        const sendBtn = document.createElement('button');
+        sendBtn.id = 'btn-header-send-route';
+        sendBtn.className = 'header-action-btn';
+        sendBtn.style.cssText = 'background: #2E4053; color: white; display: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; cursor: pointer; align-items: center; gap: 8px;';
+        sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Route(s)';
+        sendBtn.onclick = () => handleOpenEmailModal();
+        if (routingControls) routingControls.appendChild(sendBtn);
     }
 
     if (!document.getElementById('btn-header-optimize-insp')) {
@@ -1015,13 +1015,16 @@ function updateRoutingUI() {
 
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const badgeChanges = document.getElementById('badge-changes-made');
+    const btnSend = document.getElementById('btn-header-send-route');
 
+    // Strict UI visual ordering from left to right
     if(badgeChanges) badgeChanges.style.order = '1';
     if(btnGen) btnGen.style.order = '2';
     if(btnRecalc) btnRecalc.style.order = '3';
     if(optInspBtn) optInspBtn.style.order = '4';
     if(btnRestore) btnRestore.style.order = '5';
     if(btnStartOver) btnStartOver.style.order = '6'; 
+    if(btnSend) btnSend.style.order = '7'; // Send button permanently ordered right of Undo
     
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
@@ -1241,24 +1244,32 @@ function liveClusterUpdate() {
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     if(activeStops.length === 0) return;
 
+    // Exclude stops that are already routed so changing route count doesn't scramble them
+    const unroutedStops = activeStops.filter(s => {
+        const st = (s.status||'').toLowerCase();
+        return st !== 'routed' && st !== 'completed' && st !== 'dispatched';
+    });
+
     if(k === 1) {
-        activeStops.forEach(s => { s.cluster = 0; s.manualCluster = false; });
+        unroutedStops.forEach(s => { s.cluster = 0; s.manualCluster = false; });
         updateMarkerColors();
         updateRouteTimes();
         return;
     }
 
+    if (unroutedStops.length === 0) return;
+
     let centroids = [];
     for(let i=0; i<k; i++) {
-        let idx = Math.floor(i * activeStops.length / k);
-        centroids.push({ lat: activeStops[idx].lat, lng: activeStops[idx].lng });
+        let idx = Math.floor(i * unroutedStops.length / k);
+        centroids.push({ lat: unroutedStops[idx].lat, lng: unroutedStops[idx].lng });
     }
 
     let today = new Date(); 
     today.setHours(0,0,0,0);
 
     for(let iter=0; iter<10; iter++) {
-        activeStops.forEach(s => {
+        unroutedStops.forEach(s => {
             if (s.manualCluster) return; 
 
             let bestD = Infinity;
@@ -1285,7 +1296,7 @@ function liveClusterUpdate() {
         });
 
         for(let i=0; i<k; i++) {
-            let clusterStops = activeStops.filter(s => s.cluster === i);
+            let clusterStops = unroutedStops.filter(s => s.cluster === i);
             if(clusterStops.length > 0) {
                 let sumLat = 0, sumLng = 0;
                 clusterStops.forEach(s => { sumLat+=s.lat; sumLng+=s.lng; });
@@ -1626,11 +1637,12 @@ function render() {
         const appSortClick = isAllInspectors ? `onclick="sortTable('app')"` : '';
         const appSortIcon = isAllInspectors ? getSortIcon('app') : '';
 
+        // Centered flex alignment applied to col-eta inline
         header.innerHTML = `
             <div class="col-num">
                 <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
             </div>
-            <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'block'};">ETA</div>
+            <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
             <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
@@ -1713,9 +1725,10 @@ function render() {
                 metaHtml = `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>`;
             }
 
+            // Centered flex alignment applied to col-eta inline
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
-                <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'block'};">${etaTime}</div>
+                <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">${etaTime}</div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 ${inspectorHtml}
                 <div class="col-addr">
