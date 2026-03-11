@@ -1,13 +1,13 @@
 // *
-// * Dashboard - V6.5
+// * Dashboard - V6.6
 // * FILE: ui.js
 // * Description: DOM rendering, visual interactions, and layout management.
 // *
 
-import { Config, State, isActiveStop, getVisualStyle, markRouteDirty, pushToHistory } from './state.js';
+import { Config, State, isActiveStop, getVisualStyle, markRouteDirty } from './state.js';
 import { map, drawRoute, focusPin, focusTile } from './map.js';
 import { initSortable, reorderStopsFromDOM, liveClusterUpdate } from './drag-drop.js';
-import { silentSaveRouteState, saveEndpointToBackend, handleEndpointOptimize } from './api.js';
+import { silentSaveRouteState } from './api.js';
 
 export function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -53,6 +53,20 @@ export function customConfirm(msg) {
         document.getElementById('modal-confirm-ok').onclick = () => { m.style.display = 'none'; resolve(true); };
         document.getElementById('modal-confirm-cancel').onclick = () => { m.style.display = 'none'; resolve(false); };
     });
+}
+
+export function pushToHistory() {
+    State.historyStack.push({ stops: JSON.parse(JSON.stringify(State.stops)), dirty: new Set(State.dirtyRoutes) });
+    if (State.historyStack.length > 20) State.historyStack.shift();
+    updateUndoUI();
+}
+
+export function undoLastAction() {
+    if (State.historyStack.length === 0) return;
+    const last = State.historyStack.pop();
+    State.stops = last.stops; State.dirtyRoutes = new Set(last.dirty);
+    render(); drawRoute(); updateSummary(); updateRouteTimes(); updateUndoUI();
+    silentSaveRouteState();
 }
 
 export function updateUndoUI() {
@@ -145,19 +159,13 @@ export function moveSelectedToRoute(cIdx) {
         const s = State.stops.find(st => st.id === id);
         if (s) {
             if ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched') markRouteDirty(s.driverId, s.cluster); 
-            s.cluster = cIdx;
-            s.manualCluster = true; 
+            s.cluster = cIdx; s.manualCluster = true; 
             markRouteDirty(s.driverId, s.cluster); 
         }
     });
     State.selectedIds.clear();
     
-    reorderStopsFromDOM();
-    render(); 
-    drawRoute();
-    updateSummary();
-    updateRouteTimes();
-    silentSaveRouteState();
+    reorderStopsFromDOM(); render(); drawRoute(); updateSummary(); updateRouteTimes(); silentSaveRouteState();
 }
 
 export function checkEndpointModified() {
@@ -170,7 +178,6 @@ export function checkEndpointModified() {
 }
 
 let geocodeTimeout;
-
 export function handleEndpointInput(e, type) {
     checkEndpointModified();
     clearTimeout(geocodeTimeout);
@@ -233,7 +240,7 @@ export function renderAutocomplete(features, inputEl, type) {
             State.latestSuggestions[type] = f; 
             inputEl.value = f.place_name;
             dropdown.innerHTML = '';
-            selectEndpoint(type, f.place_name, f.center[1], f.center[0], inputEl);
+            import('./api.js').then(api => api.selectEndpoint(type, f.place_name, f.center[1], f.center[0], inputEl));
         };
         dropdown.appendChild(item);
     });
@@ -247,14 +254,12 @@ export function commitTopSuggestion(type, inputEl) {
         if (State.latestSuggestions[type]) {
             const top = State.latestSuggestions[type];
             inputEl.value = top.place_name;
-            selectEndpoint(type, top.place_name, top.center[1], top.center[0], inputEl);
+            import('./api.js').then(api => api.selectEndpoint(type, top.place_name, top.center[1], top.center[0], inputEl));
         }
     }
 }
 
-export function handleEndpointKeyDown(e, type) {
-    if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
-}
+export function handleEndpointKeyDown(e, type) { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }
 
 export function handleEndpointBlur(type, inputEl) {
     setTimeout(() => {
@@ -262,40 +267,6 @@ export function handleEndpointBlur(type, inputEl) {
         const dropdown = document.getElementById(`autocomplete-${type}`);
         if (dropdown) dropdown.innerHTML = ''; 
     }, 200);
-}
-
-export async function selectEndpoint(type, address, lat, lng, inputEl) {
-    const inspId = State.isManagerView ? State.currentInspectorFilter : State.driverParam;
-    const insp = State.inspectors.find(i => i.id === inspId);
-    const activeStops = State.stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
-
-    if (State.isManagerView && hasRouted) {
-        const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
-        if (!proceed) {
-            const eps = getActiveEndpoints();
-            if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
-            return;
-        }
-    }
-    
-    let epObj = { address, lat, lng };
-    if (type === 'start') State.routeStart = epObj;
-    if (type === 'end') State.routeEnd = epObj;
-
-    if (insp) {
-        if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
-        if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
-    }
-    
-    if (State.isManagerView && hasRouted) {
-        const { executeRouteReset } = await import('./api.js');
-        await executeRouteReset(insp.id);
-    } else {
-        markRouteDirty('endpoints', 0);
-        render(); drawRoute(); updateSummary();
-        saveEndpointToBackend(type, address, lat, lng);
-    }
 }
 
 export function updateInspectorDropdown() {
@@ -341,9 +312,8 @@ export function handleInspectorFilterChange(val) {
     
     const filterSelect = document.getElementById('inspector-filter');
     if (filterSelect) {
-        if (val === 'all') {
-            filterSelect.style.color = 'var(--text-main)';
-        } else {
+        if (val === 'all') filterSelect.style.color = 'var(--text-main)';
+        else {
             const inspIdx = State.inspectors.findIndex(i => i.id === val);
             if (inspIdx > -1) filterSelect.style.color = Config.MASTER_PALETTE[inspIdx % Config.MASTER_PALETTE.length];
         }
@@ -351,8 +321,7 @@ export function handleInspectorFilterChange(val) {
 
     if (val !== 'all') liveClusterUpdate();
     
-    updateRouteButtonColors();
-    render(); drawRoute(); updateSummary();
+    updateRouteButtonColors(); render(); drawRoute(); updateSummary();
 }
 
 export function updateRouteButtonColors() {
@@ -461,9 +430,7 @@ export function updateSelectionUI() {
     document.getElementById('bulk-unroute-btn').style.display = (hasRouted && State.PERMISSION_MODIFY) ? 'block' : 'none'; 
     
     const completeBtn = document.getElementById('bulk-complete-btn');
-    if (completeBtn) {
-        completeBtn.style.display = (has && !State.isManagerView) ? 'block' : 'none'; 
-    }
+    if (completeBtn) completeBtn.style.display = (has && !State.isManagerView) ? 'block' : 'none'; 
 
     const hintEl = document.getElementById('map-hint');
     if (hintEl) hintEl.style.opacity = has ? '0' : '1';
@@ -544,7 +511,7 @@ export function updateRoutingUI() {
         sendBtn.className = 'header-action-btn';
         sendBtn.style.cssText = 'background: #2E4053; color: white; display: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; cursor: pointer; align-items: center; gap: 8px;';
         sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>';
-        sendBtn.onclick = () => handleOpenEmailModal();
+        sendBtn.onclick = () => import('./api.js').then(api => api.handleOpenEmailModal());
         if (routingControls) routingControls.appendChild(sendBtn);
     }
 
@@ -554,7 +521,7 @@ export function updateRoutingUI() {
         optBtn.className = 'header-action-btn';
         optBtn.style.cssText = 'background: #2C3D4F; color: white; display: none;';
         optBtn.innerHTML = '<span>Re-Optimize</span>';
-        optBtn.onclick = () => handleEndpointOptimize();
+        optBtn.onclick = () => import('./api.js').then(api => api.handleEndpointOptimize());
         if (routingControls) routingControls.appendChild(optBtn);
     }
     
@@ -659,7 +626,6 @@ export function createRouteSubheading(clusterNum, clusterStops) {
         const rawDist = String(s.dist || '0').replace(/[^0-9.]/g, '');
         const distVal = parseFloat(rawDist);
         if (!isNaN(distVal)) totalMi += distVal;
-        
         totalSecs += parseFloat(s.durationSecs || 0);
 
         if(s.dueDate) {
@@ -678,7 +644,7 @@ export function createRouteSubheading(clusterNum, clusterStops) {
     return el;
 }
 
-function createEndpointRow(type, endpointData) {
+export function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
     const inputId = `input-endpoint-${type}`;
@@ -705,24 +671,18 @@ export function render() {
     State.markers = [];
     import('./state.js').then(st => {
         const bounds = new mapboxgl.LngLatBounds();
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
+        const today = new Date(); today.setHours(0, 0, 0, 0);
         const isSingleInspector = State.isManagerView && State.currentInspectorFilter !== 'all';
         const isAllInspectors = State.isManagerView && State.currentInspectorFilter === 'all';
-        
         const activeStops = State.stops.filter(s => isActiveStop(s));
         const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
 
         if (State.isManagerView) {
             const header = document.createElement('div');
             header.className = 'glide-table-header';
-            
             const sortIcon = (col) => isAllInspectors ? getSortIcon(col) : '';
             const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
             const sortClass = isAllInspectors ? 'sortable' : '';
-            
             const appSortClass = isAllInspectors ? 'sortable' : '';
             const appSortClick = isAllInspectors ? `onclick="sortTable('app')"` : '';
             const appSortIcon = isAllInspectors ? getSortIcon('app') : '';
@@ -747,13 +707,10 @@ export function render() {
             
             const due = s.dueDate ? new Date(s.dueDate) : null;
             let urgencyClass = '';
-            
             if (due) {
                 const dueTime = new Date(due); dueTime.setHours(0, 0, 0, 0); 
-                if (dueTime < today) urgencyClass = 'past-due'; 
-                else if (dueTime.getTime() === today.getTime()) urgencyClass = 'due-today'; 
+                if (dueTime < today) urgencyClass = 'past-due'; else if (dueTime.getTime() === today.getTime()) urgencyClass = 'due-today'; 
             }
-            
             const dueFmt = due ? `${due.getMonth()+1}/${due.getDate()}` : "N/A";
 
             const extractTime = (dateStr) => {
@@ -769,9 +726,7 @@ export function render() {
             const isRoutedStop = statusStr === 'routed' || statusStr === 'completed' || statusStr === 'dispatched';
             const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
             
-            if (!isRoutedStop || State.dirtyRoutes.has(routeKey) || State.dirtyRoutes.has('all')) {
-                etaTime = '--';
-            }
+            if (!isRoutedStop || State.dirtyRoutes.has(routeKey) || State.dirtyRoutes.has('all')) etaTime = '--';
 
             if (State.isManagerView) {
                 item.className = `glide-row ${s.status.toLowerCase().replace(' ', '-')} ${State.currentDisplayMode}`;
@@ -805,9 +760,7 @@ export function render() {
                 const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}" style="visibility:${showHandle ? 'visible' : 'hidden'};">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
                 let metaHtml = '';
-                if (State.viewMode === 'managermobile') {
-                    metaHtml = `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>`;
-                }
+                if (State.viewMode === 'managermobile') metaHtml = `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>`;
 
                 item.innerHTML = `
                     <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
@@ -825,7 +778,6 @@ export function render() {
                 `;
             } else {
                 item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${State.currentDisplayMode}`;
-                
                 const metaDisplay = (!isRoutedStop || State.dirtyRoutes.has(routeKey) || State.dirtyRoutes.has('all')) ? `-- | ${s.client || '--'}` : `${etaTime} | ${s.client || '--'}`;
                 const handleHtml = State.PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
                 
@@ -914,7 +866,6 @@ export function render() {
                     }
                 });
             }
-            
             listContainer.appendChild(createEndpointRow('end', eps.end));
             
         } else {
@@ -925,16 +876,13 @@ export function render() {
         }
 
         let endpointsToDraw = [];
-        
         const pushEndpoint = (lng, lat, dId, type) => {
             if (lng && lat) {
                 let existing = endpointsToDraw.find(e => e.lng === lng && e.lat === lat && e.driverId === dId);
                 if (existing) {
                     if (type === 'start') existing.isStart = true;
                     if (type === 'end') existing.isEnd = true;
-                } else {
-                    endpointsToDraw.push({ lng, lat, driverId: dId, isStart: type === 'start', isEnd: type === 'end' });
-                }
+                } else endpointsToDraw.push({ lng, lat, driverId: dId, isStart: type === 'start', isEnd: type === 'end' });
             }
         };
 
@@ -992,137 +940,6 @@ export function render() {
         
         setTimeout(() => { if (map) map.resize(); }, 150);
     });
-}
-
-export async function handleOpenEmailModal() {
-    const insp = State.inspectors.find(i => i.id === State.currentInspectorFilter);
-    if (!insp) return;
-
-    const activeInspStops = State.stops.filter(s => isActiveStop(s) && s.driverId === State.currentInspectorFilter && s.routeTargetId);
-    if(activeInspStops.length === 0) return;
-
-    const targetRouteId = activeInspStops[0].routeTargetId;
-
-    const m = document.getElementById('modal-overlay');
-    const mc = document.getElementById('modal-content');
-    
-    mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
-    
-    const displayCompanyEmail = State.companyEmail ? State.companyEmail : 'Company Email Not Found';
-    const displayDriverEmail = insp.email ? insp.email : '[Email not provided]';
-
-    const modalHtml = `
-        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: bold;">Customize Email Message</h3>
-            
-            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px 16px 28px 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; overflow: hidden; resize: none;">${State.defaultEmailMessage}</textarea>
-            
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
-                <input type="checkbox" id="cc-company-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
-                <label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">
-                    CC the Company Email<br>
-                    <span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${displayCompanyEmail}</span>
-                </label>
-            </div>
-
-            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="cc-additional-checkbox" onchange="document.getElementById('additional-cc-wrapper').style.display = this.checked ? 'block' : 'none'" style="accent-color: #7b93b8; transform: scale(1.2);">
-                    <label for="cc-additional-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">Additional CC</label>
-                </div>
-                <div id="additional-cc-wrapper" style="display: none; padding-left: 28px;">
-                    <input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;">
-                </div>
-            </div>
-
-            <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">
-                A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${displayDriverEmail}</span>, along with a direct link to open the interactive map on their device.
-            </div>
-
-            <div style="display: flex; gap: 12px; justify-content: flex-start;">
-                <button id="btn-submit-dispatch" style="padding: 12px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Submit</button>
-                <button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Cancel</button>
-            </div>
-        </div>
-    `;
-
-    mc.innerHTML = modalHtml;
-
-    setTimeout(() => {
-        const ta = document.getElementById('email-body-text');
-        if (ta) {
-            ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px';
-            ta.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
-        }
-    }, 10);
-
-    document.getElementById('btn-cancel-dispatch').onclick = () => { m.style.display = 'none'; };
-
-    document.getElementById('btn-submit-dispatch').onclick = async () => {
-        const btn = document.getElementById('btn-submit-dispatch');
-        btn.innerText = 'Dispatching...'; btn.disabled = true;
-
-        const customBody = document.getElementById('email-body-text').value;
-        const ccCompany = document.getElementById('cc-company-checkbox').checked;
-        const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
-        const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
-
-        const dIdx = State.inspectors.findIndex(i => i.id === State.currentInspectorFilter);
-        const inspColor = dIdx > -1 ? Config.MASTER_PALETTE[dIdx % Config.MASTER_PALETTE.length] : Config.MASTER_PALETTE[0];
-
-        const activeInspStops = State.stops.filter(s => isActiveStop(s) && s.driverId === State.currentInspectorFilter && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'completed' || s.status.toLowerCase() === 'dispatched'));
-        
-        const geojsonStops = {
-            type: 'FeatureCollection',
-            features: activeInspStops.filter(s => s.lat && s.lng).map(s => ({
-                type: 'Feature', geometry: { type: 'Point', coordinates: [parseFloat(s.lng), parseFloat(s.lat)] }, properties: { cluster: s.cluster || 0 }
-            }))
-        };
-
-        if (map.getSource('temp-snapshot-pins')) map.getSource('temp-snapshot-pins').setData(geojsonStops);
-        else {
-            map.addSource('temp-snapshot-pins', { type: 'geojson', data: geojsonStops });
-            map.addLayer({
-                id: 'temp-snapshot-circles', type: 'circle', source: 'temp-snapshot-pins',
-                paint: { 'circle-radius': 12, 'circle-color': [ 'match', ['get', 'cluster'], 0, inspColor, 1, '#000000', '#ffffff' ], 'circle-stroke-width': 3, 'circle-stroke-color': inspColor }
-            });
-        }
-
-        await new Promise(resolve => { map.once('idle', resolve); setTimeout(resolve, 800); });
-        const mapBase64 = map.getCanvas().toDataURL('image/png');
-
-        if (map.getLayer('temp-snapshot-circles')) map.removeLayer('temp-snapshot-circles');
-        if (map.getSource('temp-snapshot-pins')) map.removeSource('temp-snapshot-pins');
-
-        const payload = {
-            action: "dispatchRoute", routeId: targetRouteId, driverId: State.currentInspectorFilter, companyId: State.companyParam || '',
-            customBody: customBody, ccCompany: ccCompany, addCc: addCcChecked, ccEmail: ccEmail, mapBase64: mapBase64
-        };
-
-        try {
-            const res = await fetch(Config.WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-            const result = await res.json();
-            
-            if (result.success) {
-                m.style.display = 'none';
-                State.stops.forEach(s => {
-                    if (s.driverId === State.currentInspectorFilter && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'completed')) {
-                        s.routeState = 'Dispatched'; s.status = 'Dispatched'; 
-                    }
-                });
-                render(); drawRoute(); updateSummary();
-                
-                const toast = document.createElement('div');
-                toast.innerText = 'Route Sent!';
-                toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
-                document.body.appendChild(toast);
-                setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
-            } else throw new Error("Dispatch failed");
-        } catch (e) {
-            btn.innerText = 'Submit'; btn.disabled = false;
-            await customAlert("Failed to dispatch route. Please try again.");
-        }
-    };
 }
 
 export function openNav(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { showNavChoice(la, ln, addr); } else { launchMaps(p, la, ln, addr); } }
