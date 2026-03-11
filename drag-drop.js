@@ -1,11 +1,11 @@
 // *
-// * Dashboard - V6.5
+// * Dashboard - V6.6
 // * FILE: drag-drop.js
 // * Description: SortableJS integration, drag-and-drop mechanics, and live geographic clustering.
 // *
 
-import { Config, State, markRouteDirty, pushToHistory, isActiveStop } from './state.js';
-import { render, updateSummary, updateRouteTimes, updateMarkerColors, updateSelectionUI } from './ui.js';
+import { State, markRouteDirty, isActiveStop } from './state.js';
+import { render, updateSummary, updateRouteTimes, updateMarkerColors, pushToHistory } from './ui.js';
 import { drawRoute } from './map.js';
 import { silentSaveRouteState } from './api.js';
 
@@ -54,7 +54,6 @@ export function initSortable() {
                 onStart: () => pushToHistory(),
                 onEnd: async (evt) => {
                     let isMovedToUnrouted = false;
-                    
                     const stopId = evt.item.id.replace('item-', '');
                     const stop = State.stops.find(s => s.id === stopId);
                     
@@ -122,7 +121,6 @@ export function initSortable() {
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
-
                     reorderStopsFromDOM();
                     render(); 
                     silentSaveRouteState();
@@ -169,21 +167,17 @@ export function liveClusterUpdate() {
         unroutedStops.forEach(s => {
             if (s.manualCluster) return; 
 
-            let bestD = Infinity;
-            let bestC = 0;
+            let bestD = Infinity; let bestC = 0;
             let dueTime = s.dueDate ? new Date(s.dueDate).getTime() : Infinity;
             let daysUntilDue = Math.floor((dueTime - today.getTime()) / (1000*3600*24));
 
             centroids.forEach((c, cIdx) => {
-                let dLat = s.lat - c.lat;
-                let dLng = s.lng - c.lng;
+                let dLat = s.lat - c.lat; let dLng = s.lng - c.lng;
                 let geoDist = Math.sqrt(dLat*dLat + dLng*dLng);
 
                 let timePenalty = 0;
                 if(w > 0 && s.dueDate) {
-                    if(daysUntilDue < cIdx) {
-                        timePenalty = (cIdx - Math.max(0, daysUntilDue)) * 0.2; 
-                    }
+                    if(daysUntilDue < cIdx) timePenalty = (cIdx - Math.max(0, daysUntilDue)) * 0.2; 
                 }
 
                 let totalDist = geoDist + (timePenalty * w);
