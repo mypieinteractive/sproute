@@ -1,11 +1,11 @@
 // *
-// * Dashboard - V6.5
+// * Dashboard - V6.6
 // * FILE: map.js
 // * Description: Mapbox initialization, route lines, and lasso tool logic.
 // *
 
-import { Config, State, hexToRgba } from './state.js';
-import { updateSelectionUI, focusTile, getActiveEndpoints, getVisualStyle } from './ui.js';
+import { Config, State, getVisualStyle, isActiveStop } from './state.js';
+import { updateSelectionUI, focusTile, getActiveEndpoints } from './ui.js';
 
 mapboxgl.accessToken = Config.MAPBOX_TOKEN;
 export const map = new mapboxgl.Map({ 
@@ -24,16 +24,7 @@ export function drawRoute() {
     if (map.getLayer('route-line-2')) map.removeLayer('route-line-2');
     if (map.getSource('route')) map.removeSource('route');
 
-    const activeStops = State.stops.filter(s => {
-        const status = (s.status || '').toLowerCase().trim();
-        const routeState = (s.routeState || '').toLowerCase().trim();
-        if (State.isManagerView && (routeState === 'dispatched' || status === 'dispatched' || status === 's')) return false;
-        if (State.isManagerView) return (status === 'pending' || status === 'routed' || status === 'completed');
-        let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
-        if (s.hiddenInInspector) active = false;
-        return active;
-    }).filter(s => s.lng && s.lat);
-    
+    const activeStops = State.stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     let routedStops = [];
     
     if (State.isManagerView) {
@@ -44,11 +35,7 @@ export function drawRoute() {
     
     if (routedStops.length === 0) return; 
 
-    routedStops.sort((a, b) => {
-        let tA = a.eta ? new Date(a.eta).getTime() : 0;
-        let tB = b.eta ? new Date(b.eta).getTime() : 0;
-        return tA - tB;
-    });
+    routedStops.sort((a,b) => (a.eta ? new Date(a.eta).getTime() : 0) - (b.eta ? new Date(b.eta).getTime() : 0));
 
     const features = [];
     const routesMap = new Map();
