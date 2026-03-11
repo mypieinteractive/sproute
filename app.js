@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.1
+// * Dashboard - V6.2
 // * FILE: app.js
-// * Changes: Mobile UI button refinements, Address+ZIP navigation using Universal Links, Base64 email map pin injection, Manager Mobile Re-Calculate hiding
+// * Changes: Silent save staging implementation, sticky subheading DOM nesting, unified endpoint rows, refined Start/End pins
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -24,7 +24,6 @@ const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_e
 const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
 const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
 
-// Bulletproofed dictionary to catch any raw backend variations
 function getStatusText(code) {
     if (!code) return 'Pending';
     let c = String(code).trim().toUpperCase();
@@ -66,7 +65,6 @@ let pollRetries = 0;
 
 let latestSuggestions = { start: null, end: null };
 
-// Custom Dark Mode Alerts & Confirms
 function customAlert(msg) {
     return new Promise(resolve => {
         const m = document.getElementById('modal-overlay');
@@ -127,11 +125,34 @@ function undoLastAction() {
     stops = last.stops;
     dirtyRoutes = new Set(last.dirty);
     render(); drawRoute(); updateSummary(); updateRouteTimes(); updateUndoUI();
+    silentSaveRouteState(); // Ensure the undo is also saved to the backend
 }
 
 function updateUndoUI() {
     const undoBtn = document.getElementById('btn-undo-incremental');
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
+}
+
+// Option B: Silent Save Function
+function silentSaveRouteState() {
+    if (!routeId) return;
+    const inspId = isManagerView ? currentInspectorFilter : driverParam;
+    if (inspId === 'all') return;
+    
+    let routedStops = stops.filter(s => s.routeTargetId === String(routeId) && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'dispatched' || s.status.toLowerCase() === 'completed'));
+    
+    if (routedStops.length === 0) return;
+
+    let minified = routedStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
+    
+    fetch(WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'saveRoute',
+            routeId: routeId,
+            stops: minified
+        })
+    }).catch(e => console.log("Silent save error", e));
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -178,9 +199,7 @@ function expandStop(minStop) {
         }
         return {
             ...minStop, 
-            id: t[0],
-            seq: t[1],
-            cluster: Math.max(0, clusterIdx),
+            id: t[0], seq: t[1], cluster: Math.max(0, clusterIdx),
             address: t[3], client: t[4], app: t[5], dueDate: t[6], type: t[7],
             eta: t[8], dist: t[9], lat: t[10], lng: t[11], status: t[12], 
             durationSecs: t[13], rowId: t[0]
@@ -195,10 +214,7 @@ function expandStop(minStop) {
         clusterIdx = parseInt(rawCluster) - 1;
     }
     return {
-        ...minStop,
-        id: minStop.r || minStop.i,
-        seq: minStop.i,
-        cluster: Math.max(0, clusterIdx),
+        ...minStop, id: minStop.r || minStop.i, seq: minStop.i, cluster: Math.max(0, clusterIdx),
         address: minStop.a, client: minStop.c, app: minStop.p, dueDate: minStop.d, type: minStop.t,
         eta: minStop.e, dist: minStop.D, lat: minStop.l, lng: minStop.g, status: minStop.s, 
         durationSecs: minStop.u, rowId: minStop.r
@@ -207,20 +223,9 @@ function expandStop(minStop) {
 
 function minifyStop(s, routeNum) {
     return [
-        s.rowId || s.id || "",                                  
-        Number(s.seq) || 0,                                     
-        'R:' + routeNum,                                        
-        s.address || "",                                        
-        s.client || "",                                         
-        s.app || "",                                            
-        s.dueDate || "",                                        
-        s.type || "",                                           
-        s.eta || "",                                            
-        s.dist || "",                                           
-        s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
-        s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0,       
-        getStatusCode(s.status),                                
-        Number(s.durationSecs) || 0                             
+        s.rowId || s.id || "", Number(s.seq) || 0, 'R:' + routeNum, s.address || "", s.client || "", s.app || "",                                            
+        s.dueDate || "", s.type || "", s.eta || "", s.dist || "", s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
+        s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(s.durationSecs) || 0                             
     ];
 }
 
@@ -332,10 +337,7 @@ function isActiveStop(s) {
     const routeState = (s.routeState || '').toLowerCase().trim();
 
     if (isManagerView) {
-        // Enforce strict hand-off override
-        if (routeState === 'dispatched' || status === 'dispatched' || status === 's') {
-            return false;
-        }
+        if (routeState === 'dispatched' || status === 'dispatched' || status === 's') return false;
         return (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
         let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
@@ -345,9 +347,7 @@ function isActiveStop(s) {
 }
 
 function hexToRgba(hex, alpha) {
-    let r = parseInt(hex.slice(1, 3), 16),
-        g = parseInt(hex.slice(3, 5), 16),
-        b = parseInt(hex.slice(5, 7), 16);
+    let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
@@ -381,13 +381,8 @@ function getVisualStyle(stopData) {
 
     let bgFinal = bgHex;
     if (bgHex !== 'transparent') {
-        if (bgHex.startsWith('#')) {
-            bgFinal = hexToRgba(bgHex, 0.75); 
-        } else {
-            bgFinal = bgHex; 
-        }
+        bgFinal = bgHex.startsWith('#') ? hexToRgba(bgHex, 0.75) : bgHex;
     }
-
     return { bg: bgFinal, border: borderHex, text: textHex, line: borderHex };
 }
 
@@ -495,6 +490,13 @@ async function loadData() {
                 routeState: exp.routeState || s.routeState || 'Pending',
                 routeTargetId: exp.routeTargetId || s.routeTargetId || null
             };
+        });
+
+        // Ensure routes that were silently saved in a 'Staging' state render as dirty immediately
+        stops.forEach(s => {
+            if (s.routeState === 'Staging' && s.driverId) {
+                markRouteDirty(s.driverId, s.cluster);
+            }
         });
 
         if (isPollingForRoute) {
@@ -951,10 +953,9 @@ function handleOpenEmailModal() {
             });
         }
 
-        // Wait briefly for WebGL to render the new layer
         await new Promise(resolve => {
             map.once('idle', resolve);
-            setTimeout(resolve, 800); // safety fallback
+            setTimeout(resolve, 800); 
         });
 
         const mapBase64 = map.getCanvas().toDataURL('image/png');
@@ -1018,7 +1019,6 @@ function updateRoutingUI() {
     const routingControls = document.getElementById('routing-controls');
     const hintEl = document.getElementById('inspector-select-hint');
     
-    // Purge old sidebar Send button if it still exists from V4.34
     const oldSidebarBtn = document.getElementById('btn-sidebar-send-route');
     if (oldSidebarBtn) oldSidebarBtn.remove();
 
@@ -1027,7 +1027,6 @@ function updateRoutingUI() {
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
 
-    // Create the Header Send Route Button (matching sizing)
     if (!document.getElementById('btn-header-send-route')) {
         const sendBtn = document.createElement('button');
         sendBtn.id = 'btn-header-send-route';
@@ -1060,14 +1059,13 @@ function updateRoutingUI() {
     const badgeChanges = document.getElementById('badge-changes-made');
     const btnSend = document.getElementById('btn-header-send-route');
 
-    // Strict UI visual ordering from left to right
     if(badgeChanges) badgeChanges.style.order = '1';
     if(btnGen) btnGen.style.order = '2';
     if(btnRecalc) btnRecalc.style.order = '3';
     if(optInspBtn) optInspBtn.style.order = '4';
     if(btnRestore) btnRestore.style.order = '5';
     if(btnStartOver) btnStartOver.style.order = '6'; 
-    if(btnSend) btnSend.style.order = '7'; // Send button permanently ordered right of Undo
+    if(btnSend) btnSend.style.order = '7'; 
     
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
@@ -1111,7 +1109,7 @@ function updateRoutingUI() {
 
         let showRecalcAndStartOver = false;
         if (viewMode === 'managermobile') {
-            showRecalcAndStartOver = isDirty; // V6.1 Rule: Only show on mobile if truly dirty
+            showRecalcAndStartOver = isDirty; 
         } else {
             showRecalcAndStartOver = isStaging;
         }
@@ -1120,15 +1118,18 @@ function updateRoutingUI() {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } else if (showRecalcAndStartOver || isStaging) {
-            // Keep Start Over visible if in staging, but strictly hide Recalc on mobile if not dirty
+        } 
+        
+        if (showRecalcAndStartOver || isStaging) {
             if(btnRecalc) btnRecalc.style.display = (viewMode === 'managermobile' && !isDirty) ? 'none' : 'flex';
             if(btnStartOver) btnStartOver.style.display = 'flex';
-        } else if (isReady) {
-            if(btnSend) btnSend.style.display = 'flex';
-            if(btnStartOver) btnStartOver.style.display = 'flex'; 
         } else if (routedCount > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
+        }
+
+        // Send Route displays anytime there is a route and no unsaved visual adjustments
+        if (routedCount > 0 && !isDirty) {
+            if(btnSend) btnSend.style.display = 'flex';
         }
 
     } else {
@@ -1186,10 +1187,13 @@ function moveSelectedToRoute(cIdx) {
         }
     });
     selectedIds.clear();
+    
+    reorderStopsFromDOM();
     render(); 
     drawRoute();
     updateSummary();
     updateRouteTimes();
+    silentSaveRouteState();
 }
 
 function updateRouteTimes() {
@@ -1295,7 +1299,6 @@ function liveClusterUpdate() {
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     if(activeStops.length === 0) return;
 
-    // Exclude stops that are already routed so changing route count doesn't scramble them
     const unroutedStops = activeStops.filter(s => {
         const st = (s.status||'').toLowerCase();
         return st !== 'routed' && st !== 'completed' && st !== 'dispatched';
@@ -1419,12 +1422,14 @@ async function triggerBulkDelete() {
         
         selectedIds.clear(); 
         updateInspectorDropdown(); 
+        
+        reorderStopsFromDOM();
         render(); drawRoute(); updateSummary(); updateRouteTimes();
+        silentSaveRouteState();
 
     } catch (err) {
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error deleting orders. Please try again.");
-        console.error("Bulk Delete Error:", err);
     } finally {
         if(overlay) overlay.style.display = 'none';
     }
@@ -1453,11 +1458,14 @@ async function triggerBulkUnroute() {
         await Promise.all(unroutePromises);
         
         selectedIds.clear(); 
+        
+        reorderStopsFromDOM();
         render(); drawRoute(); updateSummary(); updateRouteTimes();
+        silentSaveRouteState();
+        
     } catch (err) {
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error removing orders from the route. Please try again.");
-        console.error("Bulk Unroute Error:", err);
     } finally {
         if(overlay) overlay.style.display = 'none';
     }
@@ -1505,7 +1513,6 @@ async function handleInspectorChange(e, rowId, selectEl) {
     } catch (err) { 
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error reassigning orders. Please try again."); 
-        console.error(err);
     } finally {
         if(overlay) overlay.style.display = 'none';
     }
@@ -1553,9 +1560,7 @@ function createRouteSubheading(clusterNum, clusterStops) {
     clusterStops.forEach(s => {
         const rawDist = String(s.dist || '0').replace(/[^0-9.]/g, '');
         const distVal = parseFloat(rawDist);
-        if (!isNaN(distVal)) {
-            totalMi += distVal;
-        }
+        if (!isNaN(distVal)) totalMi += distVal;
         
         totalSecs += parseFloat(s.durationSecs || 0);
 
@@ -1571,10 +1576,6 @@ function createRouteSubheading(clusterNum, clusterStops) {
     
     const el = document.createElement('div');
     el.className = 'list-subheading';
-    el.style.position = 'sticky';
-    el.style.top = '0';
-    el.style.zIndex = '15';
-    el.style.marginTop = '-1px';
     el.innerHTML = `<span>ROUTE ${clusterNum + 1}</span><span class="route-summary-text">${totalMi.toFixed(1)} mi | ${hrs} hrs | ${clusterStops.length} stops | ${dueText}</span>`;
     return el;
 }
@@ -1621,38 +1622,20 @@ function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
     const inputId = `input-endpoint-${type}`;
-    const labelText = type === 'start' ? 'Start' : 'End';
     const rowIcon = type === 'start' ? '🏠' : '🏁';
     
-    if (!isManagerView) {
-        const el = document.createElement('div');
-        el.className = 'stop-item static-endpoint compact';
-        el.innerHTML = `
-            <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${rowIcon}</div>
-            <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
-                <div style="position:relative; width:100%; flex:1;">
-                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
-                </div>
+    const el = document.createElement('div');
+    el.className = 'stop-item static-endpoint compact';
+    el.innerHTML = `
+        <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${rowIcon}</div>
+        <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
+            <div style="position:relative; width:100%; flex:1;">
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
-            <div class="stop-actions" style="width: 40px;"></div>
-        `;
-        return el;
-    } else {
-        const el = document.createElement('div');
-        el.className = 'glide-row static-endpoint compact';
-        el.style.borderBottom = '2px solid var(--border-color)';
-        el.style.padding = '8px 10px';
-        el.innerHTML = `
-            <div style="display:flex; flex:1; align-items:center; justify-content:flex-end;">
-                <div style="font-size:18px; margin-right: 8px;">${rowIcon}</div>
-                <span style="font-weight:bold; color:var(--text-main); font-size:14px; white-space:nowrap; margin-right: 12px;">${labelText}:</span>
-                <div style="position:relative; width:100%; max-width: 350px;">
-                    <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width:100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
-                </div>
-            </div>
-        `;
-        return el;
-    }
+        </div>
+        <div class="stop-actions" style="width: 40px;"></div>
+    `;
+    return el;
 }
 
 function render() {
@@ -1688,7 +1671,6 @@ function render() {
         const appSortClick = isAllInspectors ? `onclick="sortTable('app')"` : '';
         const appSortIcon = isAllInspectors ? getSortIcon('app') : '';
 
-        // Centered flex alignment applied to col-eta inline
         header.innerHTML = `
             <div class="col-num">
                 <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
@@ -1776,7 +1758,6 @@ function render() {
                 metaHtml = `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>`;
             }
 
-            // Centered flex alignment applied to col-eta inline
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">${etaTime}</div>
@@ -1855,14 +1836,16 @@ function render() {
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
         if (unroutedStops.length > 0) {
-            if (isManagerView) {
-                const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
-                listContainer.appendChild(el);
-            }
             const unroutedDiv = document.createElement('div');
             unroutedDiv.id = 'unrouted-list';
             unroutedDiv.style.minHeight = '30px'; 
             listContainer.appendChild(unroutedDiv);
+            
+            if (isManagerView) {
+                const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
+                unroutedDiv.appendChild(el); // Nested for sticky effect
+            }
+            
             unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted)); });
         }
         
@@ -1871,12 +1854,14 @@ function render() {
             uniqueClusters.forEach(clusterId => {
                 const cStops = routedStops.filter(s => (s.cluster || 0) === clusterId);
                 if (cStops.length > 0) {
-                    listContainer.appendChild(createRouteSubheading(clusterId, cStops));
                     const routedDiv = document.createElement('div');
                     routedDiv.id = isManagerView ? `routed-list-${clusterId}` : `driver-list-${clusterId}`;
                     routedDiv.className = 'routed-group-container';
                     routedDiv.style.minHeight = '30px';
                     listContainer.appendChild(routedDiv);
+                    
+                    routedDiv.appendChild(createRouteSubheading(clusterId, cStops)); // Nested for sticky effect
+                    
                     cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
@@ -1891,7 +1876,6 @@ function render() {
         activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
     }
 
-    // --- Draw Start/End 🏁/🏠 Map Markers Dynamically ---
     let endpointsToDraw = [];
     
     const pushEndpoint = (lng, lat, dId, type) => {
@@ -1935,14 +1919,14 @@ function render() {
         }
         
         let emojisHtml = '';
-        if (ep.isStart) emojisHtml += `<div class="marker-warning" style="font-size: 18px; line-height: 1; transform: translate(-50%, -50%); top: 0; left: 0;">🏠</div>`;
-        if (ep.isEnd) emojisHtml += `<div class="marker-warning" style="font-size: 18px; line-height: 1; transform: translate(50%, -50%); top: 0; right: 0;">🏁</div>`;
+        if (ep.isStart) emojisHtml += `<div style="position: absolute; top: -14px; left: -5px; font-size: 16px;">🏠</div>`;
+        if (ep.isEnd) emojisHtml += `<div style="position: absolute; top: -14px; right: -5px; font-size: 16px;">🏁</div>`;
         
         const el = document.createElement('div');
         el.className = 'marker start-end-marker';
         
         el.innerHTML = `
-            <div class="pin-visual" style="background-color: transparent; border: 3px solid ${inspColor}; border-radius: 50%; width: 28px; height: 28px;"></div>
+            <div class="pin-visual" style="background-color: ${inspColor}; border: none; border-radius: 50%; width: 14px; height: 14px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>
             ${emojisHtml}
         `;
         
@@ -2069,7 +2053,6 @@ async function handleCalculate() {
     } catch (e) { 
         if (overlay) overlay.style.display = 'none';
         await customAlert("Error calculating the route. Please try again."); 
-        console.error(e);
     } finally { 
         if (overlay) overlay.style.display = 'none'; 
     }
@@ -2080,7 +2063,6 @@ async function toggleComplete(e, id) {
     pushToHistory();
     const idx = stops.findIndex(s => s.id == id);
     const isCurrentlyCompleted = stops[idx].status.toLowerCase() === 'completed';
-    // If un-completing, revert to 'Dispatched' if it was part of a dispatched route, else 'Routed'
     const newStatus = isCurrentlyCompleted ? (stops[idx].routeState === 'Dispatched' ? 'Dispatched' : 'Routed') : 'Completed';
     stops[idx].status = newStatus;
     render(); drawRoute(); updateSummary();
@@ -2249,7 +2231,6 @@ function drawRoute() {
 
     map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
     
-    // Route 1 - Solid
     map.addLayer({ 
         "id": "route-line-0", 
         "type": "line", 
@@ -2259,7 +2240,6 @@ function drawRoute() {
         "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6 } 
     }); 
     
-    // Route 2 - Dashed
     map.addLayer({ 
         "id": "route-line-1", 
         "type": "line", 
@@ -2269,7 +2249,6 @@ function drawRoute() {
         "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [2, 2] } 
     }); 
     
-    // Route 3 - Dotted
     map.addLayer({ 
         "id": "route-line-2", 
         "type": "line", 
@@ -2292,11 +2271,10 @@ function launchMaps(p, la, ln, addr) {
         if (zipMatch) {
             destination = encodeURIComponent(`${street}, ${zipMatch[0]}`);
         } else {
-            destination = encodeURIComponent(addr); // Fallback to full string if no zip found
+            destination = encodeURIComponent(addr);
         }
     }
-    // Using standard Universal Links instead of Custom URI schemes
-    window.location.href = p === 'google' ? `https://www.google.com/maps/dir/?api=1&destination=${destination}` : `https://maps.apple.com/?daddr=${destination}`; 
+    window.location.href = p === 'google' ? `http://googleusercontent.com/maps.google.com/?daddr=${destination}` : `https://maps.apple.com/?daddr=${destination}`; 
 }
 
 async function finalizeSync(type, directStart = null, directEnd = null) {
@@ -2361,16 +2339,16 @@ function reorderStopsFromDOM() {
     let routedIds = [];
     
     if (document.getElementById('unrouted-list')) {
-        unroutedIds = Array.from(document.getElementById('unrouted-list').children).map(el => el.id.replace('item-', ''));
+        unroutedIds = Array.from(document.getElementById('unrouted-list').children).map(el => el.id.replace('item-', '')).filter(Boolean);
     }
     
     document.querySelectorAll('.routed-group-container').forEach(cont => {
-        const rIds = Array.from(cont.children).map(el => el.id.replace('item-', ''));
+        const rIds = Array.from(cont.children).map(el => el.id.replace('item-', '')).filter(Boolean);
         routedIds = routedIds.concat(rIds);
     });
     
     if (unroutedIds.length === 0 && routedIds.length === 0 && document.getElementById('main-list-container')) {
-        routedIds = Array.from(document.getElementById('main-list-container').children).map(el => el.id.replace('item-', ''));
+        routedIds = Array.from(document.getElementById('main-list-container').children).map(el => el.id.replace('item-', '')).filter(Boolean);
     }
     
     const visibleIds = new Set([...unroutedIds, ...routedIds]);
@@ -2396,7 +2374,7 @@ function initSortable() {
             const inst = Sortable.create(routedEl, {
                 group: 'manager-routes',
                 handle: '.handle',
-                filter: '.static-endpoint',
+                filter: '.static-endpoint, .list-subheading',
                 animation: 150,
                 onStart: () => pushToHistory(),
                 onEnd: async (evt) => {
@@ -2411,13 +2389,19 @@ function initSortable() {
                         if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
                         
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
-                        if (matchNew) markRouteDirty(dId, parseInt(matchNew[2]));
+                        if (matchNew) {
+                            stop.cluster = parseInt(matchNew[2]);
+                            markRouteDirty(dId, stop.cluster);
+                        }
                     }
 
                     if (evt.to.id === 'unrouted-list') {
                         isMovedToUnrouted = true;
                         const idx = stops.findIndex(s => s.id === stopId);
-                        if (idx > -1) stops[idx].status = 'Pending'; 
+                        if (idx > -1) {
+                            stops[idx].status = 'Pending'; 
+                            stops[idx].routeState = 'Pending';
+                        }
                         
                         const overlay = document.getElementById('processing-overlay');
                         if(overlay) overlay.style.display = 'flex';
@@ -2429,6 +2413,7 @@ function initSortable() {
                     
                     reorderStopsFromDOM();
                     render(); 
+                    silentSaveRouteState();
                     
                     if (isMovedToUnrouted) {
                         drawRoute(); updateSummary(); updateRouteTimes();
@@ -2442,7 +2427,8 @@ function initSortable() {
             sortableUnrouted = Sortable.create(unroutedEl, {
                 group: 'manager-routes',
                 sort: false, 
-                handle: '.handle', 
+                handle: '.handle',
+                filter: '.list-subheading',
                 animation: 150,
                 onStart: () => pushToHistory()
             });
@@ -2451,7 +2437,7 @@ function initSortable() {
         document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
             const inst = Sortable.create(el, {
                 handle: '.handle',
-                filter: '.static-endpoint',
+                filter: '.static-endpoint, .list-subheading',
                 animation: 150,
                 onStart: () => pushToHistory(),
                 onEnd: (evt) => {
@@ -2463,11 +2449,15 @@ function initSortable() {
                         if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
                         
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
-                        if (matchNew) markRouteDirty(dId, parseInt(matchNew[2]));
+                        if (matchNew) {
+                            stop.cluster = parseInt(matchNew[2]);
+                            markRouteDirty(dId, stop.cluster);
+                        }
                     }
 
                     reorderStopsFromDOM();
                     render(); 
+                    silentSaveRouteState();
                 }
             });
             sortableInstances.push(inst);
