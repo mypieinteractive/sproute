@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.4
+// * Dashboard - V6.7
 // * FILE: app.js
-// * Changes: Isolated dirty states per-route, comprehensive Option B JSON array syncing for unrouted orders
+// * Changes: State machine UI rule compliance (Re-Calculate vs Re-Optimize), simplified Bulk Actions
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -150,19 +150,9 @@ function silentSaveRouteState() {
         let outDist = s.dist;
         let outDur = s.durationSecs;
         
-        // Wipe ETAs explicitly in the payload ONLY for routes that are dirty, isolating the changes
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
-        if (dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) {
-            outEta = '';
-            outDist = '';
-            outDur = 0;
-        }
-        
-        // Wipe ETAs for any stop moved to Pending (unrouted)
-        if (s.status.toLowerCase() === 'pending') {
-            outEta = '';
-            outDist = '';
-            outDur = 0;
+        if (dirtyRoutes.has(routeKey) || dirtyRoutes.has('all') || s.status.toLowerCase() === 'pending') {
+            outEta = ''; outDist = ''; outDur = 0;
         }
 
         return [
@@ -519,7 +509,6 @@ async function loadData() {
             };
         });
 
-        // Smart Staging Check: Only flag routes as dirty if their ETAs were wiped by a prior silent save.
         stops.forEach(s => {
             if (s.routeState === 'Staging' && s.driverId) {
                 if (!s.eta || s.eta === '--' || s.eta === '') {
@@ -1041,6 +1030,10 @@ function updateRoutingUI() {
     const routedCount = routedStops.length;
     const unroutedCount = activeStops.length - routedCount;
     const isDirty = dirtyRoutes.size > 0;
+    const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
+
+    // Verify if route is entirely unrouted
+    const isEntirelyPending = activeStops.length > 0 && activeStops.every(s => (s.status||'').toLowerCase() === 'pending');
 
     const routingControls = document.getElementById('routing-controls');
     const hintEl = document.getElementById('inspector-select-hint');
@@ -1049,7 +1042,7 @@ function updateRoutingUI() {
     if (oldSidebarBtn) oldSidebarBtn.remove();
 
     const btnGen = document.getElementById('btn-header-generate');
-    const btnStartOver = document.getElementById('btn-header-start-over');
+    const btnStartOver = document.getElementById('btn-header-start-over'); // "Undo Routing"
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
 
@@ -1093,6 +1086,7 @@ function updateRoutingUI() {
     if(btnStartOver) btnStartOver.style.order = '6'; 
     if(btnSend) btnSend.style.order = '7'; 
     
+    // Hide all first to prevent visual bugs
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
     if(btnRecalc) btnRecalc.style.display = 'none';
@@ -1103,7 +1097,6 @@ function updateRoutingUI() {
 
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
-        
         let showHint = false;
         const allValidStops = stops.filter(s => {
             const status = (s.status || '').toLowerCase();
@@ -1111,10 +1104,7 @@ function updateRoutingUI() {
         });
 
         for (const insp of inspectors) {
-            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) {
-                showHint = true; 
-                break;
-            }
+            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) { showHint = true; break; }
         }
         if (hintEl) hintEl.style.display = (showHint && viewMode !== 'managermobile') ? 'block' : 'none';
         return;
@@ -1129,30 +1119,35 @@ function updateRoutingUI() {
             if(routingControls) routingControls.style.display = 'none';
         }
 
-        if (unroutedCount > 0 && routedCount === 0) {
+        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter);
+        const isStaging = activeInspStops.some(s => s.routeState === 'Staging') || isDirty;
+        const isDispatched = activeInspStops.some(s => s.routeState === 'Dispatched');
+
+        if (isEntirelyPending || (unroutedCount > 0 && routedCount === 0)) {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } 
-        
-        if (isDirty) {
-            if(btnRecalc) btnRecalc.style.display = 'flex';
-            if(btnStartOver) btnStartOver.style.display = 'flex';
+        } else if (isStaging) {
+            if(btnStartOver) btnStartOver.style.display = 'flex'; 
+            
+            // Mutually exclusive: Show Re-Optimize if endpoint touched, else Re-Calculate
+            if (isEndpointsDirty) {
+                if(optInspBtn) optInspBtn.style.display = 'flex';
+            } else {
+                if(btnRecalc) btnRecalc.style.display = (viewMode === 'managermobile' && !isDirty) ? 'none' : 'flex';
+            }
         } else if (routedCount > 0) {
+            // It is Ready or Dispatched
             if(btnStartOver) btnStartOver.style.display = 'flex';
-            if(btnSend) btnSend.style.display = 'flex';
+            if(btnSend && !isDispatched) btnSend.style.display = 'flex';
         }
 
     } else {
         if(routingControls) routingControls.style.display = 'flex';
-        
-        let showRecalc = false;
-        let showOpt = false;
-        let showBadge = false;
+        let showRecalc = false; let showOpt = false; let showBadge = false;
 
         if (isDirty) {
-            showRecalc = true;
-            showBadge = true;
+            showRecalc = true; showBadge = true;
             if (dirtyRoutes.has('endpoints_0') || PERMISSION_REOPTIMIZE) showOpt = true;
         } else if (isAlteredRoute) {
             if(btnRestore) btnRestore.style.display = 'flex'; 
@@ -1412,38 +1407,22 @@ async function triggerBulkDelete() {
     if(!(await customConfirm("Delete selected orders?"))) return;
     pushToHistory();
     
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    try {
-        selectedIds.forEach(id => {
-            const s = stops.find(st => st.id === id);
-            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
-                markRouteDirty(s.driverId, s.cluster);
+    selectedIds.forEach(id => {
+        const idx = stops.findIndex(s => s.id === id);
+        if (idx > -1) {
+            if ((stops[idx].status || '').toLowerCase() === 'routed' || (stops[idx].status || '').toLowerCase() === 'dispatched') {
+                markRouteDirty(stops[idx].driverId, stops[idx].cluster);
             }
-        });
+            stops[idx].status = 'Deleted';
+        }
+    });
 
-        const deletePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => s.id === id);
-            if (idx > -1) stops[idx].status = 'Deleted';
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', rowId: id }) });
-        });
-        
-        await Promise.all(deletePromises);
-        
-        selectedIds.clear(); 
-        updateInspectorDropdown(); 
-        
-        reorderStopsFromDOM();
-        render(); drawRoute(); updateSummary(); updateRouteTimes();
-        silentSaveRouteState();
-
-    } catch (err) {
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Error deleting orders. Please try again.");
-    } finally {
-        if(overlay) overlay.style.display = 'none';
-    }
+    selectedIds.clear(); 
+    updateInspectorDropdown(); 
+    
+    reorderStopsFromDOM();
+    render(); drawRoute(); updateSummary(); updateRouteTimes();
+    silentSaveRouteState(); // Writes array to G without deleted items
 }
 
 async function triggerBulkUnroute() { 
@@ -1465,7 +1444,7 @@ async function triggerBulkUnroute() {
     
     reorderStopsFromDOM();
     render(); drawRoute(); updateSummary(); updateRouteTimes();
-    silentSaveRouteState();
+    silentSaveRouteState(); // Writes array to G with "P" statuses
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
@@ -1822,7 +1801,7 @@ function render() {
     if (isSingleInspector || !isManagerView) {
         const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed' && (s.status||'').toLowerCase() !== 'dispatched');
         const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
-        routedStops.sort(sortByEta);
+        routedStops.sort((a,b) => (a.eta ? new Date(a.eta).getTime() : 0) - (b.eta ? new Date(b.eta).getTime() : 0));
 
         let eps = getActiveEndpoints();
         listContainer.appendChild(createEndpointRow('start', eps.start));
