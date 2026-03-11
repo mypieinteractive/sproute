@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V4.33
+// * Dashboard - V4.35
 // * FILE: app.js
-// * Changes: V4.33 - Updated Email Modal hint text to dynamically show Inspector name 
-// * and email. Added `addCc` boolean to the dispatchRoute payload for backend routing 
-// * to Column G. Added fallback text for missing company or inspector emails.
+// * Changes: V4.35 - Enabled preserveDrawingBuffer in Mapbox config to allow canvas 
+// * extraction. Added mapBase64 capture to the handleOpenEmailModal submit function 
+// * and injected it into the dispatchRoute webhook payload.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -65,9 +65,11 @@ let latestSuggestions = { start: null, end: null };
 function customAlert(msg) {
     return new Promise(resolve => {
         const m = document.getElementById('modal-overlay');
+        const mc = document.getElementById('modal-content');
+        mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
-        document.getElementById('modal-content').innerHTML = `
-            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left;">
+        mc.innerHTML = `
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
                 <h3 style="margin-top:0;">Alert</h3>
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
@@ -84,9 +86,11 @@ function customAlert(msg) {
 function customConfirm(msg) {
     return new Promise(resolve => {
         const m = document.getElementById('modal-overlay');
+        const mc = document.getElementById('modal-content');
+        mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
-        document.getElementById('modal-content').innerHTML = `
-            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left;">
+        mc.innerHTML = `
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
                 <h3 style="margin-top:0;">Confirm</h3>
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -141,7 +145,8 @@ const mapConfig = {
     center: [-96.797, 32.776],
     zoom: 11, 
     attributionControl: false,
-    boxZoom: false
+    boxZoom: false,
+    preserveDrawingBuffer: true // Required to extract base64 images from the WebGL canvas
 };
 const map = new mapboxgl.Map(mapConfig);
 
@@ -831,16 +836,22 @@ function handleOpenEmailModal() {
     const targetRouteId = activeInspStops[0].routeTargetId;
 
     const m = document.getElementById('modal-overlay');
+    const mc = document.getElementById('modal-content');
+    
+    mc.style.padding = '0';
+    mc.style.background = 'transparent';
+    mc.style.border = 'none';
+
     m.style.display = 'flex';
     
     const displayCompanyEmail = companyEmail ? companyEmail : 'Company Email Not Found';
     const displayDriverEmail = insp.email ? insp.email : '[Email not provided]';
 
     const modalHtml = `
-        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif;">
+        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: bold;">Customize Email Message</h3>
             
-            <textarea id="email-body-text" style="width: 100%; height: 220px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px 16px 28px 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: vertical;">${defaultEmailMessage}</textarea>
+            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px 16px 28px 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; overflow: hidden; resize: none;">${defaultEmailMessage}</textarea>
             
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
                 <input type="checkbox" id="cc-company-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
@@ -861,7 +872,7 @@ function handleOpenEmailModal() {
             </div>
 
             <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">
-                A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: bold;">${insp.name} at ${displayDriverEmail}</span>, along with a direct link to open the interactive map on their device.
+                A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${displayDriverEmail}</span>, along with a direct link to open the interactive map on their device.
             </div>
 
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
@@ -871,7 +882,19 @@ function handleOpenEmailModal() {
         </div>
     `;
 
-    document.getElementById('modal-content').innerHTML = modalHtml;
+    mc.innerHTML = modalHtml;
+
+    setTimeout(() => {
+        const ta = document.getElementById('email-body-text');
+        if (ta) {
+            ta.style.height = 'auto';
+            ta.style.height = ta.scrollHeight + 'px';
+            ta.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = this.scrollHeight + 'px';
+            });
+        }
+    }, 10);
 
     document.getElementById('btn-cancel-dispatch').onclick = () => {
         m.style.display = 'none';
@@ -887,6 +910,9 @@ function handleOpenEmailModal() {
         const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
         const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
 
+        // Capture Mapbox Canvas as Base64 Image
+        const mapBase64 = map.getCanvas().toDataURL('image/png');
+
         const payload = {
             action: "dispatchRoute",
             routeId: targetRouteId,
@@ -894,8 +920,9 @@ function handleOpenEmailModal() {
             companyId: companyParam || '',
             customBody: customBody,
             ccCompany: ccCompany,
-            addCc: addCcChecked, // Sent as boolean for Column G mapping
-            ccEmail: ccEmail
+            addCc: addCcChecked,
+            ccEmail: ccEmail,
+            mapBase64: mapBase64
         };
 
         try {
@@ -906,7 +933,7 @@ function handleOpenEmailModal() {
                 m.style.display = 'none';
                 
                 stops.forEach(s => {
-                    if (s.driverId === currentInspectorFilter && s.routeTargetId === targetRouteId) {
+                    if (s.driverId === currentInspectorFilter && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'completed')) {
                         s.routeState = 'Dispatched';
                         s.status = 'Dispatched'; 
                     }
@@ -942,19 +969,30 @@ function updateRoutingUI() {
     const routingControls = document.getElementById('routing-controls');
     const hintEl = document.getElementById('inspector-select-hint');
     
+    const oldHeaderBtn = document.getElementById('btn-header-send-route');
+    if (oldHeaderBtn) oldHeaderBtn.remove();
+
     const btnGen = document.getElementById('btn-header-generate');
     const btnStartOver = document.getElementById('btn-header-start-over');
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
 
-    if (!document.getElementById('btn-header-send-route')) {
-        const sendBtn = document.createElement('button');
-        sendBtn.id = 'btn-header-send-route';
-        sendBtn.className = 'header-action-btn';
-        sendBtn.style.cssText = 'background: white; color: #1E293B; display: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; border: 1px solid #CBD5E1; cursor: pointer; align-items: center; gap: 8px;';
-        sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Route(s)';
-        sendBtn.onclick = () => handleOpenEmailModal();
-        if (routingControls) routingControls.appendChild(sendBtn);
+    let btnSend = document.getElementById('btn-sidebar-send-route');
+    if (!btnSend) {
+        btnSend = document.createElement('button');
+        btnSend.id = 'btn-sidebar-send-route';
+        btnSend.className = 'header-action-btn';
+        btnSend.style.cssText = 'background: white; color: #1E293B; display: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; font-size: 15px; border: 1px solid #CBD5E1; cursor: pointer; align-items: center; justify-content: center; gap: 8px; width: 90%; margin: 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
+        btnSend.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Route(s)';
+        btnSend.onclick = () => handleOpenEmailModal();
+        
+        const filterWrap = document.getElementById('inspector-dropdown-wrapper');
+        if (filterWrap && filterWrap.parentNode) {
+            filterWrap.parentNode.insertBefore(btnSend, filterWrap.nextSibling);
+        } else {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) sidebar.insertBefore(btnSend, sidebar.firstChild);
+        }
     }
 
     if (!document.getElementById('btn-header-optimize-insp')) {
@@ -977,7 +1015,6 @@ function updateRoutingUI() {
 
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const badgeChanges = document.getElementById('badge-changes-made');
-    const btnSend = document.getElementById('btn-header-send-route');
 
     if(badgeChanges) badgeChanges.style.order = '1';
     if(btnGen) btnGen.style.order = '2';
@@ -985,7 +1022,6 @@ function updateRoutingUI() {
     if(optInspBtn) optInspBtn.style.order = '4';
     if(btnRestore) btnRestore.style.order = '5';
     if(btnStartOver) btnStartOver.style.order = '6'; 
-    if(btnSend) btnSend.style.order = '7'; 
     
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
@@ -1694,7 +1730,6 @@ function render() {
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
             
-            // Meta text updated to cleanly show ETA | Client instead of distance
             const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${s.client || '--'}` : `${etaTime} | ${s.client || '--'}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
