@@ -1,10 +1,7 @@
 // *
-// * Dashboard - V4.37
+// * Dashboard - V6.0
 // * FILE: app.js
-// * Changes: V4.37 - Moved Send Route button back to header (styled #2E4053, aligned right of Undo).
-// * Centered ETA column text in manager view. Bulletproofed getStatusText dictionary to catch 
-// * any variation of "S" from the backend to fix Dispatched ghosting. Locked routed stops out 
-// * of the liveClusterUpdate K-means loop so they don't revert to unrouted layouts.
+// * Changes: 
 // *
 
 function updateShiftCursor(isShiftDown) {
