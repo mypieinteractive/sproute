@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V4.31
+// * Dashboard - V4.32
 // * FILE: app.js
-// * Changes: V4.31 - Implemented flex-order to strictly position the Send Route button 
-// * right of Undo. Split Mapbox routing layer into 3 distinct dashed/dotted visual styles. 
-// * Added dirtyRoutes.clear() on successful route generation polling to restore blank ETAs. 
-// * Overhauled Email Modal UI (larger fonts, better padding, removed CC Me, dynamic company email).
+// * Changes: V4.32 - Updated isActiveStop to perfectly hide 'Dispatched' orders from 
+// * Manager View (The Hand-Off). Hid ETA column in 'All' view and Inspector column in 
+// * Single view. Disabled mobile two-finger map lock. Hidden sidebar select hint on 
+// * mobile. Updated Inspector view to show ETA | Client. Overhauled Email Modal UI.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -25,8 +25,8 @@ const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZ
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
 // Status Code Translation Dictionaries
-const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed' };
-const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O' };
+const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
+const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
 
 function getStatusText(code) {
     if (!code) return 'Pending';
@@ -144,9 +144,6 @@ const mapConfig = {
     attributionControl: false,
     boxZoom: false
 };
-if (viewMode === 'managermobile') {
-    mapConfig.cooperativeGestures = true;
-}
 const map = new mapboxgl.Map(mapConfig);
 
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
@@ -326,7 +323,7 @@ function isActiveStop(s) {
     const status = (s.status || '').toLowerCase();
     
     if (isManagerView) {
-        if (s.routeState === 'Dispatched') return false;
+        if (s.routeState === 'Dispatched' || status === 'dispatched') return false; // Strictly hands-off
         active = (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
         active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
@@ -348,7 +345,7 @@ function hexToRgba(hex, alpha) {
 }
 
 function getVisualStyle(stopData) {
-    const isRouted = (stopData.status || '').toLowerCase() === 'routed' || (stopData.status || '').toLowerCase() === 'completed';
+    const isRouted = (stopData.status || '').toLowerCase() === 'routed' || (stopData.status || '').toLowerCase() === 'completed' || (stopData.status || '').toLowerCase() === 'dispatched';
     
     let inspectorIndex = 0;
     if (stopData.driverId) {
@@ -358,7 +355,7 @@ function getVisualStyle(stopData) {
     
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
     const cluster = stopData.cluster || 0;
-    const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+    const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
     
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
     const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
@@ -494,7 +491,7 @@ async function loadData() {
         });
 
         if (isPollingForRoute) {
-            const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed'));
+            const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched'));
             if (!driverHasRouted && pollRetries < 15) {
                 pollRetries++;
                 const overlay = document.getElementById('processing-overlay');
@@ -513,12 +510,12 @@ async function loadData() {
             return isNaN(d.getTime()) ? String(etaStr).split(' ')[0] : d.toDateString();
         };
 
-        let activeDates = [...new Set(stops.filter(s => s.eta && (s.status||'').toLowerCase() === 'routed').map(s => getLocalDateStr(s.eta)))];
+        let activeDates = [...new Set(stops.filter(s => s.eta && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched')).map(s => getLocalDateStr(s.eta)))];
         activeDates = activeDates.filter(Boolean);
         activeDates.sort((a, b) => new Date(a) - new Date(b));
 
         stops.forEach(s => {
-            if (!s._hasExplicitCluster && s.eta && (s.status||'').toLowerCase() === 'routed') {
+            if (!s._hasExplicitCluster && s.eta && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched')) {
                 s.cluster = Math.max(0, activeDates.indexOf(getLocalDateStr(s.eta)));
             }
         });
@@ -709,7 +706,7 @@ async function selectEndpoint(type, address, lat, lng, inputEl) {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const insp = inspectors.find(i => i.id === inspId);
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
 
     if (isManagerView && hasRouted) {
         const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
@@ -750,7 +747,7 @@ async function executeRouteReset(driverId) {
         
         historyStack = []; 
         stops.forEach(s => {
-            if (s.driverId === driverId && (s.status||'').toLowerCase() === 'routed') {
+            if (s.driverId === driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched')) {
                 s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending';
             }
         });
@@ -770,7 +767,7 @@ async function executeRouteReset(driverId) {
 async function saveEndpointToBackend(type, address, lat, lng) {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
     
     pushToHistory();
     const overlay = document.getElementById('processing-overlay');
@@ -804,7 +801,7 @@ function getActiveEndpoints() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const insp = inspectors.find(i => i.id === inspId);
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed'));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
     
     let start = null; 
     let end = null;
@@ -908,6 +905,7 @@ function handleOpenEmailModal() {
                 stops.forEach(s => {
                     if (s.driverId === currentInspectorFilter && s.routeTargetId === targetRouteId) {
                         s.routeState = 'Dispatched';
+                        s.status = 'Dispatched'; 
                     }
                 });
                 render(); drawRoute(); updateSummary();
@@ -934,7 +932,7 @@ function handleOpenEmailModal() {
 
 function updateRoutingUI() {
     const activeStops = stops.filter(s => isActiveStop(s));
-    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed').length;
+    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched').length;
     const unroutedCount = activeStops.length - routedCount;
     const isDirty = dirtyRoutes.size > 0;
 
@@ -978,14 +976,13 @@ function updateRoutingUI() {
     const badgeChanges = document.getElementById('badge-changes-made');
     const btnSend = document.getElementById('btn-header-send-route');
 
-    // Apply strict CSS Flex-Order to force visual positioning from left to right
     if(badgeChanges) badgeChanges.style.order = '1';
     if(btnGen) btnGen.style.order = '2';
     if(btnRecalc) btnRecalc.style.order = '3';
     if(optInspBtn) optInspBtn.style.order = '4';
     if(btnRestore) btnRestore.style.order = '5';
-    if(btnStartOver) btnStartOver.style.order = '6'; // Undo Routing
-    if(btnSend) btnSend.style.order = '7'; // Send Route permanently locked to the right of Undo Routing
+    if(btnStartOver) btnStartOver.style.order = '6'; 
+    if(btnSend) btnSend.style.order = '7'; 
     
     if(btnGen) btnGen.style.display = 'none';
     if(btnStartOver) btnStartOver.style.display = 'none';
@@ -1010,7 +1007,7 @@ function updateRoutingUI() {
                 break;
             }
         }
-        if (hintEl) hintEl.style.display = showHint ? 'block' : 'none';
+        if (hintEl) hintEl.style.display = (showHint && viewMode !== 'managermobile') ? 'block' : 'none';
         return;
     }
 
@@ -1023,7 +1020,7 @@ function updateRoutingUI() {
             if(routingControls) routingControls.style.display = 'none';
         }
 
-        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed'));
+        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched'));
         const isReady = activeInspStops.length > 0 && activeInspStops.some(s => s.routeState === 'Ready');
         const isStaging = activeInspStops.some(s => s.routeState === 'Staging') || isDirty;
 
@@ -1087,7 +1084,7 @@ function moveSelectedToRoute(cIdx) {
     selectedIds.forEach(id => {
         const s = stops.find(st => st.id === id);
         if (s) {
-            if ((s.status||'').toLowerCase() === 'routed') {
+            if ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched') {
                 markRouteDirty(s.driverId, s.cluster); 
             }
             s.cluster = cIdx;
@@ -1129,7 +1126,7 @@ async function handleGenerateRoute() {
 
     let clusteredArrays = [];
     for(let i = 0; i < currentRouteCount; i++) {
-        let itemsInCluster = stops.filter(s => isActiveStop(s) && s.lng && s.lat && s.cluster === i && (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
+        let itemsInCluster = stops.filter(s => isActiveStop(s) && s.lng && s.lat && s.cluster === i && (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed' && (s.status||'').toLowerCase() !== 'dispatched');
         if (itemsInCluster.length > 0) {
             clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
         }
@@ -1306,7 +1303,7 @@ async function triggerBulkDelete() {
     try {
         selectedIds.forEach(id => {
             const s = stops.find(st => st.id === id);
-            if (s && (s.status || '').toLowerCase() === 'routed') {
+            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
                 markRouteDirty(s.driverId, s.cluster);
             }
         });
@@ -1343,7 +1340,7 @@ async function triggerBulkUnroute() {
         const unroutePromises = Array.from(selectedIds).map(id => {
             const idx = stops.findIndex(s => s.id === id);
             if (idx > -1) {
-                if ((stops[idx].status || '').toLowerCase() === 'routed') {
+                if ((stops[idx].status || '').toLowerCase() === 'routed' || (stops[idx].status || '').toLowerCase() === 'dispatched') {
                     markRouteDirty(stops[idx].driverId, stops[idx].cluster);
                 }
                 stops[idx].status = 'Pending';
@@ -1393,7 +1390,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
     try { 
         idsToUpdate.forEach(id => {
             const s = stops.find(st => st.id === id);
-            if (s && (s.status || '').toLowerCase() === 'routed') {
+            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
                 markRouteDirty(s.driverId, s.cluster); 
                 markRouteDirty(newDriverId, s.cluster); 
             }
@@ -1572,7 +1569,7 @@ function render() {
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
     
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
 
     if (isManagerView) {
         const header = document.createElement('div');
@@ -1594,9 +1591,9 @@ function render() {
             <div class="col-num">
                 <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
             </div>
-            <div class="col-eta">ETA</div>
+            <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'block'};">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
-            <div class="col-insp ${sortClass}" ${sortClick('driverName')}>Inspector ${sortIcon('driverName')}</div>
+            <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
             <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
             <div class="col-app ${appSortClass}" ${appSortClick}>App ${appSortIcon}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
@@ -1634,7 +1631,7 @@ function render() {
         
         let etaTime = extractTime(s.eta);
         const statusStr = (s.status||'').toLowerCase();
-        const isRoutedStop = statusStr === 'routed' || statusStr === 'completed';
+        const isRoutedStop = statusStr === 'routed' || statusStr === 'completed' || statusStr === 'dispatched';
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
         
         if (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) {
@@ -1643,7 +1640,7 @@ function render() {
 
         if (isManagerView) {
             item.className = `glide-row ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
-            let inspectorHtml = `<div class="col-insp">${s.driverName || driverParam || 'Unassigned'}</div>`;
+            let inspectorHtml = `<div class="col-insp" style="display: ${isSingleInspector ? 'none' : 'block'};">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (inspectors.length > 0) {
                 const optionsHtml = inspectors.map((insp, idx) => {
@@ -1660,7 +1657,7 @@ function render() {
                 }
 
                 inspectorHtml = `
-                    <div class="col-insp" onclick="event.stopPropagation()">
+                    <div class="col-insp" onclick="event.stopPropagation()" style="display: ${isSingleInspector ? 'none' : 'block'};">
                         <select class="insp-select" onchange="handleInspectorChange(event, '${s.id}', this)" style="color: ${currentInspColor}; font-weight: bold;" ${disableSelectAttr}>
                             ${defaultPlaceholder}
                             ${optionsHtml}
@@ -1679,7 +1676,7 @@ function render() {
 
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
-                <div class="col-eta">${etaTime}</div>
+                <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'block'};">${etaTime}</div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 ${inspectorHtml}
                 <div class="col-addr">
@@ -1694,10 +1691,8 @@ function render() {
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
             
-            let distStr = s.dist ? String(s.dist) : '--';
-            if(distStr !== '--' && !distStr.includes('mi')) distStr += ' mi';
-            
-            const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? '-- | --' : `${etaTime} | ${distStr}`;
+            // Meta text updated to cleanly show ETA | Client instead of distance
+            const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${s.client || '--'}` : `${etaTime} | ${s.client || '--'}`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -1750,8 +1745,8 @@ function render() {
     };
 
     if (isSingleInspector || !isManagerView) {
-        const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed');
-        const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+        const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed' && (s.status||'').toLowerCase() !== 'dispatched');
+        const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
         routedStops.sort(sortByEta);
 
         let eps = getActiveEndpoints();
@@ -1982,7 +1977,9 @@ async function toggleComplete(e, id) {
     e.stopPropagation();
     pushToHistory();
     const idx = stops.findIndex(s => s.id == id);
-    const newStatus = (stops[idx].status.toLowerCase() === 'completed') ? 'Routed' : 'Completed';
+    const isCurrentlyCompleted = stops[idx].status.toLowerCase() === 'completed';
+    // If un-completing, revert to 'Dispatched' if it was part of a dispatched route, else 'Routed'
+    const newStatus = isCurrentlyCompleted ? (stops[idx].routeState === 'Dispatched' ? 'Dispatched' : 'Routed') : 'Completed';
     stops[idx].status = newStatus;
     render(); drawRoute(); updateSummary();
     
@@ -2042,7 +2039,7 @@ function updateSelectionUI() {
     
     selectedIds.forEach(id => {
         const s = stops.find(st => st.id === id);
-        if (s && (s.status || '').toLowerCase() === 'routed') hasRouted = true;
+        if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) hasRouted = true;
     });
 
     const selectAllCb = document.getElementById('bulk-select-all');
@@ -2089,22 +2086,21 @@ function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padd
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
 
 function drawRoute() { 
-    // Clean up the old un-split Mapbox layer if it still exists
-    if (map.getLayer('route')) map.removeLayer('route');
+    if (map.getLayer('route-line-0')) map.removeLayer('route-line-0');
+    if (map.getLayer('route-line-1')) map.removeLayer('route-line-1');
+    if (map.getLayer('route-line-2')) map.removeLayer('route-line-2');
+    if (map.getSource('route')) map.removeSource('route');
 
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     let routedStops = [];
     
     if (isManagerView) {
-        routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed');
+        routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
     } else {
         routedStops = activeStops;
     }
     
-    if (routedStops.length === 0) {
-        if (map.getSource('route')) map.getSource('route').setData({ "type": "FeatureCollection", "features": [] });
-        return; 
-    }
+    if (routedStops.length === 0) return; 
 
     routedStops.sort(sortByEta);
 
@@ -2149,42 +2145,37 @@ function drawRoute() {
         }
     });
 
-    // Feed new features to source and draw the 3 distinct styled layers
-    if (map.getSource('route')) {
-        map.getSource('route').setData({ "type": "FeatureCollection", "features": features }); 
-    } else { 
-        map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
-        
-        // Route 1 - Solid
-        map.addLayer({ 
-            "id": "route-line-0", 
-            "type": "line", 
-            "source": "route", 
-            "filter": ["==", "clusterIdx", 0],
-            "layout": { "line-join": "round", "line-cap": "round" }, 
-            "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6 } 
-        }); 
-        
-        // Route 2 - Dashed
-        map.addLayer({ 
-            "id": "route-line-1", 
-            "type": "line", 
-            "source": "route", 
-            "filter": ["==", "clusterIdx", 1],
-            "layout": { "line-join": "round", "line-cap": "round" }, 
-            "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [2, 2] } 
-        }); 
-        
-        // Route 3 - Dotted
-        map.addLayer({ 
-            "id": "route-line-2", 
-            "type": "line", 
-            "source": "route", 
-            "filter": ["==", "clusterIdx", 2],
-            "layout": { "line-join": "round", "line-cap": "round" }, 
-            "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [0.5, 2] } 
-        }); 
-    } 
+    map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
+    
+    // Route 1 - Solid
+    map.addLayer({ 
+        "id": "route-line-0", 
+        "type": "line", 
+        "source": "route", 
+        "filter": ["==", "clusterIdx", 0],
+        "layout": { "line-join": "round", "line-cap": "round" }, 
+        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6 } 
+    }); 
+    
+    // Route 2 - Dashed
+    map.addLayer({ 
+        "id": "route-line-1", 
+        "type": "line", 
+        "source": "route", 
+        "filter": ["==", "clusterIdx", 1],
+        "layout": { "line-join": "round", "line-cap": "round" }, 
+        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [2, 2] } 
+    }); 
+    
+    // Route 3 - Dotted
+    map.addLayer({ 
+        "id": "route-line-2", 
+        "type": "line", 
+        "source": "route", 
+        "filter": ["==", "clusterIdx", 2],
+        "layout": { "line-join": "round", "line-cap": "round" }, 
+        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [0.5, 2] } 
+    }); 
 }
 
 function openNav(e, la, ln) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { showNavChoice(la, ln); } else { launchMaps(p, la, ln); } }
