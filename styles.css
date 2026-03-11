@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V6.1 */
+/* * Dashboard - V6.3 */
 /* * FILE: styles.css */
-/* * Changes: Mobile UI button refinements */
+/* * Changes: Sticky layout height math fixed for gapless scroll */
 /* * */
 
 :root { 
@@ -94,11 +94,11 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     font-weight: bold; font-size: 11px; text-transform: uppercase;
     border-bottom: 1px solid var(--border-color); letter-spacing: 1px;
     display: flex; justify-content: space-between; align-items: center;
-    position: sticky; z-index: 4; top: 0;
+    position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
 body.view-manager .list-subheading,
 body.view-managermobile .list-subheading {
-    top: 38px; /* Offset beneath the glide table header */
+    top: 37px; /* 38px rigid header height - 1px tight overlap */
 }
 
 .route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: var(--text-main); }
@@ -217,7 +217,8 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .stop-actions { display: flex; align-items: center; padding-right: 8px; gap: 4px; }
 .icon-btn { font-size: 28px; cursor: pointer; padding: 4px; }
 
-.glide-table-header { display: flex; padding: 10px 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 5; }
+/* Enforced math rigid height to perfectly match the sticky subheading top */
+.glide-table-header { display: flex; height: 38px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
 .glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid #282828; font-size: 14px; color: var(--text-main); align-items: center; cursor: pointer; background: var(--bg-panel); transition: background 0.2s; }
 .glide-row:hover { background: var(--bg-hover); }
 .glide-row.selected { background: var(--fade-blue) !important; }
