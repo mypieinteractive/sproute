@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.16
+// * Dashboard - V6.17
 // * FILE: app.js
-// * Changes: Completely resolved the early-return extraction bug in expandStop. It now guarantees the 13-element tuple is processed as the absolute source of truth for ETAs, Clusters, and Distances.
+// * Changes: Removed Start Over logic. Hooked up Re-Optimize to Staging UI. Rebuilt triggerBulkUnroute and Sortable to strictly clear local values and use updateOrder. Rebuilt handleGenerateRoute to only optimize dirty clusters.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -208,7 +208,6 @@ const MASTER_PALETTE = [
 function expandStop(minStop) {
     if (!minStop) return {};
 
-    // If it's a simple object with NO tuple, return it natively
     if (!Array.isArray(minStop) && !minStop.rawTuple && !minStop.data && !minStop.tuple && minStop.address) {
         return minStop;
     }
@@ -219,9 +218,8 @@ function expandStop(minStop) {
     else if (minStop.data) t = minStop.data;
     else if (minStop.tuple) t = minStop.tuple;
 
-    let expanded = { ...minStop }; // Inherit wrapper properties (like driverId, routeState)
+    let expanded = { ...minStop }; 
 
-    // Overwrite the 13 core properties using the nested array as the absolute source of truth
     if (t && Array.isArray(t) && t.length >= 12) {
         let clusterIdx = parseInt(t[1]);
         if (isNaN(clusterIdx)) clusterIdx = 1;
@@ -1033,14 +1031,13 @@ function updateRoutingUI() {
     const hintEl = document.getElementById('inspector-select-hint');
 
     const btnGen = document.getElementById('btn-header-generate');
-    const btnStartOver = document.getElementById('btn-header-start-over');
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const badgeChanges = document.getElementById('badge-changes-made');
     const btnSend = document.getElementById('btn-header-send-route');
 
-    [btnGen, btnStartOver, btnRecalc, btnRestore, optInspBtn, badgeChanges, btnSend].forEach(btn => {
+    [btnGen, btnRecalc, btnRestore, optInspBtn, badgeChanges, btnSend].forEach(btn => {
         if (btn) btn.style.display = 'none';
     });
 
@@ -1091,18 +1088,16 @@ function updateRoutingUI() {
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
         } else if (currentState === 'Queued') {
-            // Deliberately keep all buttons hidden while waiting for optimization
+            // Processing
         } else if (currentState === 'Ready') {
-            if (btnStartOver) btnStartOver.style.display = 'flex';
             if (btnSend && !isDirty) btnSend.style.display = 'flex';
         } else if (currentState === 'Staging') {
             if (btnRecalc) btnRecalc.style.display = 'flex';
-            if (btnStartOver) btnStartOver.style.display = 'flex';
+            if (optInspBtn) optInspBtn.style.display = 'flex';
             if (badgeChanges && isDirty) badgeChanges.style.display = 'flex';
         } else if (currentState === 'Staging-endpoint') {
             if (btnRecalc) btnRecalc.style.display = 'flex';
             if (optInspBtn) optInspBtn.style.display = 'flex';
-            if (btnStartOver) btnStartOver.style.display = 'flex';
             if (badgeChanges && isDirty) badgeChanges.style.display = 'flex';
         }
 
@@ -1199,24 +1194,29 @@ async function handleGenerateRoute() {
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
-    let unroutedStops = stops.filter(s => 
-        isActiveStop(s) && 
-        s.lng && 
-        s.lat && 
-        String(s.driverId) === String(insp.id) && 
-        !isRouteAssigned(s.status)
-    );
+    let stopsToOptimize = [];
+    const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
 
-    let flatStopsPayload = unroutedStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
+    if (isEndpointsDirty) {
+        // Re-optimize EVERYTHING for this inspector if the start/end points changed
+        stopsToOptimize = stops.filter(s => isActiveStop(s) && s.lng && s.lat && String(s.driverId) === String(insp.id));
+    } else {
+        // Re-optimize targeted dirty clusters + unrouted items
+        stopsToOptimize = stops.filter(s => {
+            if (!isActiveStop(s) || !s.lng || !s.lat || String(s.driverId) !== String(insp.id)) return false;
+            const routeKey = `${s.driverId}_${s.cluster || 0}`;
+            return dirtyRoutes.has(routeKey) || !isRouteAssigned(s.status);
+        });
+    }
+
+    let flatStopsPayload = stopsToOptimize.map(s => minifyStop(s, (s.cluster || 0) + 1));
 
     const eps = getActiveEndpoints();
     let sAddr = eps.start ? eps.start.address : '';
     let eAddr = eps.end ? eps.end.address : '';
 
-    stops.forEach(s => {
-        if (isActiveStop(s) && String(s.driverId) === String(insp.id)) {
-            s.routeState = 'Queued';
-        }
+    stopsToOptimize.forEach(s => {
+        s.routeState = 'Queued';
     });
     render(); 
 
@@ -1252,13 +1252,6 @@ async function handleGenerateRoute() {
         if(overlay) overlay.style.display = 'none';
         await customAlert("Generation encountered an error. Please wait a moment and try again.");
     } 
-}
-
-async function handleStartOver() {
-    if(!(await customConfirm("Undo Routing and clear all routes for this inspector?"))) return;
-    const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
-    if (!insp) return;
-    await executeRouteReset(insp.id);
 }
 
 async function handleRestoreOriginal() {
@@ -1452,9 +1445,12 @@ async function triggerBulkUnroute() {
                     markRouteDirty(stops[idx].driverId, stops[idx].cluster);
                 }
                 stops[idx].status = 'Pending';
+                stops[idx].eta = '';
+                stops[idx].dist = 0;
+                stops[idx].durationSecs = 0;
                 if (!isManagerView) stops[idx].hiddenInInspector = true; 
             }
-            let payload = { action: 'unrouteOrder', rowId: id, driverId: dId };
+            let payload = { action: 'updateOrder', rowId: id, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0 } };
             if (!isManagerView) payload.routeId = routeId;
             return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         });
@@ -2314,12 +2310,15 @@ function initSortable() {
                             dId = stops[idx].driverId;
                             stops[idx].status = 'Pending'; 
                             stops[idx].routeState = 'Pending';
+                            stops[idx].eta = '';
+                            stops[idx].dist = 0;
+                            stops[idx].durationSecs = 0;
                         }
                         
                         const overlay = document.getElementById('processing-overlay');
                         if(overlay) overlay.style.display = 'flex';
                         try {
-                            let unroutePayload = { action: 'unrouteOrder', rowId: stopId, driverId: dId };
+                            let unroutePayload = { action: 'updateOrder', rowId: stopId, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0 } };
                             if (!isManagerView) unroutePayload.routeId = routeId;
                             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(unroutePayload) });
                         } catch (e) { console.error(e); }
