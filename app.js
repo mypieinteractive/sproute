@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.14
+// * Dashboard - V6.15
 // * FILE: app.js
-// * Changes: Verified html2canvas screenshot implementation, dual-tone map lines, instant initial map jump, post-dispatch reset, and empty state UI.
+// * Changes: Added aggressive array-flattening protocol to loadData and expandStop to prevent nested array extraction failures (fixing blank ETAs, 0.0 distance, and continual route lines).
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -209,7 +209,13 @@ function expandStop(minStop) {
     if (minStop.address) return minStop; 
     
     let t = null;
-    if (Array.isArray(minStop)) t = minStop;
+    if (Array.isArray(minStop)) {
+        t = minStop;
+        // Aggressively unwrap array if backend double-nested it
+        while (t.length === 1 && Array.isArray(t[0])) {
+            t = t[0];
+        }
+    }
     else if (minStop.rawTuple && Array.isArray(minStop.rawTuple)) t = minStop.rawTuple;
     else if (minStop.data && Array.isArray(minStop.data)) t = minStop.data;
     else if (minStop.tuple && Array.isArray(minStop.tuple)) t = minStop.tuple;
@@ -513,7 +519,12 @@ async function loadData() {
         
         if (data.isAlteredRoute) isAlteredRoute = true;
 
+        // Aggressively flatten rawStops to ensure 3D arrays don't break extraction
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
+        while (rawStops.length > 0 && Array.isArray(rawStops[0]) && Array.isArray(rawStops[0][0])) {
+            rawStops = rawStops.flat(1);
+        }
+
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
 
