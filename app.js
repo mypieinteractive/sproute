@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.11
+// * Dashboard - V6.12
 // * FILE: app.js
-// * Changes: Removed sequence integer to match the new optimized 13-element backend schema. Shifted index mappings in expandStop and minifyStop.
+// * Changes: Completely removed legacy 'seq' property from expandStop and minifyStop to strictly enforce the new 13-element backend schema.
 // *
 
 function updateShiftCursor(isShiftDown) {
