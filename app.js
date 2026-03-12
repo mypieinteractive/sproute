@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.19
+// * Dashboard - V6.20
 // * FILE: app.js
-// * Changes: Flipped URL parameter priority in loadData() to ensure routeId ALWAYS takes precedence over driverParam/companyParam, acting as a failsafe for the siloed Inspector view.
+// * Changes: Removed mark as completed bulk action. Changed meta-text to Distance. Relocated Changes Made to map overlay. Reverted Navigation to direct app intents. Renamed Generate button to Optimize.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -482,7 +482,6 @@ document.addEventListener('touchend', stopResize);
 async function loadData() {
     let queryParams = '';
     
-    // Priority fix: Route ID is supreme. It forces Inspector Mode.
     if (routeId) queryParams = `?id=${routeId}`;
     else if (companyParam) queryParams = `?company=${companyParam}`;
     else if (driverParam) queryParams = `?driver=${driverParam}`;
@@ -1087,9 +1086,13 @@ function updateRoutingUI() {
     const badgeChanges = document.getElementById('badge-changes-made');
     const btnSend = document.getElementById('btn-header-send-route');
 
-    [btnGen, btnRecalc, btnRestore, optInspBtn, badgeChanges, btnSend].forEach(btn => {
+    [btnGen, btnRecalc, btnRestore, optInspBtn, btnSend].forEach(btn => {
         if (btn) btn.style.display = 'none';
     });
+
+    if (badgeChanges) {
+        badgeChanges.style.display = isDirty ? 'flex' : 'none';
+    }
 
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
@@ -1136,7 +1139,7 @@ function updateRoutingUI() {
         if (currentState === 'Pending') {
             if (unroutedCount > 0 && btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
-            if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
+            if (headerGenBtnText) headerGenBtnText.innerText = "Optimize";
         } else if (currentState === 'Queued') {
             // Processing
         } else if (currentState === 'Ready') {
@@ -1144,11 +1147,9 @@ function updateRoutingUI() {
         } else if (currentState === 'Staging') {
             if (btnRecalc) btnRecalc.style.display = 'flex';
             if (optInspBtn) optInspBtn.style.display = 'flex';
-            if (badgeChanges && isDirty) badgeChanges.style.display = 'flex';
         } else if (currentState === 'Staging-endpoint') {
             if (btnRecalc) btnRecalc.style.display = 'flex';
             if (optInspBtn) optInspBtn.style.display = 'flex';
-            if (badgeChanges && isDirty) badgeChanges.style.display = 'flex';
         }
 
         if (routingControls) {
@@ -1160,11 +1161,9 @@ function updateRoutingUI() {
         
         let showRecalc = false;
         let showOpt = false;
-        let showBadge = false;
 
         if (isDirty) {
             showRecalc = true;
-            showBadge = true;
             if (dirtyRoutes.has('endpoints_0') || PERMISSION_REOPTIMIZE) showOpt = true;
         } else if (isAlteredRoute) {
             if(btnRestore) btnRestore.style.display = 'flex'; 
@@ -1172,7 +1171,6 @@ function updateRoutingUI() {
         
         if(btnRecalc) btnRecalc.style.display = showRecalc ? 'flex' : 'none';
         if(optInspBtn) optInspBtn.style.display = showOpt ? 'flex' : 'none';
-        if(badgeChanges) badgeChanges.style.display = showBadge ? 'flex' : 'none';
 
         if (!showRecalc && !showOpt && !isAlteredRoute) {
             if(routingControls) routingControls.style.display = 'none';
@@ -1189,7 +1187,7 @@ function setRoutes(num) {
         if(btn) btn.classList.toggle('active', i === num);
     }
     const headerGenBtnText = document.getElementById('btn-header-generate-text');
-    if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
+    if (headerGenBtnText) headerGenBtnText.innerText = "Optimize";
     
     stops.forEach(s => s.manualCluster = false); 
     liveClusterUpdate();
@@ -1806,7 +1804,8 @@ function render() {
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
             
-            const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${s.client || '--'}` : `${etaTime} | ${s.client || '--'}`;
+            const distFmt = s.dist ? parseFloat(s.dist).toFixed(1) : "0.0";
+            const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${distFmt} mi` : `${etaTime} | ${distFmt} mi`;
             const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
@@ -2170,17 +2169,7 @@ function updateSelectionUI() {
     
     document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY && isManagerView) ? 'block' : 'none'; 
     document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY) ? 'block' : 'none'; 
-    
-    const completeBtn = document.getElementById('bulk-complete-btn');
-    if (completeBtn) {
-        completeBtn.style.display = (has && !isManagerView) ? 'block' : 'none'; 
-    }
 
-    const hintEl = document.getElementById('map-hint');
-    if (hintEl) {
-        hintEl.style.opacity = has ? '0' : '1';
-    }
-    
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`move-r${i}-btn`);
         if(btn) {
@@ -2305,7 +2294,7 @@ function launchMaps(p, la, ln, addr) {
             destination = encodeURIComponent(addr);
         }
     }
-    window.location.href = p === 'google' ? `http://googleusercontent.com/maps.google.com/?daddr=${destination}` : `https://maps.apple.com/?daddr=${destination}`; 
+    window.location.href = p === 'google' ? `comgooglemaps://?daddr=${destination}&directionsmode=driving` : `http://maps.apple.com/?daddr=${destination}&dirflg=d`; 
 }
 
 function reorderStopsFromDOM() {
