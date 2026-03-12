@@ -18,13 +18,11 @@
 <div id="processing-overlay">Processing...</div>
 
 <div id="map-wrapper">
+    <div id="badge-changes-made" style="display:none;">Unsaved Changes</div>
     <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
     <div class="map-overlay-btns">
         <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()">
             <i class="fa-solid fa-expand"></i> Reset View
-        </button>
-        <button id="bulk-complete-btn" class="floating-btn" onclick="triggerBulkComplete()">
-            <i class="fa-solid fa-circle-check"></i> Mark selected as completed
         </button>
         <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()">
             <i class="fa-solid fa-route"></i> Remove selected from route
@@ -63,9 +61,6 @@
         </div>
 
         <div id="header-action-container" style="display: flex; gap: 8px; justify-content: flex-end; flex: 1; align-items: center;">
-            <div id="badge-changes-made" style="display:none; background-color: var(--red); color: yellow; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; align-items: center; justify-content: center;">
-                Changes Made
-            </div>
             <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
                 <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
             </button>
@@ -79,7 +74,7 @@
                 <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
             </button>
             <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
-                <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Generate Route</span>
+                <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
             </button>
         </div>
     </div>
