@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.4
+// * Dashboard - V6.5
 // * FILE: app.js
-// * Changes: Separated Global Route State (routeState) from Individual Order Status (status). Reverted status maps to standard physical states. Updated updateRoutingUI to strictly use routeState for button visibility.
+// * Changes: Mapped header buttons strictly to routeState. Pointed Re-Optimize to Generate Route and removed obsolete endpoint sync functions. Kept Undo and Recalculate as backend-driven.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1009,6 +1009,13 @@ function updateRoutingUI() {
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
 
+    // Ensure the text of btnStartOver reads 'Undo Routing'
+    if (btnStartOver) {
+        const span = btnStartOver.querySelector('span');
+        if (span) span.innerText = 'Undo Routing';
+        else btnStartOver.innerText = 'Undo Routing';
+    }
+
     if (!document.getElementById('btn-header-send-route')) {
         const sendBtn = document.createElement('button');
         sendBtn.id = 'btn-header-send-route';
@@ -1025,7 +1032,7 @@ function updateRoutingUI() {
         optBtn.className = 'header-action-btn';
         optBtn.style.cssText = 'background: #2C3D4F; color: white; display: none;';
         optBtn.innerHTML = '<span>Re-Optimize</span>';
-        optBtn.onclick = () => handleEndpointOptimize();
+        optBtn.onclick = () => handleGenerateRoute();
         if (routingControls) routingControls.appendChild(optBtn);
     }
     
@@ -1105,6 +1112,7 @@ function updateRoutingUI() {
             }
         } else if (currentState === 'Queued') {
             // Keep controls hidden while processing
+            showControls = true; 
         } else if (currentState === 'Ready') {
             if (btnStartOver) { btnStartOver.style.display = 'flex'; showControls = true; }
             if (btnSend) { btnSend.style.display = 'flex'; showControls = true; }
@@ -1258,7 +1266,7 @@ async function handleGenerateRoute() {
 }
 
 async function handleStartOver() {
-    if(!(await customConfirm("Clear All Routes For This Inspector?"))) return;
+    if(!(await customConfirm("Undo Routing and clear all routes for this inspector?"))) return;
     const insp = inspectors.find(i => i.id === currentInspectorFilter);
     if (!insp) return;
     await executeRouteReset(insp.id);
@@ -1584,30 +1592,6 @@ window.checkEndpointModified = function() {
     if (modified) markRouteDirty('endpoints', 0);
     
     updateRoutingUI();
-};
-
-window.handleEndpointOptimize = async function() {
-    const eps = getActiveEndpoints();
-    let sVal = document.getElementById('input-endpoint-start')?.value || eps.start?.address;
-    let eVal = document.getElementById('input-endpoint-end')?.value || eps.end?.address;
-    
-    if (routeStart) routeStart.address = sVal; else routeStart = { address: sVal, lat: eps.start?.lat, lng: eps.start?.lng };
-    if (routeEnd) routeEnd.address = eVal; else routeEnd = { address: eVal, lat: eps.end?.lat, lng: eps.end?.lng };
-
-    await finalizeSync('optimize', sVal, eVal);
-    
-    if(routeId) {
-        let sPayload = { action: 'updateEndpoint', routeId: routeId, type: 'start', address: sVal };
-        if (routeStart && routeStart.lat) { sPayload.lat = routeStart.lat; sPayload.lng = routeStart.lng; }
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(sPayload) }).catch(()=>{});
-        
-        let ePayload = { action: 'updateEndpoint', routeId: routeId, type: 'end', address: eVal };
-        if (routeEnd && routeEnd.lat) { ePayload.lat = routeEnd.lat; ePayload.lng = routeEnd.lng; }
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(ePayload) }).catch(()=>{});
-    }
-    
-    dirtyRoutes.delete('endpoints_0');
-    render();
 };
 
 function createEndpointRow(type, endpointData) {
@@ -2255,63 +2239,6 @@ function launchMaps(p, la, ln, addr) {
         }
     }
     window.location.href = p === 'google' ? `http://googleusercontent.com/maps.google.com/?daddr=${destination}` : `https://maps.apple.com/?daddr=${destination}`; 
-}
-
-async function finalizeSync(type, directStart = null, directEnd = null) {
-    const eps = getActiveEndpoints();
-    const startAddr = directStart !== null ? directStart : (document.getElementById('input-endpoint-start')?.value || '');
-    const endAddr = directEnd !== null ? directEnd : (document.getElementById('input-endpoint-end')?.value || '');
-    
-    const modal = document.getElementById('modal-overlay');
-    if(modal) modal.style.display = 'none';
-    
-    let sLat = routeStart && routeStart.lat ? routeStart.lat : eps.start?.lat || null;
-    let sLng = routeStart && routeStart.lng ? routeStart.lng : eps.start?.lng || null;
-    let eLat = routeEnd && routeEnd.lat ? routeEnd.lat : eps.end?.lat || null;
-    let eLng = routeEnd && routeEnd.lng ? routeEnd.lng : eps.end?.lng || null;
-
-    let payload = { 
-        action: type, routeId: routeId, driver: driverParam, 
-        startTime: currentStartTime, startAddr: startAddr, endAddr: endAddr,
-        startLat: sLat, startLng: sLng, endLat: eLat, endLng: eLng,
-        isManager: isManagerView
-    };
-
-    if (isManagerView && currentInspectorFilter !== 'all') {
-        let clusteredArrays = [];
-        for(let i = 0; i < currentRouteCount; i++) {
-            let itemsInCluster = stops.filter(s => s.cluster === i);
-            if (itemsInCluster.length > 0) {
-                clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
-            }
-        }
-        payload.routeClusters = clusteredArrays;
-        payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
-    } else {
-        payload.stops = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
-    }
-
-    const overlay = document.getElementById('processing-overlay');
-    if (overlay) overlay.style.display = 'flex';
-
-    try {
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const data = await res.json(); 
-        stops = data.updatedStops.map(s => {
-            let exp = expandStop(s);
-            return { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false };
-        });
-        
-        if (!isManagerView) isAlteredRoute = true;
-        historyStack = [];
-        dirtyRoutes.clear();
-        render(); drawRoute(); updateSummary();
-    } catch (e) { 
-        if (overlay) overlay.style.display = 'none';
-        await customAlert("Error updating locations. Please try again."); 
-    } finally {
-        if (overlay) overlay.style.display = 'none';
-    }
 }
 
 function reorderStopsFromDOM() {
