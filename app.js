@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.10
+// * Dashboard - V6.11
 // * FILE: app.js
-// * Changes: Completely deprecated routeClusters property. Flattened generateRoute and finalizeSync payloads to send a single 1D array under the 'stops' property with Index 2 stamped.
+// * Changes: Removed sequence integer to match the new optimized 13-element backend schema. Shifted index mappings in expandStop and minifyStop.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -209,15 +209,15 @@ function expandStop(minStop) {
     let t = Array.isArray(minStop) ? minStop : (minStop.rawTuple || minStop);
     
     if (Array.isArray(t)) {
-        let clusterIdx = parseInt(t[2]);
+        let clusterIdx = parseInt(t[1]);
         if (isNaN(clusterIdx)) clusterIdx = 1;
         
         return {
             ...minStop, 
-            id: String(t[0]), seq: t[1], cluster: Math.max(0, clusterIdx - 1),
-            address: t[3], client: t[4], app: t[5], dueDate: t[6], type: t[7],
-            eta: t[8], dist: t[9], lat: t[10], lng: t[11], status: t[12], 
-            durationSecs: t[13], rowId: String(t[0])
+            id: String(t[0]), cluster: Math.max(0, clusterIdx - 1),
+            address: t[2], client: t[3], app: t[4], dueDate: t[5], type: t[6],
+            eta: t[7], dist: t[8], lat: t[9], lng: t[10], status: t[11], 
+            durationSecs: t[12], rowId: String(t[0])
         };
     }
 
@@ -227,7 +227,6 @@ function expandStop(minStop) {
 function minifyStop(s, routeNum) {
     return [
         s.rowId || s.id || "", 
-        Number(s.seq) || 0, 
         routeNum, 
         s.address || "", 
         s.client ? String(s.client).substring(0, 3) : "", 
