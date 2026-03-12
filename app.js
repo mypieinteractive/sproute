@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V7.0
+// * Dashboard - V7.1
 // * FILE: app.js
-// * Changes: Optimized to use driverId for staging API calls, isolated Route ID mapping for post-dispatch operations
+// * Changes: Unified Generate Route to synchronous calculation, strict DOM-based status assignment
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -133,7 +133,7 @@ function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
-// V7 Architecture: Direct to driverId if staging, routeId if dispatched
+// Ensure all items (including D and P) are accurately tracked and pushed to backend
 async function silentSaveRouteState() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     if (inspId === 'all' || !inspId) return;
@@ -1162,7 +1162,9 @@ function updateRoutingUI() {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } else if (isStaging) {
+        } 
+        
+        if (isStaging) {
             if(btnStartOver) btnStartOver.style.display = 'flex'; 
             
             if (dirtyRoutes.has('endpoints_0')) {
@@ -1172,6 +1174,10 @@ function updateRoutingUI() {
             }
         } else if (inspRoutedStops.length > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
+        }
+
+        // Clean Send Route visibility logic
+        if (isReady && !isInspDirty && !isStaging) {
             if(btnSend) btnSend.style.display = 'flex';
         }
 
@@ -1256,52 +1262,80 @@ function updateRouteTimes() {
     }
 }
 
+// Ensure Generate Route cleanly upgrades DOM statuses before running synchronous Calculate
 async function handleGenerateRoute() {
     if (currentInspectorFilter === 'all') return;
-    const insp = inspectors.find(i => i.id === currentInspectorFilter);
-    if (!insp) return;
-
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    let clusteredArrays = [];
-    for(let i = 0; i < currentRouteCount; i++) {
-        let itemsInCluster = stops.filter(s => isActiveStop(s) && s.lng && s.lat && s.cluster === i && (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed' && (s.status||'').toLowerCase() !== 'dispatched');
-        if (itemsInCluster.length > 0) {
-            clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
+    const inspId = currentInspectorFilter;
+    
+    stops.forEach(s => {
+        if (isActiveStop(s) && s.lng && s.lat && s.driverId === inspId && s.status.toLowerCase() === 'pending') {
+            s.status = 'Routed';
+            markRouteDirty(s.driverId, s.cluster);
         }
-    }
+    });
+    
+    reorderStopsFromDOM();
+    render(); 
+    await handleCalculate();
+}
 
-    const eps = getActiveEndpoints();
-    let sAddr = eps.start ? eps.start.address : '';
-    let eAddr = eps.end ? eps.end.address : '';
+async function handleCalculate() {
+    const overlay = document.getElementById('processing-overlay');
+    if (overlay) overlay.style.display = 'flex';
 
     try {
-        const res = await fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'generateRoute', routeId: routeId, inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
-        });
+        reorderStopsFromDOM();
         
+        const inspId = isManagerView ? currentInspectorFilter : driverParam;
+        
+        let allRouteStops = isManagerView ? stops.filter(s => s.driverId === inspId) : stops.filter(s => s.routeTargetId === String(routeId));
+        allRouteStops = allRouteStops.filter(s => s.status.toLowerCase() !== 'cancelled');
+
+        const eps = getActiveEndpoints();
+
+        let payload = {
+            action: 'calculate',
+            routeId: routeId,
+            driver: isManagerView ? inspId : driverParam,
+            startTime: currentStartTime,
+            startAddr: eps.start?.address || null,
+            endAddr: eps.end?.address || null,
+            isManager: isManagerView,
+            stops: allRouteStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
+        };
+
+        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json();
         
-        if (data.status === 'queued' || data.success) {
-            fetch(WEB_APP_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'processQueue', routeId: data.routeId || routeId, driverId: insp.id })
-            }).catch(err => {
-                console.log("Ignored expected timeout from processQueue", err);
-            });
-            
-            isPollingForRoute = true;
-            pollRetries = 0;
-            setTimeout(loadData, 5000);
-        } else {
-            await loadData();
-        }
-    } catch (e) {
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Generation encountered an error. Please wait a moment and try again.");
-    } 
+        if (data.error) throw new Error(data.error);
+
+        const returnedStopsMap = new Map();
+        data.updatedStops.forEach(s => {
+            let exp = expandStop(s);
+            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false });
+        });
+
+        stops = stops.map(s => {
+            if (returnedStopsMap.has(s.id)) {
+                let updated = returnedStopsMap.get(s.id);
+                updated.routeState = 'Ready'; 
+                return updated;
+            }
+            return s;
+        });
+
+        if (!isManagerView) isAlteredRoute = true;
+        historyStack = []; 
+        dirtyRoutes.clear();
+        originalStops = JSON.parse(JSON.stringify(stops)); 
+        render(); drawRoute(); updateSummary();
+
+    } catch (e) { 
+        if (overlay) overlay.style.display = 'none';
+        await customAlert("Error calculating the route. Please try again."); 
+    } finally { 
+        if (overlay) overlay.style.display = 'none'; 
+    }
 }
 
 async function handleStartOver() {
@@ -2006,373 +2040,7 @@ function updateSummary() {
     if(statPastEl) statPastEl.innerText = `${pastDue} Past Due`;
 }
 
-async function handleCalculate() {
-    const overlay = document.getElementById('processing-overlay');
-    if (overlay) overlay.style.display = 'flex';
-
-    try {
-        const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-        
-        const inspId = isManagerView ? currentInspectorFilter : driverParam;
-        let validStops = [];
-
-        if (isManagerView && inspId !== 'all') {
-            validStops = activeStops.filter(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'completed'));
-        } else {
-            validStops = activeStops.filter(s => ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'completed'));
-        }
-
-        let stopsToCalculate = validStops.filter(s => {
-            const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
-            return dirtyRoutes.has(routeKey) || dirtyRoutes.has('all');
-        });
-
-        if (stopsToCalculate.length === 0 && !dirtyRoutes.has('endpoints_0')) { 
-            if (overlay) overlay.style.display = 'none';
-            return; 
-        }
-
-        const eps = getActiveEndpoints();
-
-        let allRouteStops = isManagerView ? stops.filter(s => s.driverId === inspId) : stops.filter(s => s.routeTargetId === String(routeId));
-        allRouteStops = allRouteStops.filter(s => s.status.toLowerCase() !== 'cancelled');
-
-        let payload = {
-            action: 'calculate',
-            routeId: routeId,
-            driver: isManagerView ? inspId : driverParam,
-            startTime: currentStartTime,
-            startAddr: eps.start?.address || null,
-            endAddr: eps.end?.address || null,
-            isManager: isManagerView,
-            stops: allRouteStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
-        };
-
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const data = await res.json();
-        
-        if (data.error) throw new Error(data.error);
-
-        const returnedStopsMap = new Map();
-        data.updatedStops.forEach(s => {
-            let exp = expandStop(s);
-            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false });
-        });
-
-        stops = stops.map(s => {
-            if (returnedStopsMap.has(s.id)) {
-                let updated = returnedStopsMap.get(s.id);
-                updated.routeState = 'Ready'; 
-                return updated;
-            }
-            return s;
-        });
-
-        if (!isManagerView) isAlteredRoute = true;
-        historyStack = []; 
-        dirtyRoutes.clear();
-        originalStops = JSON.parse(JSON.stringify(stops)); 
-        render(); drawRoute(); updateSummary();
-
-    } catch (e) { 
-        if (overlay) overlay.style.display = 'none';
-        await customAlert("Error calculating the route. Please try again."); 
-    } finally { 
-        if (overlay) overlay.style.display = 'none'; 
-    }
-}
-
-async function toggleComplete(e, id) {
-    e.stopPropagation();
-    pushToHistory();
-    const idx = stops.findIndex(s => s.id == id);
-    const isCurrentlyCompleted = stops[idx].status.toLowerCase() === 'completed';
-    const newStatus = isCurrentlyCompleted ? (stops[idx].routeState === 'Dispatched' ? 'Dispatched' : 'Routed') : 'Completed';
-    stops[idx].status = newStatus;
-    render(); drawRoute(); updateSummary();
-    
-    try {
-        await fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'updateOrder', rowId: id, updates: { status: getStatusCode(newStatus) } })
-        });
-    } catch(err) { console.error("Toggle Complete Error", err); }
-}
-
-let start_pos, box_el;
-map.on('click', (e) => { if (e.originalEvent.target.classList.contains('mapboxgl-canvas')) { selectedIds.clear(); updateSelectionUI(); } });
-const canvas = map.getCanvasContainer();
-
-canvas.addEventListener('mousedown', (e) => { 
-    if (e.target.closest('.mapboxgl-marker')) return; 
-    if(e.shiftKey) { 
-        map.dragPan.disable(); start_pos = mousePos(e); 
-        document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); 
-    } 
-}, true);
-
-function mousePos(e) { const r = canvas.getBoundingClientRect(); return new mapboxgl.Point(e.clientX-r.left, e.clientY-r.top); }
-
-function onMouseMove(e) { 
-    const curr = mousePos(e); 
-    if(!box_el) { box_el=document.createElement('div'); box_el.className='boxdraw'; canvas.appendChild(box_el); } 
-    const minX=Math.min(start_pos.x,curr.x), maxX=Math.max(start_pos.x,curr.x), minY=Math.min(start_pos.y,curr.y), maxY=Math.max(start_pos.y,curr.y); 
-    box_el.style.left=minX+'px'; box_el.style.top=minY+'px'; box_el.style.width=(maxX-minX)+'px'; box_el.style.height=(maxY-minY)+'px'; 
-}
-
-function onMouseUp(e) { 
-    document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); 
-    if(box_el) { 
-        const b=[start_pos, mousePos(e)]; 
-        markers.filter(m => { 
-            const pt=map.project(m.getLngLat()); 
-            return pt.x>=Math.min(b[0].x,b[1].x) && pt.x<=Math.max(b[0].x,b[1].x) && pt.y>=Math.min(b[0].y,b[1].y) && pt.y<=Math.max(b[0].y,b[1].y); 
-        }).forEach(m=>selectedIds.add(m._stopId)); 
-        box_el.remove(); box_el=null; updateSelectionUI(); 
-    } 
-    map.dragPan.enable(); start_pos=null; 
-}
-
-function updateSelectionUI() { 
-    document.querySelectorAll('.stop-item, .glide-row').forEach(el=>el.classList.remove('selected')); 
-    markers.forEach(m=>{ 
-        if(m._stopId) {
-            m.getElement().classList.toggle('bulk-selected', selectedIds.has(m._stopId)); 
-            if(selectedIds.has(m._stopId)) { const row = document.getElementById(`item-${m._stopId}`); if (row) row.classList.add('selected'); } 
-        }
-    }); 
-    
-    const has = selectedIds.size>0; 
-    let hasRouted = false;
-    
-    selectedIds.forEach(id => {
-        const s = stops.find(st => st.id === id);
-        if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) hasRouted = true;
-    });
-
-    const selectAllCb = document.getElementById('bulk-select-all');
-    if (selectAllCb) {
-        const activeStops = stops.filter(s => isActiveStop(s));
-        selectAllCb.checked = (activeStops.length > 0 && selectedIds.size === activeStops.length);
-    }
-    
-    document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY && isManagerView) ? 'block' : 'none'; 
-    document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY) ? 'block' : 'none'; 
-    
-    const completeBtn = document.getElementById('bulk-complete-btn');
-    if (completeBtn) {
-        completeBtn.style.display = (has && !isManagerView) ? 'block' : 'none'; 
-    }
-
-    const hintEl = document.getElementById('map-hint');
-    if (hintEl) {
-        hintEl.style.opacity = has ? '0' : '1';
-    }
-    
-    for(let i=1; i<=3; i++) {
-        const btn = document.getElementById(`move-r${i}-btn`);
-        if(btn) {
-            if(isManagerView && currentInspectorFilter !== 'all' && has && i <= currentRouteCount && currentRouteCount > 1) {
-                let allInTargetRoute = true;
-                selectedIds.forEach(id => {
-                    const s = stops.find(st => st.id === id);
-                    if (s && s.cluster !== (i - 1)) {
-                        allInTargetRoute = false;
-                    }
-                });
-                btn.style.display = allInTargetRoute ? 'none' : 'block';
-            } else {
-                btn.style.display = 'none';
-            }
-        }
-    }
-}
-
-function focusPin(id) { const tgt = stops.find(s=>s.id==id); if(tgt && tgt.lng && tgt.lat) map.flyTo({ center: [tgt.lng, tgt.lat] }); }
-function focusTile(id) { document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
-function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
-
-function drawRoute() { 
-    ['r0-clean', 'r0-dirty', 'r1-base-clean', 'r1-base-dirty', 'r1-top-clean', 'r1-top-dirty', 'r2-base-clean', 'r2-base-dirty', 'r2-top-clean', 'r2-top-dirty'].forEach(l => {
-        if (map.getLayer(l)) map.removeLayer(l);
-    });
-    if (map.getSource('route')) map.removeSource('route');
-
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-    let routedStops = [];
-    
-    if (isManagerView) {
-        routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
-    } else {
-        routedStops = activeStops;
-    }
-    
-    if (routedStops.length === 0) return; 
-
-    routedStops.sort(sortByEta);
-
-    const features = [];
-    const routesMap = new Map();
-
-    routedStops.forEach(s => {
-        const key = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
-        if (!routesMap.has(key)) routesMap.set(key, []);
-        routesMap.get(key).push(s);
-    });
-
-    routesMap.forEach((cStops, key) => {
-        if (cStops.length > 0) {
-            const style = getVisualStyle(cStops[0]);
-            let coords = cStops.map(s => [parseFloat(s.lng), parseFloat(s.lat)]);
-            
-            let dId = key.split('_')[0];
-            let clusterIndex = parseInt(key.split('_')[1]);
-            let isRouteDirty = dirtyRoutes.has(key) || dirtyRoutes.has('all');
-            
-            let eps = getActiveEndpoints();
-            let rStart = eps.start;
-            let rEnd = eps.end;
-
-            if (isManagerView && currentInspectorFilter === 'all' && dId !== 'unassigned') {
-                const insp = inspectors.find(i => i.id === dId);
-                if (insp) {
-                    rStart = { lng: insp.startLng, lat: insp.startLat };
-                    rEnd = { lng: insp.endLng || insp.startLng, lat: insp.endLat || insp.startLat };
-                }
-            }
-
-            if (rStart && rStart.lng && rStart.lat) coords.unshift([parseFloat(rStart.lng), parseFloat(rStart.lat)]);
-            if (rEnd && rEnd.lng && rEnd.lat) coords.push([parseFloat(rEnd.lng), parseFloat(rEnd.lat)]);
-
-            if (coords.length > 1) {
-                features.push({
-                    "type": "Feature",
-                    "properties": { "color": style.line, "clusterIdx": clusterIndex, "isDirty": isRouteDirty }, 
-                    "geometry": { "type": "LineString", "coordinates": coords }
-                });
-            }
-        }
-    });
-
-    map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
-    
-    const addLineLayer = (id, filter, color, width, isDashed) => {
-        let paint = { "line-color": color, "line-width": width, "line-opacity": 0.8 };
-        if (isDashed) paint["line-dasharray"] = [2, 2];
-        map.addLayer({
-            "id": id, "type": "line", "source": "route",
-            "filter": filter, "layout": { "line-join": "round", "line-cap": "round" },
-            "paint": paint
-        });
-    };
-
-    addLineLayer("r0-clean", ["all", ["==", "clusterIdx", 0], ["==", "isDirty", false]], ["get", "color"], 5, false);
-    addLineLayer("r0-dirty", ["all", ["==", "clusterIdx", 0], ["==", "isDirty", true]], ["get", "color"], 5, true);
-
-    addLineLayer("r1-base-clean", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], ["get", "color"], 7, false);
-    addLineLayer("r1-base-dirty", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], ["get", "color"], 7, true);
-    addLineLayer("r1-top-clean", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "#000000", 3, false);
-    addLineLayer("r1-top-dirty", ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "#000000", 3, true);
-
-    addLineLayer("r2-base-clean", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], ["get", "color"], 7, false);
-    addLineLayer("r2-base-dirty", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], ["get", "color"], 7, true);
-    addLineLayer("r2-top-clean", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "#ffffff", 3, false);
-    addLineLayer("r2-top-dirty", ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "#ffffff", 3, true);
-}
-
-function openNav(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { showNavChoice(la, ln, addr); } else { launchMaps(p, la, ln, addr); } }
-function showNavChoice(la, ln, addr) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<h3>Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:none; border-radius:6px; background:#444; color:#fff" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div>`; }
-function setNavPref(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; launchMaps(p, la, ln, addr); }
-function launchMaps(p, la, ln, addr) { 
-    let destination = `${la},${ln}`;
-    if (addr) {
-        const parts = addr.split(',');
-        const street = parts[0].trim();
-        const zipMatch = addr.match(/\b\d{5}(?:-\d{4})?\b/);
-        if (zipMatch) {
-            destination = encodeURIComponent(`${street}, ${zipMatch[0]}`);
-        } else {
-            destination = encodeURIComponent(addr);
-        }
-    }
-    window.location.href = p === 'google' ? `http://googleusercontent.com/maps.google.com/?daddr=${destination}` : `https://maps.apple.com/?daddr=${destination}`; 
-}
-
-async function finalizeSync(type, directStart = null, directEnd = null) {
-    const eps = getActiveEndpoints();
-    const startAddr = directStart !== null ? directStart : (document.getElementById('input-endpoint-start')?.value || '');
-    const endAddr = directEnd !== null ? directEnd : (document.getElementById('input-endpoint-end')?.value || '');
-    
-    const modal = document.getElementById('modal-overlay');
-    if(modal) modal.style.display = 'none';
-    
-    let sLat = routeStart && routeStart.lat ? routeStart.lat : eps.start?.lat || null;
-    let sLng = routeStart && routeStart.lng ? routeStart.lng : eps.start?.lng || null;
-    let eLat = routeEnd && routeEnd.lat ? routeEnd.lat : eps.end?.lat || null;
-    let eLng = routeEnd && routeEnd.lng ? routeEnd.lng : eps.end?.lng || null;
-
-    let payload = { 
-        action: type, routeId: routeId, driver: driverParam, 
-        startTime: currentStartTime, startAddr: startAddr, endAddr: endAddr,
-        startLat: sLat, startLng: sLng, endLat: eLat, endLng: eLng,
-        isManager: isManagerView
-    };
-
-    let allRouteStops = isManagerView ? stops.filter(s => s.driverId === currentInspectorFilter) : stops.filter(s => s.routeTargetId === String(routeId));
-    allRouteStops = allRouteStops.filter(s => s.status.toLowerCase() !== 'cancelled');
-
-    if (isManagerView && currentInspectorFilter !== 'all') {
-        let clusteredArrays = [];
-        for(let i = 0; i < currentRouteCount; i++) {
-            let itemsInCluster = stops.filter(s => s.cluster === i);
-            if (itemsInCluster.length > 0) {
-                clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
-            }
-        }
-        payload.routeClusters = clusteredArrays;
-        payload.priorityLevel = document.getElementById('slider-priority') ? document.getElementById('slider-priority').value : 0;
-        payload.stops = allRouteStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
-    } else {
-        payload.stops = stops.map(s => minifyStop(s, (s.cluster || 0) + 1));
-    }
-
-    const overlay = document.getElementById('processing-overlay');
-    if (overlay) overlay.style.display = 'flex';
-
-    try {
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const data = await res.json(); 
-        
-        if (data.error) throw new Error(data.error);
-
-        const returnedStopsMap = new Map();
-        data.updatedStops.forEach(s => {
-            let exp = expandStop(s);
-            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false });
-        });
-
-        stops = stops.map(s => {
-            if (returnedStopsMap.has(s.id)) {
-                let updated = returnedStopsMap.get(s.id);
-                updated.routeState = 'Ready'; 
-                return updated;
-            }
-            return s;
-        });
-        
-        if (!isManagerView) isAlteredRoute = true;
-        historyStack = [];
-        dirtyRoutes.clear();
-        render(); drawRoute(); updateSummary();
-    } catch (e) { 
-        if (overlay) overlay.style.display = 'none';
-        await customAlert("Error updating locations. Please try again."); 
-    } finally {
-        if (overlay) overlay.style.display = 'none';
-    }
-}
-
+// Strictly re-assign DOM statuses before routing so backend knows what to pick up
 function reorderStopsFromDOM() {
     let unroutedIds = [];
     let routedIds = [];
@@ -2393,8 +2061,24 @@ function reorderStopsFromDOM() {
     const visibleIds = new Set([...unroutedIds, ...routedIds]);
     const otherStops = stops.filter(s => !visibleIds.has(s.id));
     
-    const newUnrouted = unroutedIds.map(id => stops.find(s => s.id === id)).filter(Boolean);
-    const newRouted = routedIds.map(id => stops.find(s => s.id === id)).filter(Boolean);
+    // Explicitly enforce 'Pending' for anything in the Unrouted List
+    const newUnrouted = unroutedIds.map(id => {
+        let s = stops.find(st => st.id === id);
+        if (s) {
+            s.status = 'Pending';
+            s.eta = '';
+        }
+        return s;
+    }).filter(Boolean);
+    
+    // Explicitly upgrade 'Pending' to 'Routed' for anything placed inside a Route Container
+    const newRouted = routedIds.map(id => {
+        let s = stops.find(st => st.id === id);
+        if (s && s.status.toLowerCase() === 'pending') {
+            s.status = 'Routed';
+        }
+        return s;
+    }).filter(Boolean);
     
     stops = [...otherStops, ...newUnrouted, ...newRouted];
 }
@@ -2430,6 +2114,7 @@ function initSortable() {
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
+                            stop.status = 'Routed'; // Upgrade status instantly when dropped in a route
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
@@ -2439,7 +2124,7 @@ function initSortable() {
                         const idx = stops.findIndex(s => s.id === stopId);
                         if (idx > -1) {
                             stops[idx].status = 'Pending'; 
-                            stops[idx].routeState = 'Pending';
+                            stops[idx].eta = '';
                         }
                     }
                     
