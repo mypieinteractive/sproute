@@ -1,7 +1,7 @@
 // *
 // * Dashboard - V6.18
 // * FILE: app.js
-// * Changes: Implemented "merge instead of replace" architecture for targeted re-optimization. Clean routes are now safely preserved in memory during API returns and seamlessly synced back to the backend.
+// * Changes: Added dynamic LngLatBounds auto-framing to the email modal submission so the screenshot captures 100% of the route regardless of user window size or current zoom. Verified isActiveStop logic for silod Inspector view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -519,7 +519,6 @@ async function loadData() {
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
 
-        // Targeted Merge Protocol: Protects clean routes if backend returns a partial array during polling
         if (isPollingForRoute) {
             let fetchedMap = new Map();
             rawStops.forEach(s => {
@@ -562,10 +561,9 @@ async function loadData() {
             } else {
                 isPollingForRoute = false; 
                 dirtyRoutes.clear(); 
-                silentSaveRouteState(); // Push the successfully merged board back to the DB to save the clean routes!
+                silentSaveRouteState();
             }
         } else {
-            // Full replacement on initial load or non-polling state
             stops = rawStops.map(s => {
                 let exp = expandStop(s);
                 return {
@@ -987,10 +985,27 @@ function handleOpenEmailModal() {
         const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint');
         overlaysToHide.forEach(el => el.style.display = 'none');
 
+        // Dynamic auto-framing bounds calculation for strictly routed stops
+        const bounds = new mapboxgl.LngLatBounds();
+        const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
+        
+        routedStopsForInsp.forEach(s => {
+            if (s.lng && s.lat) bounds.extend([s.lng, s.lat]);
+        });
+        
+        let eps = getActiveEndpoints();
+        if (eps.start && eps.start.lng && eps.start.lat) bounds.extend([parseFloat(eps.start.lng), parseFloat(eps.start.lat)]);
+        if (eps.end && eps.end.lng && eps.end.lat) bounds.extend([parseFloat(eps.end.lng), parseFloat(eps.end.lat)]);
+
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: 50, animate: false });
+        }
+
+        map.resize();
+
         await new Promise(resolve => {
-            if (map.isStyleLoaded()) resolve();
-            else map.once('idle', resolve);
-            setTimeout(resolve, 500); 
+            map.once('idle', resolve);
+            setTimeout(resolve, 1000); 
         });
 
         let mapBase64 = '';
@@ -1267,7 +1282,6 @@ async function handleGenerateRoute() {
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json();
         
-        // Allow the backend to respond synchronously with the optimized board OR queue it
         if (data.updatedStops || (data.stops && Array.isArray(data.stops))) {
             let optimizedData = data.updatedStops || data.stops;
             const returnedStopsMap = new Map();
@@ -1285,7 +1299,7 @@ async function handleGenerateRoute() {
             isPollingForRoute = false;
             dirtyRoutes.clear();
             render(); drawRoute(); updateSummary();
-            silentSaveRouteState(); // Important: pushes the successfully merged board back to the DB!
+            silentSaveRouteState(); 
         } else if (data.status === 'queued' || data.success) {
             let pqPayload = { action: 'processQueue', driverId: insp.id };
             if (!isManagerView) pqPayload.routeId = routeId;
