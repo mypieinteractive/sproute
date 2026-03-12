@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.9
+// * Dashboard - V6.10
 // * FILE: app.js
-// * Changes: Added spread operator to expandStop to preserve driverId/routeState, enforced string matching for driver ID checks, removed legacy UI DOM generation.
+// * Changes: Completely deprecated routeClusters property. Flattened generateRoute and finalizeSync payloads to send a single 1D array under the 'stops' property with Index 2 stamped.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1139,7 +1139,7 @@ function setRoutes(num) {
 function moveSelectedToRoute(cIdx) {
     pushToHistory();
     selectedIds.forEach(id => {
-        const s = stops.find(st => st.id === id);
+        const s = stops.find(st => String(st.id) === String(id));
         if (s) {
             if (isRouteAssigned(s.status)) {
                 markRouteDirty(s.driverId, s.cluster); 
@@ -1184,13 +1184,15 @@ async function handleGenerateRoute() {
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
-    let clusteredArrays = [];
-    for(let i = 0; i < currentRouteCount; i++) {
-        let itemsInCluster = stops.filter(s => isActiveStop(s) && s.lng && s.lat && s.cluster === i && !isRouteAssigned(s.status));
-        if (itemsInCluster.length > 0) {
-            clusteredArrays.push(itemsInCluster.map(s => minifyStop(s, i + 1)));
-        }
-    }
+    let unroutedStops = stops.filter(s => 
+        isActiveStop(s) && 
+        s.lng && 
+        s.lat && 
+        String(s.driverId) === String(insp.id) && 
+        !isRouteAssigned(s.status)
+    );
+
+    let flatStopsPayload = unroutedStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
 
     const eps = getActiveEndpoints();
     let sAddr = eps.start ? eps.start.address : '';
@@ -1208,7 +1210,7 @@ async function handleGenerateRoute() {
             action: 'generateRoute', 
             inspectorName: insp.name, 
             driverId: insp.id, 
-            routeClusters: clusteredArrays, 
+            stops: flatStopsPayload, 
             startAddr: sAddr, 
             endAddr: eAddr, 
             routeState: 'Queued' 
@@ -1343,7 +1345,7 @@ function liveClusterUpdate() {
 
 function updateMarkerColors() {
     markers.forEach(m => {
-        const stopData = stops.find(st => st.id === m._stopId);
+        const stopData = stops.find(st => String(st.id) === String(m._stopId));
         if (stopData) {
             const visualStyle = getVisualStyle(stopData);
             const pin = m.getElement().querySelector('.pin-visual');
@@ -1383,14 +1385,14 @@ async function triggerBulkDelete() {
 
     try {
         selectedIds.forEach(id => {
-            const s = stops.find(st => st.id === id);
+            const s = stops.find(st => String(st.id) === String(id));
             if (s && isRouteAssigned(s.status)) {
                 markRouteDirty(s.driverId, s.cluster);
             }
         });
 
         const deletePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => s.id === id);
+            const idx = stops.findIndex(s => String(s.id) === String(id));
             let dId = null;
             if (idx > -1) {
                 dId = stops[idx].driverId;
@@ -1427,7 +1429,7 @@ async function triggerBulkUnroute() {
 
     try {
         const unroutePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => s.id === id);
+            const idx = stops.findIndex(s => String(s.id) === String(id));
             let dId = null;
             if (idx > -1) {
                 dId = stops[idx].driverId;
@@ -1459,7 +1461,7 @@ async function triggerBulkUnroute() {
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
-    const stopIdx = stops.findIndex(s => s.id === rowId);
+    const stopIdx = stops.findIndex(s => String(s.id) === String(rowId));
     if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
     let payload = { action: 'updateOrder', rowId: rowId, driverId: newDriverId, updates: { driverName: newDriverName, driverId: newDriverId } };
     if (!isManagerView) payload.routeId = routeId;
@@ -1486,7 +1488,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
     
     try { 
         idsToUpdate.forEach(id => {
-            const s = stops.find(st => st.id === id);
+            const s = stops.find(st => String(st.id) === String(id));
             if (s && isRouteAssigned(s.status)) {
                 markRouteDirty(s.driverId, s.cluster); 
                 markRouteDirty(newDriverId, s.cluster); 
@@ -1832,7 +1834,7 @@ function render() {
     
     const pushEndpoint = (lng, lat, dId, type) => {
         if (lng && lat) {
-            let existing = endpointsToDraw.find(e => e.lng === lng && e.lat === lat && e.driverId === dId);
+            let existing = endpointsToDraw.find(e => e.lng === lng && e.lat === lat && String(e.driverId) === String(dId));
             if (existing) {
                 if (type === 'start') existing.isStart = true;
                 if (type === 'end') existing.isEnd = true;
@@ -1990,8 +1992,8 @@ async function handleCalculate() {
         });
 
         stops = stops.map(s => {
-            if (returnedStopsMap.has(s.id)) {
-                return returnedStopsMap.get(s.id);
+            if (returnedStopsMap.has(String(s.id))) {
+                return returnedStopsMap.get(String(s.id));
             }
             return s;
         });
@@ -2013,7 +2015,7 @@ async function handleCalculate() {
 async function toggleComplete(e, id) {
     e.stopPropagation();
     pushToHistory();
-    const idx = stops.findIndex(s => s.id == id);
+    const idx = stops.findIndex(s => String(s.id) === String(id));
     const isCurrentlyCompleted = stops[idx].status.toLowerCase() === 'completed';
     const newStatus = isCurrentlyCompleted ? (stops[idx].routeState === 'Dispatched' ? 'Dispatched' : 'Routed') : 'Completed';
     stops[idx].status = newStatus;
@@ -2076,7 +2078,7 @@ function updateSelectionUI() {
     let hasRouted = false;
     
     selectedIds.forEach(id => {
-        const s = stops.find(st => st.id === id);
+        const s = stops.find(st => String(st.id) === String(id));
         if (s && isRouteAssigned(s.status)) hasRouted = true;
     });
 
@@ -2105,7 +2107,7 @@ function updateSelectionUI() {
             if(isManagerView && currentInspectorFilter !== 'all' && has && i <= currentRouteCount && currentRouteCount > 1) {
                 let allInTargetRoute = true;
                 selectedIds.forEach(id => {
-                    const s = stops.find(st => st.id === id);
+                    const s = stops.find(st => String(st.id) === String(id));
                     if (s && s.cluster !== (i - 1)) {
                         allInTargetRoute = false;
                     }
@@ -2118,7 +2120,7 @@ function updateSelectionUI() {
     }
 }
 
-function focusPin(id) { const tgt = stops.find(s=>s.id==id); if(tgt && tgt.lng && tgt.lat) map.flyTo({ center: [tgt.lng, tgt.lat] }); }
+function focusPin(id) { const tgt = stops.find(s=>String(s.id)===String(id)); if(tgt && tgt.lng && tgt.lat) map.flyTo({ center: [tgt.lng, tgt.lat] }); }
 function focusTile(id) { document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
@@ -2251,8 +2253,8 @@ function reorderStopsFromDOM() {
     const visibleIds = new Set([...unroutedIds, ...routedIds]);
     const otherStops = stops.filter(s => !visibleIds.has(s.id));
     
-    const newUnrouted = unroutedIds.map(id => stops.find(s => s.id === id)).filter(Boolean);
-    const newRouted = routedIds.map(id => stops.find(s => s.id === id)).filter(Boolean);
+    const newUnrouted = unroutedIds.map(id => stops.find(s => String(s.id) === String(id))).filter(Boolean);
+    const newRouted = routedIds.map(id => stops.find(s => String(s.id) === String(id))).filter(Boolean);
     
     stops = [...otherStops, ...newUnrouted, ...newRouted];
 }
@@ -2278,7 +2280,7 @@ function initSortable() {
                     let isMovedToUnrouted = false;
                     
                     const stopId = evt.item.id.replace('item-', '');
-                    const stop = stops.find(s => s.id === stopId);
+                    const stop = stops.find(s => String(s.id) === String(stopId));
                     
                     if (stop) {
                         const dId = stop.driverId;
@@ -2294,7 +2296,7 @@ function initSortable() {
 
                     if (evt.to.id === 'unrouted-list') {
                         isMovedToUnrouted = true;
-                        const idx = stops.findIndex(s => s.id === stopId);
+                        const idx = stops.findIndex(s => String(s.id) === String(stopId));
                         let dId = null;
                         if (idx > -1) {
                             dId = stops[idx].driverId;
@@ -2343,7 +2345,7 @@ function initSortable() {
                 onStart: () => pushToHistory(),
                 onEnd: (evt) => {
                     const stopId = evt.item.id.replace('item-', '');
-                    const stop = stops.find(s => s.id === stopId);
+                    const stop = stops.find(s => String(s.id) === String(stopId));
                     if (stop) {
                         const dId = stop.driverId;
                         let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
