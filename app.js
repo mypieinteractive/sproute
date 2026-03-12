@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.8
+// * Dashboard - V6.9
 // * FILE: app.js
-// * Changes: Globally standardized all POST payloads to omit routeId in manager views and strictly rely on driverId. Fixed Send Route modal visibility block.
+// * Changes: Added spread operator to expandStop to preserve driverId/routeState, enforced string matching for driver ID checks, removed legacy UI DOM generation.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -145,7 +145,7 @@ function silentSaveRouteState() {
     
     let routedStops = stops.filter(s => {
         if (!isRouteAssigned(s.status)) return false;
-        if (isManagerView) return s.driverId === inspId;
+        if (isManagerView) return String(s.driverId) === String(inspId);
         return s.routeTargetId === String(routeId);
     });
     
@@ -213,6 +213,7 @@ function expandStop(minStop) {
         if (isNaN(clusterIdx)) clusterIdx = 1;
         
         return {
+            ...minStop, 
             id: String(t[0]), seq: t[1], cluster: Math.max(0, clusterIdx - 1),
             address: t[3], client: t[4], app: t[5], dueDate: t[6], type: t[7],
             eta: t[8], dist: t[9], lat: t[10], lng: t[11], status: t[12], 
@@ -266,7 +267,7 @@ function updateInspectorDropdown() {
     stops.forEach(s => {
         const status = (s.status || '').toLowerCase();
         if (status !== 'cancelled' && status !== 'deleted' && s.driverId) {
-            validInspectorIds.add(s.driverId);
+            validInspectorIds.add(String(s.driverId));
         }
     });
 
@@ -274,20 +275,20 @@ function updateInspectorDropdown() {
     let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
     inspectors.forEach((i, idx) => { 
-        if (validInspectorIds.has(i.id)) {
+        if (validInspectorIds.has(String(i.id))) {
             const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
             filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: bold;">${i.name}</option>`; 
         }
     });
     
     filterSelect.innerHTML = filterHtml;
-    if (currentVal !== 'all' && !validInspectorIds.has(currentVal)) {
+    if (currentVal !== 'all' && !validInspectorIds.has(String(currentVal))) {
         filterSelect.value = 'all';
         handleInspectorFilterChange('all');
     } else {
         filterSelect.value = currentVal;
         if (currentVal !== 'all') {
-            const inspIdx = inspectors.findIndex(i => i.id === currentVal);
+            const inspIdx = inspectors.findIndex(i => String(i.id) === String(currentVal));
             if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
         } else {
             filterSelect.style.color = 'var(--text-main)';
@@ -306,7 +307,7 @@ function handleInspectorFilterChange(val) {
         if (val === 'all') {
             filterSelect.style.color = 'var(--text-main)';
         } else {
-            const inspIdx = inspectors.findIndex(i => i.id === val);
+            const inspIdx = inspectors.findIndex(i => String(i.id) === String(val));
             if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
         }
     }
@@ -322,7 +323,7 @@ function updateRouteButtonColors() {
     
     let baseColor = MASTER_PALETTE[0];
     if (currentInspectorFilter !== 'all') {
-        const inspIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
+        const inspIdx = inspectors.findIndex(i => String(i.id) === String(currentInspectorFilter));
         if (inspIdx > -1) baseColor = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
     }
 
@@ -377,13 +378,13 @@ function getVisualStyle(stopData) {
     
     let inspectorIndex = 0;
     if (stopData.driverId) {
-        const idx = inspectors.findIndex(i => i.id === stopData.driverId);
+        const idx = inspectors.findIndex(i => String(i.id) === String(stopData.driverId));
         if (idx !== -1) inspectorIndex = idx;
     }
     
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
     const cluster = stopData.cluster || 0;
-    const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && isRouteAssigned(s.status));
+    const hasRoutedForInsp = stops.some(s => String(s.driverId) === String(stopData.driverId) && isRouteAssigned(s.status));
     
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
     const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
@@ -507,7 +508,7 @@ async function loadData() {
                 cluster: exp.cluster || 0,
                 manualCluster: false,
                 hiddenInInspector: false,
-                routeState: exp.routeState || 'Pending',
+                routeState: exp.routeState || s.routeState || 'Pending',
                 routeTargetId: routeId || null
             };
         });
@@ -519,7 +520,7 @@ async function loadData() {
         });
 
         if (isPollingForRoute) {
-            const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && (isRouteAssigned(s.status) || s.routeState === 'Ready'));
+            const driverHasRouted = stops.some(s => String(s.driverId) === String(currentInspectorFilter) && (isRouteAssigned(s.status) || s.routeState === 'Ready'));
             if (!driverHasRouted && pollRetries < 15) {
                 pollRetries++;
                 const overlay = document.getElementById('processing-overlay');
@@ -718,9 +719,9 @@ function handleEndpointBlur(type, inputEl) {
 
 async function selectEndpoint(type, address, lat, lng, inputEl) {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    const insp = inspectors.find(i => i.id === inspId);
+    const insp = inspectors.find(i => String(i.id) === String(inspId));
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && isRouteAssigned(s.status));
+    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
 
     if (isManagerView && hasRouted) {
         const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
@@ -764,7 +765,7 @@ async function executeRouteReset(driverId) {
         
         historyStack = []; 
         stops.forEach(s => {
-            if (s.driverId === driverId && isRouteAssigned(s.status)) {
+            if (String(s.driverId) === String(driverId) && isRouteAssigned(s.status)) {
                 s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending';
             }
         });
@@ -784,7 +785,7 @@ async function executeRouteReset(driverId) {
 async function saveEndpointToBackend(type, address, lat, lng) {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && isRouteAssigned(s.status));
+    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
     
     pushToHistory();
     const overlay = document.getElementById('processing-overlay');
@@ -813,9 +814,9 @@ function getActiveEndpoints() {
     if (isManagerView && currentInspectorFilter === 'all') return { start: null, end: null };
     
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    const insp = inspectors.find(i => i.id === inspId);
+    const insp = inspectors.find(i => String(i.id) === String(inspId));
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && isRouteAssigned(s.status));
+    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
     
     let start = null; 
     let end = null;
@@ -836,10 +837,10 @@ function getActiveEndpoints() {
 }
 
 function handleOpenEmailModal() {
-    const insp = inspectors.find(i => i.id === currentInspectorFilter);
+    const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
     if (!insp) return;
 
-    const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter);
+    const activeInspStops = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter));
     if(activeInspStops.length === 0) return;
 
     const m = document.getElementById('modal-overlay');
@@ -917,7 +918,7 @@ function handleOpenEmailModal() {
         const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
         const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
 
-        const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
+        const dIdx = inspectors.findIndex(i => String(i.id) === String(currentInspectorFilter));
         const inspColor = dIdx > -1 ? MASTER_PALETTE[dIdx % MASTER_PALETTE.length] : MASTER_PALETTE[0];
 
         const geojsonStops = {
@@ -982,7 +983,7 @@ function handleOpenEmailModal() {
                 m.style.display = 'none';
                 
                 stops.forEach(s => {
-                    if (s.driverId === currentInspectorFilter && isRouteAssigned(s.status)) {
+                    if (String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status)) {
                         s.routeState = 'Dispatched';
                         s.status = 'Dispatched'; 
                     }
@@ -1038,7 +1039,7 @@ function updateRoutingUI() {
         });
 
         for (const insp of inspectors) {
-            if (allValidStops.filter(s => s.driverId === insp.id).length > 2) {
+            if (allValidStops.filter(s => String(s.driverId) === String(insp.id)).length > 2) {
                 showHint = true; 
                 break;
             }
@@ -1050,7 +1051,7 @@ function updateRoutingUI() {
     if (hintEl) hintEl.style.display = 'none';
 
     let currentState = 'Pending';
-    const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter);
+    const activeInspStops = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter));
     
     if (activeInspStops.length > 0) {
         const targetStop = activeInspStops.find(s => s.routeState) || activeInspStops[0];
@@ -1177,7 +1178,7 @@ function updateRouteTimes() {
 
 async function handleGenerateRoute() {
     if (currentInspectorFilter === 'all') return;
-    const insp = inspectors.find(i => i.id === currentInspectorFilter);
+    const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
     if (!insp) return;
 
     const overlay = document.getElementById('processing-overlay');
@@ -1196,7 +1197,7 @@ async function handleGenerateRoute() {
     let eAddr = eps.end ? eps.end.address : '';
 
     stops.forEach(s => {
-        if (isActiveStop(s) && s.driverId === insp.id) {
+        if (isActiveStop(s) && String(s.driverId) === String(insp.id)) {
             s.routeState = 'Queued';
         }
     });
@@ -1238,7 +1239,7 @@ async function handleGenerateRoute() {
 
 async function handleStartOver() {
     if(!(await customConfirm("Undo Routing and clear all routes for this inspector?"))) return;
-    const insp = inspectors.find(i => i.id === currentInspectorFilter);
+    const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
     if (!insp) return;
     await executeRouteReset(insp.id);
 }
@@ -1680,14 +1681,14 @@ function render() {
             if (inspectors.length > 0) {
                 const optionsHtml = inspectors.map((insp, idx) => {
                     const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
-                    return `<option value="${insp.id}" style="color: ${color}; font-weight: bold;" ${s.driverId === insp.id ? 'selected' : ''}>${insp.name}</option>`;
+                    return `<option value="${insp.id}" style="color: ${color}; font-weight: bold;" ${String(s.driverId) === String(insp.id) ? 'selected' : ''}>${insp.name}</option>`;
                 }).join('');
                 const defaultPlaceholder = !s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : '';
                 const disableSelectAttr = !PERMISSION_MODIFY ? 'disabled' : '';
 
                 let currentInspColor = 'var(--text-main)';
                 if (s.driverId) {
-                    const dIdx = inspectors.findIndex(i => i.id === s.driverId);
+                    const dIdx = inspectors.findIndex(i => String(i.id) === String(s.driverId));
                     if (dIdx > -1) currentInspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
                 }
 
@@ -1842,9 +1843,9 @@ function render() {
     };
 
     if (isAllInspectors) {
-        const activeDriverIds = new Set(activeStops.map(s => s.driverId));
+        const activeDriverIds = new Set(activeStops.map(s => String(s.driverId)));
         inspectors.forEach(insp => {
-            if (activeDriverIds.has(insp.id)) {
+            if (activeDriverIds.has(String(insp.id))) {
                 let sLng = insp.startLng; let sLat = insp.startLat;
                 let eLng = insp.endLng || insp.startLng; let eLat = insp.endLat || insp.startLat;
                 pushEndpoint(parseFloat(sLng), parseFloat(sLat), insp.id, 'start');
@@ -1853,7 +1854,7 @@ function render() {
         });
     } else {
         let eps = getActiveEndpoints();
-        let cInsp = inspectors.find(i => i.id === (isManagerView ? currentInspectorFilter : driverParam));
+        let cInsp = inspectors.find(i => String(i.id) === String(isManagerView ? currentInspectorFilter : driverParam));
         let dId = cInsp ? cInsp.id : null;
         if (eps.start && eps.start.lng && eps.start.lat) pushEndpoint(parseFloat(eps.start.lng), parseFloat(eps.start.lat), dId, 'start');
         if (eps.end && eps.end.lng && eps.end.lat) pushEndpoint(parseFloat(eps.end.lng), parseFloat(eps.end.lat), dId, 'end');
@@ -1862,10 +1863,10 @@ function render() {
     endpointsToDraw.forEach(ep => {
         let inspColor = '#ffffff';
         if (ep.driverId) {
-            const dIdx = inspectors.findIndex(i => i.id === ep.driverId);
+            const dIdx = inspectors.findIndex(i => String(i.id) === String(ep.driverId));
             if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
         } else if (currentInspectorFilter !== 'all') {
-            const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
+            const dIdx = inspectors.findIndex(i => String(i.id) === String(currentInspectorFilter));
             if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
         }
         
@@ -2162,7 +2163,7 @@ function drawRoute() {
             let rEnd = eps.end;
 
             if (isManagerView && currentInspectorFilter === 'all' && dId !== 'unassigned') {
-                const insp = inspectors.find(i => i.id === dId);
+                const insp = inspectors.find(i => String(i.id) === String(dId));
                 if (insp) {
                     rStart = { lng: insp.startLng, lat: insp.startLat };
                     rEnd = { lng: insp.endLng || insp.startLng, lat: insp.endLat || insp.startLat };
