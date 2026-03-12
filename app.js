@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.8
+// * Dashboard - V7.0
 // * FILE: app.js
-// * Changes: Generate Route ID passing, UI state machine overhaul for Option B
+// * Changes: Optimized to use driverId for staging API calls, isolated Route ID mapping for post-dispatch operations
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -133,16 +133,12 @@ function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
+// V7 Architecture: Direct to driverId if staging, routeId if dispatched
 async function silentSaveRouteState() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     if (inspId === 'all' || !inspId) return;
     
-    const activeInspStops = stops.filter(s => s.driverId === inspId && s.routeTargetId);
-    if (activeInspStops.length === 0) return;
-    
-    const targetRouteId = activeInspStops[0].routeTargetId;
-    
-    let routeStops = stops.filter(s => s.routeTargetId === targetRouteId && s.status.toLowerCase() !== 'cancelled');
+    let routeStops = isManagerView ? stops.filter(s => s.driverId === inspId) : stops.filter(s => s.routeTargetId === String(routeId));
     if (routeStops.length === 0) return;
 
     let minified = routeStops.map(s => {
@@ -168,7 +164,8 @@ async function silentSaveRouteState() {
             method: 'POST',
             body: JSON.stringify({
                 action: 'saveRoute',
-                routeId: targetRouteId,
+                routeId: routeId,
+                driverId: inspId,
                 stops: minified
             })
         });
@@ -877,9 +874,8 @@ function handleOpenEmailModal() {
     if (!insp) return;
 
     const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && s.routeTargetId);
-    if(activeInspStops.length === 0) return;
-
-    const targetRouteId = activeInspStops[0].routeTargetId;
+    let targetRouteId = routeId;
+    if(activeInspStops.length > 0) targetRouteId = activeInspStops[0].routeTargetId;
 
     const m = document.getElementById('modal-overlay');
     const mc = document.getElementById('modal-content');
@@ -1941,8 +1937,8 @@ function render() {
         }
         
         let emojisHtml = '';
-        if (ep.isStart) emojisHtml += `<div style="position: absolute; top: -20px; left: -16px; font-size: 24px;">🏠</div>`;
-        if (ep.isEnd) emojisHtml += `<div style="position: absolute; top: -20px; right: -16px; left: auto; font-size: 24px;">🏁</div>`;
+        if (ep.isStart) emojisHtml += `<div style="position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 16px;">🏠</div>`;
+        if (ep.isEnd) emojisHtml += `<div style="position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 16px;">🏁</div>`;
         
         const el = document.createElement('div');
         el.className = 'marker start-end-marker';
@@ -2038,13 +2034,13 @@ async function handleCalculate() {
 
         const eps = getActiveEndpoints();
 
-        // Critical Fix: Pass the ENTIRE stop array for this route (Including P and D) to perfectly preserve them in E and G
-        let allRouteStops = stops.filter(s => s.routeTargetId === String(routeId) && s.status.toLowerCase() !== 'cancelled');
+        let allRouteStops = isManagerView ? stops.filter(s => s.driverId === inspId) : stops.filter(s => s.routeTargetId === String(routeId));
+        allRouteStops = allRouteStops.filter(s => s.status.toLowerCase() !== 'cancelled');
 
         let payload = {
             action: 'calculate',
             routeId: routeId,
-            driver: driverParam,
+            driver: isManagerView ? inspId : driverParam,
             startTime: currentStartTime,
             startAddr: eps.start?.address || null,
             endAddr: eps.end?.address || null,
@@ -2323,8 +2319,8 @@ async function finalizeSync(type, directStart = null, directEnd = null) {
         isManager: isManagerView
     };
 
-    // Critical Fix: Pass the ENTIRE stop array for this route (Including P and D) to perfectly preserve them during Optimization
-    let allRouteStops = stops.filter(s => s.routeTargetId === String(routeId) && s.status.toLowerCase() !== 'cancelled');
+    let allRouteStops = isManagerView ? stops.filter(s => s.driverId === currentInspectorFilter) : stops.filter(s => s.routeTargetId === String(routeId));
+    allRouteStops = allRouteStops.filter(s => s.status.toLowerCase() !== 'cancelled');
 
     if (isManagerView && currentInspectorFilter !== 'all') {
         let clusteredArrays = [];
