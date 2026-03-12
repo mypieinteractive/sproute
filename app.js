@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.6
+// * Dashboard - V6.8
 // * FILE: app.js
-// * Changes: Bulletproof Silent Save Array Sync, Send Route UI logic fix, Removed redundant fetch actions on active routes
+// * Changes: Generate Route ID passing, UI state machine overhaul for Option B
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -133,7 +133,6 @@ function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
-// Option B: Comprehensive Silent Save - Safely includes ALL items including Pending and Deleted
 async function silentSaveRouteState() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     if (inspId === 'all' || !inspId) return;
@@ -143,8 +142,7 @@ async function silentSaveRouteState() {
     
     const targetRouteId = activeInspStops[0].routeTargetId;
     
-    // Explicitly KEEP cancelled and deleted items so they save to the blob properly
-    let routeStops = stops.filter(s => s.routeTargetId === targetRouteId);
+    let routeStops = stops.filter(s => s.routeTargetId === targetRouteId && s.status.toLowerCase() !== 'cancelled');
     if (routeStops.length === 0) return;
 
     let minified = routeStops.map(s => {
@@ -154,7 +152,7 @@ async function silentSaveRouteState() {
         let outDur = s.durationSecs;
         
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
-        if (dirtyRoutes.has(routeKey) || dirtyRoutes.has('all') || s.status.toLowerCase() === 'pending') {
+        if (dirtyRoutes.has(routeKey) || dirtyRoutes.has('all') || s.status.toLowerCase() === 'pending' || s.status.toLowerCase() === 'deleted') {
             outEta = ''; outDist = ''; outDur = 0;
         }
 
@@ -1057,6 +1055,7 @@ function updateRoutingUI() {
     
     let inspStops = isManagerView ? activeStops.filter(s => s.driverId === currentInspectorFilter) : activeStops;
     let inspRoutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
+    let inspUnroutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'pending');
     
     let isReady = false;
     if (inspRoutedStops.length > 0) {
@@ -1155,7 +1154,7 @@ function updateRoutingUI() {
     if (hintEl) hintEl.style.display = 'none';
 
     if (isManagerView) {
-        if (inspStops.filter(s => s.status.toLowerCase() === 'pending').length > 25) {
+        if (inspUnroutedStops.length > 25) {
             if(routingControls) routingControls.style.display = 'flex';
         } else {
             if(routingControls) routingControls.style.display = 'none';
@@ -1163,13 +1162,11 @@ function updateRoutingUI() {
 
         const isStaging = inspRoutedStops.some(s => s.routeState.toLowerCase() === 'staging') || isInspDirty;
 
-        if (inspStops.filter(s => s.status.toLowerCase() === 'pending').length > 0 && inspRoutedStops.length === 0) {
+        if (inspUnroutedStops.length > 0 && inspRoutedStops.length === 0) {
             if(btnGen) btnGen.style.display = 'flex';
             const headerGenBtnText = document.getElementById('btn-header-generate-text');
             if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } 
-        
-        if (isStaging) {
+        } else if (isStaging) {
             if(btnStartOver) btnStartOver.style.display = 'flex'; 
             
             if (dirtyRoutes.has('endpoints_0')) {
@@ -1179,10 +1176,6 @@ function updateRoutingUI() {
             }
         } else if (inspRoutedStops.length > 0) {
             if(btnStartOver) btnStartOver.style.display = 'flex';
-        }
-
-        // Clean, precise trigger for the Send Route button
-        if (isReady && !isInspDirty && !isStaging) {
             if(btnSend) btnSend.style.display = 'flex';
         }
 
@@ -1290,7 +1283,7 @@ async function handleGenerateRoute() {
     try {
         const res = await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
+            body: JSON.stringify({ action: 'generateRoute', routeId: routeId, inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
         });
         
         const data = await res.json();
@@ -1298,7 +1291,7 @@ async function handleGenerateRoute() {
         if (data.status === 'queued' || data.success) {
             fetch(WEB_APP_URL, {
                 method: 'POST',
-                body: JSON.stringify({ action: 'processQueue', routeId: routeId, driverId: insp.id })
+                body: JSON.stringify({ action: 'processQueue', routeId: data.routeId || routeId, driverId: insp.id })
             }).catch(err => {
                 console.log("Ignored expected timeout from processQueue", err);
             });
@@ -1464,7 +1457,7 @@ async function triggerBulkDelete() {
             if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
                 markRouteDirty(s.driverId, s.cluster);
             }
-            if (s) s.status = 'Deleted'; // Strictly change state locally
+            if (s) s.status = 'Deleted'; 
         });
 
         selectedIds.clear(); 
@@ -1472,7 +1465,7 @@ async function triggerBulkDelete() {
         
         reorderStopsFromDOM();
         render(); drawRoute(); updateSummary(); updateRouteTimes();
-        await silentSaveRouteState(); // Writes array to G including 'D' status
+        await silentSaveRouteState(); 
 
     } catch (err) {
         if(overlay) overlay.style.display = 'none';
@@ -1502,7 +1495,7 @@ async function triggerBulkUnroute() {
     
     reorderStopsFromDOM();
     render(); drawRoute(); updateSummary(); updateRouteTimes();
-    await silentSaveRouteState(); // Writes array to G with "P" statuses
+    await silentSaveRouteState(); 
 }
 
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
@@ -2450,7 +2443,7 @@ function initSortable() {
                         const idx = stops.findIndex(s => s.id === stopId);
                         if (idx > -1) {
                             stops[idx].status = 'Pending'; 
-                            stops[idx].eta = '';
+                            stops[idx].routeState = 'Pending';
                         }
                     }
                     
