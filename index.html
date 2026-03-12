@@ -61,15 +61,24 @@
             <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 12px; white-space: nowrap;">&lt;- Select an Inspector to Route</span>
         </div>
 
-        <div style="display: flex; gap: 8px; justify-content: flex-end; flex: 1;">
+        <div id="header-action-container" style="display: flex; gap: 8px; justify-content: flex-end; flex: 1; align-items: center;">
+            <div id="badge-changes-made" style="display:none; background-color: var(--red); color: yellow; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; align-items: center; justify-content: center;">
+                Changes Made
+            </div>
             <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
-                <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original Route</span>
+                <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
             </button>
             <button id="btn-header-start-over" class="header-action-btn" onclick="handleStartOver()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
                 <i class="fa-solid fa-rotate-left"></i> <span>Undo Routing</span>
             </button>
             <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="display:none; background:#444; color:white;">
                 <i class="fa-solid fa-calculator"></i> <span>Re-Calculate</span>
+            </button>
+            <button id="btn-header-optimize-insp" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:#2C3D4F; color:white;">
+                <i class="fa-solid fa-route"></i> <span>Re-Optimize</span>
+            </button>
+            <button id="btn-header-send-route" class="header-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
+                <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
             </button>
             <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
                 <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Generate Route</span>
