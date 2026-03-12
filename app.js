@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.12
+// * Dashboard - V6.13
 // * FILE: app.js
-// * Changes: Completely removed legacy 'seq' property from expandStop and minifyStop to strictly enforce the new 13-element backend schema.
+// * Changes: Bulletproofed 13-element array extraction in expandStop. Force-injected global routeState and driverId into parsed stops to fix UI hiding and continual route bugs.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -206,18 +206,33 @@ const MASTER_PALETTE = [
 function expandStop(minStop) {
     if (minStop.address) return minStop; 
     
-    let t = Array.isArray(minStop) ? minStop : (minStop.rawTuple || minStop);
+    let t = null;
+    if (Array.isArray(minStop)) t = minStop;
+    else if (minStop.rawTuple && Array.isArray(minStop.rawTuple)) t = minStop.rawTuple;
+    else if (minStop.data && Array.isArray(minStop.data)) t = minStop.data;
+    else if (minStop.tuple && Array.isArray(minStop.tuple)) t = minStop.tuple;
+    else if (minStop[0] !== undefined && minStop[1] !== undefined) t = Object.values(minStop);
     
-    if (Array.isArray(t)) {
+    if (Array.isArray(t) && t.length >= 12) {
         let clusterIdx = parseInt(t[1]);
         if (isNaN(clusterIdx)) clusterIdx = 1;
         
         return {
             ...minStop, 
-            id: String(t[0]), cluster: Math.max(0, clusterIdx - 1),
-            address: t[2], client: t[3], app: t[4], dueDate: t[5], type: t[6],
-            eta: t[7], dist: t[8], lat: t[9], lng: t[10], status: t[11], 
-            durationSecs: t[12], rowId: String(t[0])
+            id: String(t[0]), 
+            cluster: Math.max(0, clusterIdx - 1),
+            address: String(t[2] || ''), 
+            client: String(t[3] || ''), 
+            app: String(t[4] || ''), 
+            dueDate: String(t[5] || ''), 
+            type: String(t[6] || ''),
+            eta: String(t[7] || ''), 
+            dist: parseFloat(t[8] || 0), 
+            lat: parseFloat(t[9] || 0), 
+            lng: parseFloat(t[10] || 0), 
+            status: String(t[11] || 'P'), 
+            durationSecs: parseInt(t[12] || 0, 10), 
+            rowId: String(t[0])
         };
     }
 
@@ -497,17 +512,20 @@ async function loadData() {
         if (data.isAlteredRoute) isAlteredRoute = true;
 
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
-        
+        let globalRouteState = data.routeState || 'Pending';
+        let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
+
         stops = rawStops.map(s => {
             let exp = expandStop(s);
             return {
                 ...exp,
                 id: exp.rowId || exp.id,
                 status: getStatusText(exp.status),
-                cluster: exp.cluster || 0,
+                cluster: exp.cluster !== undefined ? exp.cluster : 0,
                 manualCluster: false,
                 hiddenInInspector: false,
-                routeState: exp.routeState || s.routeState || 'Pending',
+                routeState: exp.routeState || s.routeState || globalRouteState,
+                driverId: exp.driverId || s.driverId || globalDriverId,
                 routeTargetId: routeId || null
             };
         });
