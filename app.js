@@ -1,7 +1,9 @@
 // *
-// * Dashboard - V7.1
+// * Dashboard - V7.2
 // * FILE: app.js
-// * Changes: Unified Generate Route to synchronous calculation, strict DOM-based status assignment
+// * Changes: Dual-Mode payload routing to support Inspector Email_Requests Sandbox 
+// * vs Manager Inspectors Staging. Clean redirects post-dispatch. Restored "Restore Route" 
+// * functionality specifically for Inspector sandbox.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -133,7 +135,7 @@ function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = historyStack.length === 0;
 }
 
-// Ensure all items (including D and P) are accurately tracked and pushed to backend
+// DUAL-MODE SAVE: Targets either Inspector Staging or Email_Requests Sandbox
 async function silentSaveRouteState() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     if (inspId === 'all' || !inspId) return;
@@ -155,21 +157,21 @@ async function silentSaveRouteState() {
         return [
             s.rowId || s.id || "", Number(s.seq) || 0, 'R:' + rNum, s.address || "", s.client || "", s.app || "",                                            
             s.dueDate || "", s.type || "", outEta || "", outDist || "", s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
-            s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(outDur) || 0                             
+            s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(outDur) || 0                            
         ];
     });
     
-    try {
-        await fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({
-                action: 'saveRoute',
-                routeId: routeId,
-                driverId: inspId,
-                stops: minified
-            })
-        });
-    } catch(e) { console.log("Silent save error", e); }
+    let payload = { action: 'saveRoute', stops: minified };
+    
+    if (isManagerView) {
+        payload.driverId = inspId;
+    } else {
+        payload.routeId = routeId;
+        payload.driverId = driverParam;
+    }
+
+    try { await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) }); } 
+    catch(e) { console.log("Silent save error", e); }
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -242,14 +244,8 @@ function minifyStop(s, routeNum) {
     return [
         s.rowId || s.id || "", Number(s.seq) || 0, 'R:' + routeNum, s.address || "", s.client || "", s.app || "",                                            
         s.dueDate || "", s.type || "", s.eta || "", s.dist || "", s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
-        s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(s.durationSecs) || 0                             
+        s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(s.durationSecs) || 0                            
     ];
-}
-
-function sortByEta(a, b) {
-    let tA = a.eta ? new Date(a.eta).getTime() : 0;
-    let tB = b.eta ? new Date(b.eta).getTime() : 0;
-    return tA - tB;
 }
 
 function updateInspectorDropdown() {
@@ -494,9 +490,7 @@ async function loadData() {
             return; 
         }
 
-        if (data.routeId) {
-            routeId = data.routeId;
-        }
+        if (data.routeId) routeId = data.routeId;
 
         if (data.needsRecalculation) {
             isAlteredRoute = true;
@@ -505,7 +499,6 @@ async function loadData() {
 
         routeStart = data.routeStart || null;
         routeEnd = data.routeEnd || null;
-        
         if (data.isAlteredRoute) isAlteredRoute = true;
 
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
@@ -532,20 +525,6 @@ async function loadData() {
                 }
             }
         });
-
-        if (isPollingForRoute) {
-            const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched'));
-            if (!driverHasRouted && pollRetries < 15) {
-                pollRetries++;
-                const overlay = document.getElementById('processing-overlay');
-                if (overlay) overlay.style.display = 'flex';
-                setTimeout(loadData, 5000);
-                return;
-            } else {
-                isPollingForRoute = false; 
-                dirtyRoutes.clear(); 
-            }
-        }
 
         const getLocalDateStr = (etaStr) => {
             if (!etaStr) return "";
@@ -813,6 +792,7 @@ async function executeRouteReset(driverId) {
     }
 }
 
+// DUAL-MODE SAVE: Targets either Inspector Default Profile/Email Sandbox or Manager Route Endpoint
 async function saveEndpointToBackend(type, address, lat, lng) {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const activeStops = stops.filter(s => isActiveStop(s));
@@ -822,13 +802,14 @@ async function saveEndpointToBackend(type, address, lat, lng) {
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
     
-    let action = hasRouted ? 'updateEndpoint' : 'updateInspectorDefault';
+    let action = isManagerView && !hasRouted ? 'updateInspectorDefault' : 'updateEndpoint';
     let payload = { action, type, address, lat, lng };
     
-    if (hasRouted) {
-        payload.routeId = routeId; 
-    } else {
+    if (isManagerView) {
         payload.driverId = inspId;
+    } else {
+        payload.routeId = routeId;
+        payload.driverId = driverParam;
     }
     
     try {
@@ -872,10 +853,6 @@ function getActiveEndpoints() {
 function handleOpenEmailModal() {
     const insp = inspectors.find(i => i.id === currentInspectorFilter);
     if (!insp) return;
-
-    const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && s.routeTargetId);
-    let targetRouteId = routeId;
-    if(activeInspStops.length > 0) targetRouteId = activeInspStops[0].routeTargetId;
 
     const m = document.getElementById('modal-overlay');
     const mc = document.getElementById('modal-content');
@@ -938,9 +915,7 @@ function handleOpenEmailModal() {
         }
     }, 10);
 
-    document.getElementById('btn-cancel-dispatch').onclick = () => {
-        m.style.display = 'none';
-    };
+    document.getElementById('btn-cancel-dispatch').onclick = () => { m.style.display = 'none'; };
 
     document.getElementById('btn-submit-dispatch').onclick = async () => {
         const btn = document.getElementById('btn-submit-dispatch');
@@ -976,13 +951,7 @@ function handleOpenEmailModal() {
                 source: 'temp-snapshot-pins',
                 paint: {
                     'circle-radius': 12,
-                    'circle-color': [
-                        'match',
-                        ['get', 'cluster'],
-                        0, inspColor,
-                        1, '#000000',
-                        '#ffffff'
-                    ],
+                    'circle-color': [ 'match', ['get', 'cluster'], 0, inspColor, 1, '#000000', '#ffffff' ],
                     'circle-stroke-width': 3,
                     'circle-stroke-color': inspColor
                 }
@@ -1001,7 +970,6 @@ function handleOpenEmailModal() {
 
         const payload = {
             action: "dispatchRoute",
-            routeId: targetRouteId,
             driverId: currentInspectorFilter,
             companyId: companyParam || '',
             customBody: customBody,
@@ -1018,14 +986,6 @@ function handleOpenEmailModal() {
             if (result.success) {
                 m.style.display = 'none';
                 
-                stops.forEach(s => {
-                    if (s.driverId === currentInspectorFilter && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'completed')) {
-                        s.routeState = 'Dispatched';
-                        s.status = 'Dispatched'; 
-                    }
-                });
-                render(); drawRoute(); updateSummary();
-                
                 const toast = document.createElement('div');
                 toast.innerText = 'Route Sent!';
                 toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
@@ -1033,7 +993,10 @@ function handleOpenEmailModal() {
                 
                 setTimeout(() => {
                     toast.style.opacity = '0';
-                    setTimeout(() => toast.remove(), 300);
+                    setTimeout(() => {
+                        toast.remove();
+                        window.location.href = window.location.pathname + "?company=" + (companyParam || '') + "&view=" + viewMode;
+                    }, 300);
                 }, 1000);
             } else {
                 throw new Error("Dispatch failed");
@@ -1176,7 +1139,6 @@ function updateRoutingUI() {
             if(btnStartOver) btnStartOver.style.display = 'flex';
         }
 
-        // Clean Send Route visibility logic
         if (isReady && !isInspDirty && !isStaging) {
             if(btnSend) btnSend.style.display = 'flex';
         }
@@ -1191,7 +1153,7 @@ function updateRoutingUI() {
         if (isInspDirty) {
             showRecalc = true;
             showBadge = true;
-            if (dirtyRoutes.has('endpoints_0') || PERMISSION_REOPTIMIZE) showOpt = true;
+            if (PERMISSION_REOPTIMIZE) showOpt = true;
         } else if (isAlteredRoute) {
             if(btnRestore) btnRestore.style.display = 'flex'; 
         }
@@ -1262,7 +1224,6 @@ function updateRouteTimes() {
     }
 }
 
-// Ensure Generate Route cleanly upgrades DOM statuses before running synchronous Calculate
 async function handleGenerateRoute() {
     if (currentInspectorFilter === 'all') return;
     const inspId = currentInspectorFilter;
@@ -1279,6 +1240,7 @@ async function handleGenerateRoute() {
     await handleCalculate();
 }
 
+// DUAL-MODE SAVE: Targets either Inspector Staging or Email Sandbox
 async function handleCalculate() {
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
@@ -1287,7 +1249,6 @@ async function handleCalculate() {
         reorderStopsFromDOM();
         
         const inspId = isManagerView ? currentInspectorFilter : driverParam;
-        
         let allRouteStops = isManagerView ? stops.filter(s => s.driverId === inspId) : stops.filter(s => s.routeTargetId === String(routeId));
         allRouteStops = allRouteStops.filter(s => s.status.toLowerCase() !== 'cancelled');
 
@@ -1295,14 +1256,14 @@ async function handleCalculate() {
 
         let payload = {
             action: 'calculate',
-            routeId: routeId,
-            driver: isManagerView ? inspId : driverParam,
+            driverId: isManagerView ? inspId : driverParam,
             startTime: currentStartTime,
             startAddr: eps.start?.address || null,
             endAddr: eps.end?.address || null,
-            isManager: isManagerView,
             stops: allRouteStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
         };
+        
+        if (!isManagerView) payload.routeId = routeId;
 
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json();
@@ -1346,7 +1307,7 @@ async function handleStartOver() {
 }
 
 async function handleRestoreOriginal() {
-    if(!(await customConfirm("Restore the original route layout planned by the manager?"))) return;
+    if(!(await customConfirm("Restore the original route layout sent by the manager?"))) return;
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
@@ -2040,7 +2001,6 @@ function updateSummary() {
     if(statPastEl) statPastEl.innerText = `${pastDue} Past Due`;
 }
 
-// Strictly re-assign DOM statuses before routing so backend knows what to pick up
 function reorderStopsFromDOM() {
     let unroutedIds = [];
     let routedIds = [];
@@ -2061,7 +2021,6 @@ function reorderStopsFromDOM() {
     const visibleIds = new Set([...unroutedIds, ...routedIds]);
     const otherStops = stops.filter(s => !visibleIds.has(s.id));
     
-    // Explicitly enforce 'Pending' for anything in the Unrouted List
     const newUnrouted = unroutedIds.map(id => {
         let s = stops.find(st => st.id === id);
         if (s) {
@@ -2071,7 +2030,6 @@ function reorderStopsFromDOM() {
         return s;
     }).filter(Boolean);
     
-    // Explicitly upgrade 'Pending' to 'Routed' for anything placed inside a Route Container
     const newRouted = routedIds.map(id => {
         let s = stops.find(st => st.id === id);
         if (s && s.status.toLowerCase() === 'pending') {
@@ -2114,7 +2072,7 @@ function initSortable() {
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
-                            stop.status = 'Routed'; // Upgrade status instantly when dropped in a route
+                            stop.status = 'Routed'; 
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
