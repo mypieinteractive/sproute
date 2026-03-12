@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.17
+// * Dashboard - V6.18
 // * FILE: app.js
-// * Changes: Removed Start Over logic. Hooked up Re-Optimize to Staging UI. Rebuilt triggerBulkUnroute and Sortable to strictly clear local values and use updateOrder. Rebuilt handleGenerateRoute to only optimize dirty clusters.
+// * Changes: Implemented "merge instead of replace" architecture for targeted re-optimization. Clean routes are now safely preserved in memory during API returns and seamlessly synced back to the backend.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -519,29 +519,40 @@ async function loadData() {
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
 
-        stops = rawStops.map(s => {
-            let exp = expandStop(s);
-            return {
-                ...exp,
-                id: exp.rowId || exp.id,
-                status: getStatusText(exp.status),
-                cluster: exp.cluster !== undefined ? exp.cluster : 0,
-                manualCluster: false,
-                hiddenInInspector: false,
-                routeState: exp.routeState || s.routeState || globalRouteState,
-                driverId: exp.driverId || s.driverId || globalDriverId,
-                routeTargetId: routeId || null
-            };
-        });
-
-        stops.forEach(s => {
-            if ((s.routeState === 'Staging' || s.routeState === 'Staging-endpoint') && s.driverId) {
-                markRouteDirty(s.driverId, s.cluster);
-            }
-        });
-
+        // Targeted Merge Protocol: Protects clean routes if backend returns a partial array during polling
         if (isPollingForRoute) {
+            let fetchedMap = new Map();
+            rawStops.forEach(s => {
+                let exp = expandStop(s);
+                fetchedMap.set(String(exp.rowId || exp.id), {
+                    ...exp,
+                    id: exp.rowId || exp.id,
+                    status: getStatusText(exp.status),
+                    cluster: exp.cluster !== undefined ? exp.cluster : 0,
+                    manualCluster: false,
+                    hiddenInInspector: false,
+                    routeState: exp.routeState || s.routeState || globalRouteState,
+                    driverId: exp.driverId || s.driverId || globalDriverId,
+                    routeTargetId: routeId || null
+                });
+            });
+
+            stops = stops.map(s => {
+                if (fetchedMap.has(String(s.id))) {
+                    return fetchedMap.get(String(s.id));
+                }
+                if (s.routeState === 'Queued') s.routeState = 'Ready'; 
+                return s;
+            });
+            
+            stops.forEach(s => {
+                if ((s.routeState === 'Staging' || s.routeState === 'Staging-endpoint') && s.driverId) {
+                    markRouteDirty(s.driverId, s.cluster);
+                }
+            });
+
             const driverHasRouted = stops.some(s => String(s.driverId) === String(currentInspectorFilter) && (isRouteAssigned(s.status) || s.routeState === 'Ready'));
+            
             if (!driverHasRouted && pollRetries < 15) {
                 pollRetries++;
                 const overlay = document.getElementById('processing-overlay');
@@ -551,7 +562,30 @@ async function loadData() {
             } else {
                 isPollingForRoute = false; 
                 dirtyRoutes.clear(); 
+                silentSaveRouteState(); // Push the successfully merged board back to the DB to save the clean routes!
             }
+        } else {
+            // Full replacement on initial load or non-polling state
+            stops = rawStops.map(s => {
+                let exp = expandStop(s);
+                return {
+                    ...exp,
+                    id: exp.rowId || exp.id,
+                    status: getStatusText(exp.status),
+                    cluster: exp.cluster !== undefined ? exp.cluster : 0,
+                    manualCluster: false,
+                    hiddenInInspector: false,
+                    routeState: exp.routeState || s.routeState || globalRouteState,
+                    driverId: exp.driverId || s.driverId || globalDriverId,
+                    routeTargetId: routeId || null
+                };
+            });
+
+            stops.forEach(s => {
+                if ((s.routeState === 'Staging' || s.routeState === 'Staging-endpoint') && s.driverId) {
+                    markRouteDirty(s.driverId, s.cluster);
+                }
+            });
         }
 
         let maxCluster = 0;
@@ -1198,10 +1232,8 @@ async function handleGenerateRoute() {
     const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
 
     if (isEndpointsDirty) {
-        // Re-optimize EVERYTHING for this inspector if the start/end points changed
         stopsToOptimize = stops.filter(s => isActiveStop(s) && s.lng && s.lat && String(s.driverId) === String(insp.id));
     } else {
-        // Re-optimize targeted dirty clusters + unrouted items
         stopsToOptimize = stops.filter(s => {
             if (!isActiveStop(s) || !s.lng || !s.lat || String(s.driverId) !== String(insp.id)) return false;
             const routeKey = `${s.driverId}_${s.cluster || 0}`;
@@ -1235,7 +1267,26 @@ async function handleGenerateRoute() {
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json();
         
-        if (data.status === 'queued' || data.success) {
+        // Allow the backend to respond synchronously with the optimized board OR queue it
+        if (data.updatedStops || (data.stops && Array.isArray(data.stops))) {
+            let optimizedData = data.updatedStops || data.stops;
+            const returnedStopsMap = new Map();
+            optimizedData.forEach(s => {
+                let exp = expandStop(s);
+                returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster !== undefined ? exp.cluster : 0, manualCluster: false });
+            });
+
+            stops = stops.map(s => {
+                if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
+                if (s.routeState === 'Queued') s.routeState = 'Ready';
+                return s;
+            });
+
+            isPollingForRoute = false;
+            dirtyRoutes.clear();
+            render(); drawRoute(); updateSummary();
+            silentSaveRouteState(); // Important: pushes the successfully merged board back to the DB!
+        } else if (data.status === 'queued' || data.success) {
             let pqPayload = { action: 'processQueue', driverId: insp.id };
             if (!isManagerView) pqPayload.routeId = routeId;
             
@@ -2016,6 +2067,7 @@ async function handleCalculate() {
         dirtyRoutes.clear();
         originalStops = JSON.parse(JSON.stringify(stops)); 
         render(); drawRoute(); updateSummary();
+        silentSaveRouteState();
 
     } catch (e) { 
         if (overlay) overlay.style.display = 'none';
