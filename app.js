@@ -1,7 +1,7 @@
 // *
 // * Dashboard - V6.13
 // * FILE: app.js
-// * Changes: Bulletproofed 13-element array extraction in expandStop. Force-injected global routeState and driverId into parsed stops to fix UI hiding and continual route bugs.
+// * Changes: Integrated html2canvas for true screenshots. Dual-tone map lines with clean/dirty visual states. Added empty state fallback text. Jump-to initial map bounds logic. Switch back to "all inspectors" after dispatch.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -68,6 +68,8 @@ let isAlteredRoute = false;
 
 let isPollingForRoute = false;
 let pollRetries = 0;
+
+let isFirstMapRender = true;
 
 let latestSuggestions = { start: null, end: null };
 
@@ -603,13 +605,23 @@ async function loadData() {
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
             const filterSelect = document.getElementById('inspector-dropdown-wrapper');
 
-            if (isManagerView && data.tier && data.tier.toLowerCase() !== 'individual') {
+            if (stops.length === 0 && isManagerView) {
+                if (sidebarDriverEl) {
+                    sidebarDriverEl.innerText = "Upload a CSV to begin";
+                    sidebarDriverEl.style.display = 'block';
+                }
+                if (sidebarLogo) sidebarLogo.style.display = 'block';
+                if (filterSelect) filterSelect.style.display = 'none';
+            } else if (isManagerView && data.tier && data.tier.toLowerCase() !== 'individual') {
                 if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
                 if (sidebarLogo) sidebarLogo.style.display = 'none'; 
                 if (filterSelect) filterSelect.style.display = 'block';
                 updateInspectorDropdown(); 
             } else {
-                if (sidebarDriverEl) sidebarDriverEl.innerText = displayName;
+                if (sidebarDriverEl) {
+                    sidebarDriverEl.innerText = displayName;
+                    sidebarDriverEl.style.display = 'block';
+                }
             }
             
             updateRouteButtonColors();
@@ -619,7 +631,7 @@ async function loadData() {
                 const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.companyAddress)}.json?access_token=${MAPBOX_TOKEN}`;
                 fetch(geoUrl).then(r => r.json()).then(geo => {
                     if (geo.features && geo.features.length > 0) {
-                        map.flyTo({ center: geo.features[0].center, zoom: 11 });
+                        map.jumpTo({ center: geo.features[0].center, zoom: 11 });
                     }
                 }).catch(err => console.error("Geocoding failed for company address.", err));
             }
@@ -935,50 +947,25 @@ function handleOpenEmailModal() {
         const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
         const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
 
-        const dIdx = inspectors.findIndex(i => String(i.id) === String(currentInspectorFilter));
-        const inspColor = dIdx > -1 ? MASTER_PALETTE[dIdx % MASTER_PALETTE.length] : MASTER_PALETTE[0];
-
-        const geojsonStops = {
-            type: 'FeatureCollection',
-            features: activeInspStops.filter(s => s.lat && s.lng).map(s => ({
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [parseFloat(s.lng), parseFloat(s.lat)] },
-                properties: { cluster: s.cluster || 0 }
-            }))
-        };
-
-        if (map.getSource('temp-snapshot-pins')) {
-            map.getSource('temp-snapshot-pins').setData(geojsonStops);
-        } else {
-            map.addSource('temp-snapshot-pins', { type: 'geojson', data: geojsonStops });
-            map.addLayer({
-                id: 'temp-snapshot-circles',
-                type: 'circle',
-                source: 'temp-snapshot-pins',
-                paint: {
-                    'circle-radius': 12,
-                    'circle-color': [
-                        'match',
-                        ['get', 'cluster'],
-                        0, inspColor,
-                        1, '#000000',
-                        '#ffffff'
-                    ],
-                    'circle-stroke-width': 3,
-                    'circle-stroke-color': inspColor
-                }
-            });
-        }
+        const mapWrapper = document.getElementById('map-wrapper');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint');
+        overlaysToHide.forEach(el => el.style.display = 'none');
 
         await new Promise(resolve => {
-            map.once('idle', resolve);
-            setTimeout(resolve, 800); 
+            if (map.isStyleLoaded()) resolve();
+            else map.once('idle', resolve);
+            setTimeout(resolve, 500); 
         });
 
-        const mapBase64 = map.getCanvas().toDataURL('image/png');
+        let mapBase64 = '';
+        try {
+            const canvasSnapshot = await html2canvas(mapWrapper, { useCORS: true, backgroundColor: '#121212' });
+            mapBase64 = canvasSnapshot.toDataURL('image/png', 0.9);
+        } catch(e) {
+            console.error("Screenshot error:", e);
+        }
 
-        if (map.getLayer('temp-snapshot-circles')) map.removeLayer('temp-snapshot-circles');
-        if (map.getSource('temp-snapshot-pins')) map.removeSource('temp-snapshot-pins');
+        overlaysToHide.forEach(el => el.style.display = '');
 
         const payload = {
             action: "dispatchRoute",
@@ -1005,7 +992,14 @@ function handleOpenEmailModal() {
                         s.status = 'Dispatched'; 
                     }
                 });
-                render(); drawRoute(); updateSummary();
+                
+                if (isManagerView) {
+                    const filterEl = document.getElementById('inspector-filter');
+                    if (filterEl) filterEl.value = 'all';
+                    handleInspectorFilterChange('all');
+                } else {
+                    render(); drawRoute(); updateSummary();
+                }
                 
                 const toast = document.createElement('div');
                 toast.innerText = 'Route Sent!';
@@ -1907,7 +1901,9 @@ function render() {
     });
 
     if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
-        initialBounds = bounds; map.fitBounds(bounds, { padding: 50, maxZoom: 15 }); 
+        initialBounds = bounds; 
+        map.fitBounds(bounds, { padding: 50, maxZoom: 15, animate: !isFirstMapRender }); 
+        if (isFirstMapRender) isFirstMapRender = false;
     }
     
     updateSelectionUI();
@@ -2143,9 +2139,13 @@ function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padd
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
 
 function drawRoute() { 
-    if (map.getLayer('route-line-0')) map.removeLayer('route-line-0');
-    if (map.getLayer('route-line-1')) map.removeLayer('route-line-1');
-    if (map.getLayer('route-line-2')) map.removeLayer('route-line-2');
+    // Clear out old layers
+    const layerIds = [
+        'route-line-0-clean', 'route-line-0-dirty',
+        'route-line-1-out-clean', 'route-line-1-in-clean', 'route-line-1-out-dirty', 'route-line-1-in-dirty',
+        'route-line-2-out-clean', 'route-line-2-in-clean', 'route-line-2-out-dirty', 'route-line-2-in-dirty'
+    ];
+    layerIds.forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
     if (map.getSource('route')) map.removeSource('route');
 
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
@@ -2192,10 +2192,12 @@ function drawRoute() {
             if (rStart && rStart.lng && rStart.lat) coords.unshift([parseFloat(rStart.lng), parseFloat(rStart.lat)]);
             if (rEnd && rEnd.lng && rEnd.lat) coords.push([parseFloat(rEnd.lng), parseFloat(rEnd.lat)]);
 
+            let isDirty = dirtyRoutes.has(key) || dirtyRoutes.has('all') || dirtyRoutes.has('endpoints_0');
+
             if (coords.length > 1) {
                 features.push({
                     "type": "Feature",
-                    "properties": { "color": style.line, "clusterIdx": clusterIndex }, 
+                    "properties": { "color": style.line, "clusterIdx": clusterIndex, "isDirty": isDirty }, 
                     "geometry": { "type": "LineString", "coordinates": coords }
                 });
             }
@@ -2204,32 +2206,21 @@ function drawRoute() {
 
     map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
     
-    map.addLayer({ 
-        "id": "route-line-0", 
-        "type": "line", 
-        "source": "route", 
-        "filter": ["==", "clusterIdx", 0],
-        "layout": { "line-join": "round", "line-cap": "round" }, 
-        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6 } 
-    }); 
-    
-    map.addLayer({ 
-        "id": "route-line-1", 
-        "type": "line", 
-        "source": "route", 
-        "filter": ["==", "clusterIdx", 1],
-        "layout": { "line-join": "round", "line-cap": "round" }, 
-        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [2, 2] } 
-    }); 
-    
-    map.addLayer({ 
-        "id": "route-line-2", 
-        "type": "line", 
-        "source": "route", 
-        "filter": ["==", "clusterIdx", 2],
-        "layout": { "line-join": "round", "line-cap": "round" }, 
-        "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.6, "line-dasharray": [0.5, 2] } 
-    }); 
+    // Cluster 0 (Route 1) - Solid color
+    map.addLayer({ "id": "route-line-0-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8 } }); 
+    map.addLayer({ "id": "route-line-0-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
+
+    // Cluster 1 (Route 2) - Inspector outline, Black center
+    map.addLayer({ "id": "route-line-1-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
+    map.addLayer({ "id": "route-line-1-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1 } }); 
+    map.addLayer({ "id": "route-line-1-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
+    map.addLayer({ "id": "route-line-1-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
+
+    // Cluster 2 (Route 3) - Inspector outline, White center
+    map.addLayer({ "id": "route-line-2-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
+    map.addLayer({ "id": "route-line-2-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1 } }); 
+    map.addLayer({ "id": "route-line-2-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
+    map.addLayer({ "id": "route-line-2-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
 }
 
 function openNav(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { showNavChoice(la, ln, addr); } else { launchMaps(p, la, ln, addr); } }
