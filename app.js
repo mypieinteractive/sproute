@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.5
+// * Dashboard - V6.6
 // * FILE: app.js
-// * Changes: Mapped header buttons strictly to routeState. Pointed Re-Optimize to Generate Route and removed obsolete endpoint sync functions. Kept Undo and Recalculate as backend-driven.
+// * Changes: Decoupled header buttons from routingControls container to fix visual bug. Ensured ETAs and Distances correctly survive polling cycles.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -501,7 +501,7 @@ async function loadData() {
         });
 
         if (isPollingForRoute) {
-            const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && isRouteAssigned(s.status));
+            const driverHasRouted = stops.some(s => s.driverId === currentInspectorFilter && (isRouteAssigned(s.status) || s.routeState === 'Ready'));
             if (!driverHasRouted && pollRetries < 15) {
                 pollRetries++;
                 const overlay = document.getElementById('processing-overlay');
@@ -1000,63 +1000,15 @@ function updateRoutingUI() {
 
     const routingControls = document.getElementById('routing-controls');
     const hintEl = document.getElementById('inspector-select-hint');
-    
-    const oldSidebarBtn = document.getElementById('btn-sidebar-send-route');
-    if (oldSidebarBtn) oldSidebarBtn.remove();
 
     const btnGen = document.getElementById('btn-header-generate');
     const btnStartOver = document.getElementById('btn-header-start-over');
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
-
-    // Ensure the text of btnStartOver reads 'Undo Routing'
-    if (btnStartOver) {
-        const span = btnStartOver.querySelector('span');
-        if (span) span.innerText = 'Undo Routing';
-        else btnStartOver.innerText = 'Undo Routing';
-    }
-
-    if (!document.getElementById('btn-header-send-route')) {
-        const sendBtn = document.createElement('button');
-        sendBtn.id = 'btn-header-send-route';
-        sendBtn.className = 'header-action-btn';
-        sendBtn.style.cssText = 'background: #2E4053; color: white; display: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; border: none; cursor: pointer; align-items: center; gap: 8px;';
-        sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>';
-        sendBtn.onclick = () => handleOpenEmailModal();
-        if (routingControls) routingControls.appendChild(sendBtn);
-    }
-
-    if (!document.getElementById('btn-header-optimize-insp')) {
-        const optBtn = document.createElement('button');
-        optBtn.id = 'btn-header-optimize-insp';
-        optBtn.className = 'header-action-btn';
-        optBtn.style.cssText = 'background: #2C3D4F; color: white; display: none;';
-        optBtn.innerHTML = '<span>Re-Optimize</span>';
-        optBtn.onclick = () => handleGenerateRoute();
-        if (routingControls) routingControls.appendChild(optBtn);
-    }
-    
-    if (!document.getElementById('badge-changes-made')) {
-        const badge = document.createElement('div');
-        badge.id = 'badge-changes-made';
-        badge.style.cssText = 'background-color: var(--red, #e6194B); color: yellow; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; display: none; align-items: center; justify-content: center; margin-right: 8px;';
-        badge.innerText = 'Changes Made';
-        if (routingControls) routingControls.insertBefore(badge, routingControls.firstChild); 
-    }
-
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const badgeChanges = document.getElementById('badge-changes-made');
     const btnSend = document.getElementById('btn-header-send-route');
 
-    if(badgeChanges) badgeChanges.style.order = '1';
-    if(btnGen) btnGen.style.order = '2';
-    if(btnRecalc) btnRecalc.style.order = '3';
-    if(optInspBtn) optInspBtn.style.order = '4';
-    if(btnRestore) btnRestore.style.order = '5';
-    if(btnStartOver) btnStartOver.style.order = '6'; 
-    if(btnSend) btnSend.style.order = '7'; 
-    
-    // Hide all action buttons initially
     [btnGen, btnStartOver, btnRecalc, btnRestore, optInspBtn, badgeChanges, btnSend].forEach(btn => {
         if (btn) btn.style.display = 'none';
     });
@@ -1101,33 +1053,31 @@ function updateRoutingUI() {
     }
 
     if (isManagerView) {
-        let showControls = false;
+        const unroutedCount = activeInspStops.filter(s => !isRouteAssigned(s.status)).length;
 
         if (currentState === 'Pending') {
-            const unroutedCount = activeInspStops.filter(s => !isRouteAssigned(s.status)).length;
-            if (unroutedCount > 0) {
-                if (btnGen) { btnGen.style.display = 'flex'; showControls = true; }
-                const headerGenBtnText = document.getElementById('btn-header-generate-text');
-                if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-            }
+            if (unroutedCount > 0 && btnGen) btnGen.style.display = 'flex';
+            const headerGenBtnText = document.getElementById('btn-header-generate-text');
+            if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
         } else if (currentState === 'Queued') {
-            // Keep controls hidden while processing
-            showControls = true; 
+            // Deliberately keep all buttons hidden while waiting for optimization
         } else if (currentState === 'Ready') {
-            if (btnStartOver) { btnStartOver.style.display = 'flex'; showControls = true; }
-            if (btnSend) { btnSend.style.display = 'flex'; showControls = true; }
+            if (btnStartOver) btnStartOver.style.display = 'flex';
+            if (btnSend && !isDirty) btnSend.style.display = 'flex';
         } else if (currentState === 'Staging') {
-            if (btnRecalc) { btnRecalc.style.display = 'flex'; showControls = true; }
-            if (btnStartOver) { btnStartOver.style.display = 'flex'; showControls = true; }
-            if (badgeChanges && isDirty) { badgeChanges.style.display = 'flex'; showControls = true; }
+            if (btnRecalc) btnRecalc.style.display = 'flex';
+            if (btnStartOver) btnStartOver.style.display = 'flex';
+            if (badgeChanges && isDirty) badgeChanges.style.display = 'flex';
         } else if (currentState === 'Staging-endpoint') {
-            if (btnRecalc) { btnRecalc.style.display = 'flex'; showControls = true; }
-            if (optInspBtn) { optInspBtn.style.display = 'flex'; showControls = true; }
-            if (btnStartOver) { btnStartOver.style.display = 'flex'; showControls = true; }
-            if (badgeChanges && isDirty) { badgeChanges.style.display = 'flex'; showControls = true; }
+            if (btnRecalc) btnRecalc.style.display = 'flex';
+            if (optInspBtn) optInspBtn.style.display = 'flex';
+            if (btnStartOver) btnStartOver.style.display = 'flex';
+            if (badgeChanges && isDirty) badgeChanges.style.display = 'flex';
         }
 
-        if (routingControls) routingControls.style.display = showControls ? 'flex' : 'none';
+        if (routingControls) {
+            routingControls.style.display = (currentState === 'Pending' && unroutedCount > 0) ? 'flex' : 'none';
+        }
 
     } else {
         if(routingControls) routingControls.style.display = 'flex';
