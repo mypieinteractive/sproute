@@ -1,7 +1,7 @@
 // *
 // * Dashboard - V6.15
 // * FILE: app.js
-// * Changes: Added aggressive array-flattening protocol to loadData and expandStop to prevent nested array extraction failures (fixing blank ETAs, 0.0 distance, and continual route lines).
+// * Changes: Reverted aggressive array flattening. Updated expandStop to natively parse 13-element arrays directly, aligning with the optimized calculate endpoint while maintaining schema strictness.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -206,27 +206,15 @@ const MASTER_PALETTE = [
 ];
 
 function expandStop(minStop) {
-    if (minStop.address) return minStop; 
+    if (minStop && minStop.address && !Array.isArray(minStop)) return minStop; 
     
-    let t = null;
-    if (Array.isArray(minStop)) {
-        t = minStop;
-        // Aggressively unwrap array if backend double-nested it
-        while (t.length === 1 && Array.isArray(t[0])) {
-            t = t[0];
-        }
-    }
-    else if (minStop.rawTuple && Array.isArray(minStop.rawTuple)) t = minStop.rawTuple;
-    else if (minStop.data && Array.isArray(minStop.data)) t = minStop.data;
-    else if (minStop.tuple && Array.isArray(minStop.tuple)) t = minStop.tuple;
-    else if (minStop[0] !== undefined && minStop[1] !== undefined) t = Object.values(minStop);
+    let t = Array.isArray(minStop) ? minStop : (minStop.rawTuple || minStop);
     
-    if (Array.isArray(t) && t.length >= 12) {
+    if (Array.isArray(t)) {
         let clusterIdx = parseInt(t[1]);
         if (isNaN(clusterIdx)) clusterIdx = 1;
         
-        return {
-            ...minStop, 
+        let expanded = {
             id: String(t[0]), 
             cluster: Math.max(0, clusterIdx - 1),
             address: String(t[2] || ''), 
@@ -242,6 +230,12 @@ function expandStop(minStop) {
             durationSecs: parseInt(t[12] || 0, 10), 
             rowId: String(t[0])
         };
+
+        if (!Array.isArray(minStop) && typeof minStop === 'object') {
+            expanded = { ...minStop, ...expanded };
+        }
+
+        return expanded;
     }
 
     return minStop; 
@@ -519,12 +513,7 @@ async function loadData() {
         
         if (data.isAlteredRoute) isAlteredRoute = true;
 
-        // Aggressively flatten rawStops to ensure 3D arrays don't break extraction
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
-        while (rawStops.length > 0 && Array.isArray(rawStops[0]) && Array.isArray(rawStops[0][0])) {
-            rawStops = rawStops.flat(1);
-        }
-
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
 
