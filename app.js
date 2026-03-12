@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.18
+// * Dashboard - V6.19
 // * FILE: app.js
-// * Changes: Added dynamic LngLatBounds auto-framing to the email modal submission so the screenshot captures 100% of the route regardless of user window size or current zoom. Verified isActiveStop logic for silod Inspector view.
+// * Changes: Flipped URL parameter priority in loadData() to ensure routeId ALWAYS takes precedence over driverParam/companyParam, acting as a failsafe for the siloed Inspector view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -481,9 +481,11 @@ document.addEventListener('touchend', stopResize);
 
 async function loadData() {
     let queryParams = '';
-    if (companyParam) queryParams = `?company=${companyParam}`;
+    
+    // Priority fix: Route ID is supreme. It forces Inspector Mode.
+    if (routeId) queryParams = `?id=${routeId}`;
+    else if (companyParam) queryParams = `?company=${companyParam}`;
     else if (driverParam) queryParams = `?driver=${driverParam}`;
-    else if (routeId) queryParams = `?id=${routeId}`;
     else {
         const overlay = document.getElementById('processing-overlay');
         if (overlay) overlay.style.display = 'none';
@@ -985,7 +987,6 @@ function handleOpenEmailModal() {
         const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint');
         overlaysToHide.forEach(el => el.style.display = 'none');
 
-        // Dynamic auto-framing bounds calculation for strictly routed stops
         const bounds = new mapboxgl.LngLatBounds();
         const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
         
