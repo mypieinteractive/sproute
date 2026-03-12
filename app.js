@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V8.0
+// * Dashboard - V8.1
 // * FILE: app.js
-// * Changes: Dual-Mode payload routing to support Inspector Email_Requests Sandbox 
-// * vs Manager Inspectors Staging. Clean redirects post-dispatch. Restored "Restore Route" 
-// * functionality specifically for Inspector sandbox.
+// * Changes: Unified 14-element schema handling (no 8-element fallback), route cluster
+// * updated to use pure integers instead of "R:#", distance formatting adjusted for
+// * pure floats, ETA formatting adjusted for time-only strings, and Generate Route
+// * triggers "Queued" status instead of "Routed" to prevent premature backend auto-trigger.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -23,8 +24,8 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
-const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
-const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
+const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched', 'Q': 'Queued' };
+const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S', 'queued': 'Q' };
 
 function getStatusText(code) {
     if (!code) return 'Pending';
@@ -34,6 +35,7 @@ function getStatusText(code) {
     if (c === 'C' || c === 'COMPLETED') return 'Completed';
     if (c === 'D' || c === 'DELETED') return 'Deleted';
     if (c === 'V' || c === 'O') return 'Validation Failed';
+    if (c === 'Q' || c === 'QUEUED') return 'Queued';
     if (c === 'P' || c === 'PENDING') return 'Pending';
     return STATUS_MAP_TO_TEXT[c] || 'Pending';
 }
@@ -144,19 +146,19 @@ async function silentSaveRouteState() {
     if (routeStops.length === 0) return;
 
     let minified = routeStops.map(s => {
-        let rNum = (s.cluster || 0) + 1;
+        let rNum = s.cluster || 0; // Pure integer
         let outEta = s.eta;
         let outDist = s.dist;
         let outDur = s.durationSecs;
         
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
         if (dirtyRoutes.has(routeKey) || dirtyRoutes.has('all') || s.status.toLowerCase() === 'pending' || s.status.toLowerCase() === 'deleted') {
-            outEta = ''; outDist = ''; outDur = 0;
+            outEta = ''; outDist = 0; outDur = 0;
         }
 
         return [
-            s.rowId || s.id || "", Number(s.seq) || 0, 'R:' + rNum, s.address || "", s.client || "", s.app || "",                                            
-            s.dueDate || "", s.type || "", outEta || "", outDist || "", s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
+            s.rowId || s.id || "", Number(s.seq) || 0, rNum, s.address || "", (s.client || "").substring(0, 3), s.app || "",                                            
+            s.dueDate || "", s.type || "", outEta || "", parseFloat(outDist) || 0, s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
             s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(outDur) || 0                            
         ];
     });
@@ -205,45 +207,22 @@ const MASTER_PALETTE = [
     '#e6194B', '#9A6324', '#fabed4', '#dcbeff', '#911eb4'
 ];
 
-function expandStop(minStop) {
-    if (minStop.address) return minStop; 
-    
-    if (minStop.rawTuple && Array.isArray(minStop.rawTuple)) {
-        const t = minStop.rawTuple;
-        let clusterIdx = 0;
-        if (typeof t[2] === 'string' && t[2].startsWith('R:')) {
-            clusterIdx = parseInt(t[2].split(':')[1]) - 1;
-        } else if (!isNaN(parseInt(t[2]))) {
-            clusterIdx = parseInt(t[2]) - 1;
-        }
+function expandStop(s) {
+    if (Array.isArray(s)) {
         return {
-            ...minStop, 
-            id: t[0], seq: t[1], cluster: Math.max(0, clusterIdx),
-            address: t[3], client: t[4], app: t[5], dueDate: t[6], type: t[7],
-            eta: t[8], dist: t[9], lat: t[10], lng: t[11], status: t[12], 
-            durationSecs: t[13], rowId: t[0]
+            id: s[0], seq: s[1], cluster: s[2] || 0,
+            address: s[3], client: s[4], app: s[5], dueDate: s[6], type: s[7],
+            eta: s[8], dist: s[9], lat: s[10], lng: s[11], status: getStatusText(s[12]), 
+            durationSecs: s[13], rowId: s[0]
         };
     }
-
-    let rawCluster = minStop.R;
-    let clusterIdx = 0;
-    if (typeof rawCluster === 'string' && rawCluster.startsWith('R:')) {
-        clusterIdx = parseInt(rawCluster.split(':')[1]) - 1;
-    } else if (!isNaN(parseInt(rawCluster))) {
-        clusterIdx = parseInt(rawCluster) - 1;
-    }
-    return {
-        ...minStop, id: minStop.r || minStop.i, seq: minStop.i, cluster: Math.max(0, clusterIdx),
-        address: minStop.a, client: minStop.c, app: minStop.p, dueDate: minStop.d, type: minStop.t,
-        eta: minStop.e, dist: minStop.D, lat: minStop.l, lng: minStop.g, status: minStop.s, 
-        durationSecs: minStop.u, rowId: minStop.r
-    };
+    return s;
 }
 
 function minifyStop(s, routeNum) {
     return [
-        s.rowId || s.id || "", Number(s.seq) || 0, 'R:' + routeNum, s.address || "", s.client || "", s.app || "",                                            
-        s.dueDate || "", s.type || "", s.eta || "", s.dist || "", s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
+        s.rowId || s.id || "", Number(s.seq) || 0, routeNum, s.address || "", (s.client || "").substring(0, 3), s.app || "",                                            
+        s.dueDate || "", s.type || "", s.eta || "", parseFloat(s.dist) || 0, s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
         s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, getStatusCode(s.status), Number(s.durationSecs) || 0                            
     ];
 }
@@ -367,7 +346,7 @@ function isActiveStop(s) {
 
     if (isManagerView) {
         if (routeState === 'dispatched' || status === 'dispatched' || status === 's') return false;
-        return (status === 'pending' || status === 'routed' || status === 'completed');
+        return (status === 'pending' || status === 'routed' || status === 'completed' || status === 'queued');
     } else {
         let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
         if (s.hiddenInInspector) active = false;
@@ -381,7 +360,7 @@ function hexToRgba(hex, alpha) {
 }
 
 function getVisualStyle(stopData) {
-    const isRouted = (stopData.status || '').toLowerCase() === 'routed' || (stopData.status || '').toLowerCase() === 'completed' || (stopData.status || '').toLowerCase() === 'dispatched';
+    const isRouted = (stopData.status || '').toLowerCase() === 'routed' || (stopData.status || '').toLowerCase() === 'completed' || (stopData.status || '').toLowerCase() === 'dispatched' || (stopData.status || '').toLowerCase() === 'queued';
     
     let inspectorIndex = 0;
     if (stopData.driverId) {
@@ -391,7 +370,7 @@ function getVisualStyle(stopData) {
     
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
     const cluster = stopData.cluster || 0;
-    const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
+    const hasRoutedForInsp = stops.some(s => s.driverId === stopData.driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued'));
     
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
     const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
@@ -511,7 +490,6 @@ async function loadData() {
                 status: getStatusText(exp.status),
                 cluster: exp.cluster || 0,
                 manualCluster: false,
-                _hasExplicitCluster: s.R !== undefined,
                 hiddenInInspector: false,
                 routeState: exp.routeState || s.routeState || 'Pending',
                 routeTargetId: exp.routeTargetId || s.routeTargetId || null
@@ -532,13 +510,16 @@ async function loadData() {
             return isNaN(d.getTime()) ? String(etaStr).split(' ')[0] : d.toDateString();
         };
 
-        let activeDates = [...new Set(stops.filter(s => s.eta && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched')).map(s => getLocalDateStr(s.eta)))];
+        let activeDates = [...new Set(stops.filter(s => s.eta && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued')).map(s => getLocalDateStr(s.eta)))];
         activeDates = activeDates.filter(Boolean);
         activeDates.sort((a, b) => new Date(a) - new Date(b));
 
         stops.forEach(s => {
-            if (!s._hasExplicitCluster && s.eta && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched')) {
-                s.cluster = Math.max(0, activeDates.indexOf(getLocalDateStr(s.eta)));
+            if (s.eta && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued')) {
+                // If cluster doesn't exist, fall back to sequential assignment (mostly covered by schema now)
+                if (s.cluster === undefined || s.cluster === 0) {
+                   // Optional logic left for legacy date parsing if needed, but schema now provides direct cluster
+                }
             }
         });
 
@@ -734,7 +715,7 @@ async function selectEndpoint(type, address, lat, lng, inputEl) {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const insp = inspectors.find(i => i.id === inspId);
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued'));
 
     if (isManagerView && hasRouted) {
         const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
@@ -775,8 +756,8 @@ async function executeRouteReset(driverId) {
         
         historyStack = []; 
         stops.forEach(s => {
-            if (s.driverId === driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched')) {
-                s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending';
+            if (s.driverId === driverId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued')) {
+                s.eta = ''; s.dist = 0; s.status = 'Pending'; s.routeState = 'Pending';
             }
         });
         
@@ -796,7 +777,7 @@ async function executeRouteReset(driverId) {
 async function saveEndpointToBackend(type, address, lat, lng) {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued'));
     
     pushToHistory();
     const overlay = document.getElementById('processing-overlay');
@@ -830,7 +811,7 @@ function getActiveEndpoints() {
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
     const insp = inspectors.find(i => i.id === inspId);
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched'));
+    const hasRouted = activeStops.some(s => s.driverId === inspId && ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued'));
     
     let start = null; 
     let end = null;
@@ -930,7 +911,7 @@ function handleOpenEmailModal() {
         const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
         const inspColor = dIdx > -1 ? MASTER_PALETTE[dIdx % MASTER_PALETTE.length] : MASTER_PALETTE[0];
 
-        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'completed' || s.status.toLowerCase() === 'dispatched'));
+        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && (s.status.toLowerCase() === 'routed' || s.status.toLowerCase() === 'completed' || s.status.toLowerCase() === 'dispatched' || s.status.toLowerCase() === 'queued'));
         
         const geojsonStops = {
             type: 'FeatureCollection',
@@ -1013,7 +994,7 @@ function updateRoutingUI() {
     const activeStops = stops.filter(s => isActiveStop(s));
     
     let inspStops = isManagerView ? activeStops.filter(s => s.driverId === currentInspectorFilter) : activeStops;
-    let inspRoutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
+    let inspRoutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued');
     let inspUnroutedStops = inspStops.filter(s => (s.status||'').toLowerCase() === 'pending');
     
     let isReady = false;
@@ -1029,7 +1010,7 @@ function updateRoutingUI() {
     }
     if (dirtyRoutes.has('endpoints_0')) isInspDirty = true;
 
-    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched').length;
+    const routedCount = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued').length;
     const unroutedCount = activeStops.length - routedCount;
 
     const routingControls = document.getElementById('routing-controls');
@@ -1189,7 +1170,7 @@ function moveSelectedToRoute(cIdx) {
     selectedIds.forEach(id => {
         const s = stops.find(st => st.id === id);
         if (s) {
-            if ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched') {
+            if ((s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued') {
                 markRouteDirty(s.driverId, s.cluster); 
             }
             s.cluster = cIdx;
@@ -1230,7 +1211,7 @@ async function handleGenerateRoute() {
     
     stops.forEach(s => {
         if (isActiveStop(s) && s.lng && s.lat && s.driverId === inspId && s.status.toLowerCase() === 'pending') {
-            s.status = 'Routed';
+            s.status = 'Queued';
             markRouteDirty(s.driverId, s.cluster);
         }
     });
@@ -1260,7 +1241,7 @@ async function handleCalculate() {
             startTime: currentStartTime,
             startAddr: eps.start?.address || null,
             endAddr: eps.end?.address || null,
-            stops: allRouteStops.map(s => minifyStop(s, (s.cluster || 0) + 1))
+            stops: allRouteStops.map(s => minifyStop(s, s.cluster || 0))
         };
         
         if (!isManagerView) payload.routeId = routeId;
@@ -1339,7 +1320,7 @@ function liveClusterUpdate() {
 
     const unroutedStops = activeStops.filter(s => {
         const st = (s.status||'').toLowerCase();
-        return st !== 'routed' && st !== 'completed' && st !== 'dispatched';
+        return st !== 'routed' && st !== 'completed' && st !== 'dispatched' && st !== 'queued';
     });
 
     if(k === 1) {
@@ -1445,7 +1426,7 @@ async function triggerBulkDelete() {
     try {
         selectedIds.forEach(id => {
             const s = stops.find(st => st.id === id);
-            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
+            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched' || (s.status || '').toLowerCase() === 'queued')) {
                 markRouteDirty(s.driverId, s.cluster);
             }
             if (s) s.status = 'Deleted'; 
@@ -1473,7 +1454,7 @@ async function triggerBulkUnroute() {
     selectedIds.forEach(id => {
         const idx = stops.findIndex(s => s.id === id);
         if (idx > -1) {
-            if ((stops[idx].status || '').toLowerCase() === 'routed' || (stops[idx].status || '').toLowerCase() === 'dispatched') {
+            if ((stops[idx].status || '').toLowerCase() === 'routed' || (stops[idx].status || '').toLowerCase() === 'dispatched' || (stops[idx].status || '').toLowerCase() === 'queued') {
                 markRouteDirty(stops[idx].driverId, stops[idx].cluster);
             }
             stops[idx].status = 'Pending';
@@ -1517,7 +1498,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
     try { 
         idsToUpdate.forEach(id => {
             const s = stops.find(st => st.id === id);
-            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched')) {
+            if (s && ((s.status || '').toLowerCase() === 'routed' || (s.status || '').toLowerCase() === 'dispatched' || (s.status || '').toLowerCase() === 'queued')) {
                 markRouteDirty(s.driverId, s.cluster); 
                 markRouteDirty(newDriverId, s.cluster); 
             }
@@ -1576,8 +1557,7 @@ function createRouteSubheading(clusterNum, clusterStops) {
     const today = new Date(); today.setHours(0,0,0,0);
 
     clusterStops.forEach(s => {
-        const rawDist = String(s.dist || '0').replace(/[^0-9.]/g, '');
-        const distVal = parseFloat(rawDist);
+        const distVal = parseFloat(s.dist || 0);
         if (!isNaN(distVal)) totalMi += distVal;
         
         totalSecs += parseFloat(s.durationSecs || 0);
@@ -1670,7 +1650,7 @@ function render() {
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
     
     const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
+    const hasRouted = activeStops.some(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched' || (s.status||'').toLowerCase() === 'queued');
 
     if (isManagerView) {
         const header = document.createElement('div');
@@ -1716,19 +1696,9 @@ function render() {
         
         const dueFmt = due ? `${due.getMonth()+1}/${due.getDate()}` : "N/A";
 
-        const extractTime = (dateStr) => {
-            if (!dateStr) return '--';
-            const d = new Date(dateStr);
-            if (!isNaN(d.getTime())) {
-                return d.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
-            }
-            const match = String(dateStr).match(/\d{1,2}:\d{2}\s*(AM|PM|am|pm)/);
-            return match ? match[0].toUpperCase() : '--';
-        };
-        
-        let etaTime = extractTime(s.eta);
+        let etaTime = s.eta || '--';
         const statusStr = (s.status||'').toLowerCase();
-        const isRoutedStop = statusStr === 'routed' || statusStr === 'completed' || statusStr === 'dispatched';
+        const isRoutedStop = statusStr === 'routed' || statusStr === 'completed' || statusStr === 'dispatched' || statusStr === 'queued';
         const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
         
         if (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) {
@@ -1841,8 +1811,8 @@ function render() {
     };
 
     if (isSingleInspector || !isManagerView) {
-        const unroutedStops = activeStops.filter(s => (s.status||'').toLowerCase() !== 'routed' && (s.status||'').toLowerCase() !== 'completed' && (s.status||'').toLowerCase() !== 'dispatched');
-        const routedStops = activeStops.filter(s => (s.status||'').toLowerCase() === 'routed' || (s.status||'').toLowerCase() === 'completed' || (s.status||'').toLowerCase() === 'dispatched');
+        const unroutedStops = activeStops.filter(s => { const st = (s.status||'').toLowerCase(); return st !== 'routed' && st !== 'completed' && st !== 'dispatched' && st !== 'queued'; });
+        const routedStops = activeStops.filter(s => { const st = (s.status||'').toLowerCase(); return st === 'routed' || st === 'completed' || st === 'dispatched' || st === 'queued'; });
         routedStops.sort((a,b) => (a.eta ? new Date(a.eta).getTime() : 0) - (b.eta ? new Date(b.eta).getTime() : 0));
 
         let eps = getActiveEndpoints();
@@ -1964,8 +1934,7 @@ function updateSummary() {
     let totalSecs = 0;
     
     active.forEach(s => {
-        const rawDist = String(s.dist || '0').replace(/[^0-9.]/g, '');
-        const distVal = parseFloat(rawDist);
+        const distVal = parseFloat(s.dist || 0);
         if (!isNaN(distVal)) totalMi += distVal;
         
         totalSecs += parseFloat(s.durationSecs || 0);
@@ -2033,7 +2002,7 @@ function reorderStopsFromDOM() {
     const newRouted = routedIds.map(id => {
         let s = stops.find(st => st.id === id);
         if (s && s.status.toLowerCase() === 'pending') {
-            s.status = 'Routed';
+            s.status = 'Queued'; 
         }
         return s;
     }).filter(Boolean);
@@ -2072,7 +2041,7 @@ function initSortable() {
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
-                            stop.status = 'Routed'; 
+                            stop.status = 'Queued'; 
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
