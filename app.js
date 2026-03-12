@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.7
+// * Dashboard - V6.8
 // * FILE: app.js
-// * Changes: Removed date-based clustering, rewrote sortByEta for time-only strings, decoupled routeId from manager view payloads, enforced driverId in all API calls.
+// * Changes: Globally standardized all POST payloads to omit routeId in manager views and strictly rely on driverId. Fixed Send Route modal visibility block.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -157,15 +157,18 @@ function silentSaveRouteState() {
     if (dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint';
     else if (dirtyRoutes.size > 0) macroState = 'Staging';
     
+    let payload = {
+        action: 'saveRoute',
+        driverId: inspId,
+        stops: minified,
+        routeState: macroState
+    };
+    
+    if (!isManagerView) payload.routeId = routeId;
+
     fetch(WEB_APP_URL, {
         method: 'POST',
-        body: JSON.stringify({
-            action: 'saveRoute',
-            routeId: routeId || null,
-            driverId: inspId,
-            stops: minified,
-            routeState: macroState
-        })
+        body: JSON.stringify(payload)
     }).catch(e => console.log("Silent save error", e));
 }
 
@@ -751,9 +754,12 @@ async function executeRouteReset(driverId) {
     if(overlay) overlay.style.display = 'flex';
     
     try {
+        let payload = { action: 'resetRoute', driverId: driverId };
+        if (!isManagerView) payload.routeId = routeId;
+
         await fetch(WEB_APP_URL, { 
             method: 'POST', 
-            body: JSON.stringify({ action: 'resetRoute', driverId: driverId, routeId: routeId || null }) 
+            body: JSON.stringify(payload) 
         });
         
         historyStack = []; 
@@ -787,7 +793,7 @@ async function saveEndpointToBackend(type, address, lat, lng) {
     let action = hasRouted ? 'updateEndpoint' : 'updateInspectorDefault';
     let payload = { action, type, address, lat, lng, driverId: inspId };
     
-    if (hasRouted && routeId) {
+    if (!isManagerView) {
         payload.routeId = routeId; 
     }
     
@@ -833,10 +839,8 @@ function handleOpenEmailModal() {
     const insp = inspectors.find(i => i.id === currentInspectorFilter);
     if (!insp) return;
 
-    const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && s.routeTargetId);
+    const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter);
     if(activeInspStops.length === 0) return;
-
-    const targetRouteId = activeInspStops[0].routeTargetId;
 
     const m = document.getElementById('modal-overlay');
     const mc = document.getElementById('modal-content');
@@ -916,8 +920,6 @@ function handleOpenEmailModal() {
         const dIdx = inspectors.findIndex(i => i.id === currentInspectorFilter);
         const inspColor = dIdx > -1 ? MASTER_PALETTE[dIdx % MASTER_PALETTE.length] : MASTER_PALETTE[0];
 
-        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && isRouteAssigned(s.status));
-        
         const geojsonStops = {
             type: 'FeatureCollection',
             features: activeInspStops.filter(s => s.lat && s.lng).map(s => ({
@@ -962,7 +964,6 @@ function handleOpenEmailModal() {
 
         const payload = {
             action: "dispatchRoute",
-            routeId: targetRouteId,
             driverId: currentInspectorFilter,
             companyId: companyParam || '',
             customBody: customBody,
@@ -971,6 +972,7 @@ function handleOpenEmailModal() {
             ccEmail: ccEmail,
             mapBase64: mapBase64
         };
+        if (!isManagerView) payload.routeId = routeId;
 
         try {
             const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
@@ -1201,20 +1203,26 @@ async function handleGenerateRoute() {
     render(); 
 
     try {
-        const res = await fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr, routeState: 'Queued' })
-        });
-        
+        let payload = { 
+            action: 'generateRoute', 
+            inspectorName: insp.name, 
+            driverId: insp.id, 
+            routeClusters: clusteredArrays, 
+            startAddr: sAddr, 
+            endAddr: eAddr, 
+            routeState: 'Queued' 
+        };
+        if (!isManagerView) payload.routeId = routeId;
+
+        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json();
         
         if (data.status === 'queued' || data.success) {
-            fetch(WEB_APP_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action: 'processQueue', routeId: routeId || null, driverId: insp.id })
-            }).catch(err => {
-                console.log("Ignored expected timeout from processQueue", err);
-            });
+            let pqPayload = { action: 'processQueue', driverId: insp.id };
+            if (!isManagerView) pqPayload.routeId = routeId;
+            
+            fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(pqPayload) })
+            .catch(err => console.log("Ignored expected timeout from processQueue", err));
             
             isPollingForRoute = true;
             pollRetries = 0;
@@ -1242,9 +1250,13 @@ async function handleRestoreOriginal() {
     if(overlay) overlay.style.display = 'flex';
 
     try {
+        const inspId = isManagerView ? currentInspectorFilter : driverParam;
+        let payload = { action: 'restoreOriginalRoute', driverId: inspId };
+        if (!isManagerView) payload.routeId = routeId;
+
         await fetch(WEB_APP_URL, { 
             method: 'POST', 
-            body: JSON.stringify({ action: 'restoreOriginalRoute', routeId: routeId || null }) 
+            body: JSON.stringify(payload) 
         });
         
         await loadData(); 
@@ -1378,8 +1390,14 @@ async function triggerBulkDelete() {
 
         const deletePromises = Array.from(selectedIds).map(id => {
             const idx = stops.findIndex(s => s.id === id);
-            if (idx > -1) stops[idx].status = 'Deleted';
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'markOrderDeleted', rowId: id }) });
+            let dId = null;
+            if (idx > -1) {
+                dId = stops[idx].driverId;
+                stops[idx].status = 'Deleted';
+            }
+            let payload = { action: 'markOrderDeleted', rowId: id, driverId: dId };
+            if (!isManagerView) payload.routeId = routeId;
+            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         });
         
         await Promise.all(deletePromises);
@@ -1409,14 +1427,18 @@ async function triggerBulkUnroute() {
     try {
         const unroutePromises = Array.from(selectedIds).map(id => {
             const idx = stops.findIndex(s => s.id === id);
+            let dId = null;
             if (idx > -1) {
+                dId = stops[idx].driverId;
                 if (isRouteAssigned(stops[idx].status)) {
                     markRouteDirty(stops[idx].driverId, stops[idx].cluster);
                 }
                 stops[idx].status = 'Pending';
                 if (!isManagerView) stops[idx].hiddenInInspector = true; 
             }
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: id }) });
+            let payload = { action: 'unrouteOrder', rowId: id, driverId: dId };
+            if (!isManagerView) payload.routeId = routeId;
+            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         });
         
         await Promise.all(unroutePromises);
@@ -1438,7 +1460,8 @@ async function triggerBulkUnroute() {
 async function processReassignDriver(rowId, newDriverName, newDriverId) {
     const stopIdx = stops.findIndex(s => s.id === rowId);
     if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
-    const payload = { action: 'updateOrder', rowId: rowId, updates: { driverName: newDriverName, driverId: newDriverId } };
+    let payload = { action: 'updateOrder', rowId: rowId, driverId: newDriverId, updates: { driverName: newDriverName, driverId: newDriverId } };
+    if (!isManagerView) payload.routeId = routeId;
     return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
 }
 
@@ -1944,7 +1967,6 @@ async function handleCalculate() {
 
         let payload = {
             action: 'calculate',
-            routeId: routeId || null,
             driverId: isManagerView ? currentInspectorFilter : driverParam,
             driver: driverParam,
             startTime: currentStartTime,
@@ -1953,6 +1975,7 @@ async function handleCalculate() {
             isManager: isManagerView,
             stops: stopsToCalculate.map(s => minifyStop(s, (s.cluster || 0) + 1))
         };
+        if (!isManagerView) payload.routeId = routeId;
 
         const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await res.json();
@@ -1996,9 +2019,11 @@ async function toggleComplete(e, id) {
     render(); drawRoute(); updateSummary();
     
     try {
+        let payload = { action: 'updateOrder', rowId: id, driverId: stops[idx].driverId, updates: { status: getStatusCode(newStatus) } };
+        if (!isManagerView) payload.routeId = routeId;
         await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'updateOrder', rowId: id, updates: { status: getStatusCode(newStatus) } })
+            body: JSON.stringify(payload)
         });
     } catch(err) { console.error("Toggle Complete Error", err); }
 }
@@ -2269,7 +2294,9 @@ function initSortable() {
                     if (evt.to.id === 'unrouted-list') {
                         isMovedToUnrouted = true;
                         const idx = stops.findIndex(s => s.id === stopId);
+                        let dId = null;
                         if (idx > -1) {
+                            dId = stops[idx].driverId;
                             stops[idx].status = 'Pending'; 
                             stops[idx].routeState = 'Pending';
                         }
@@ -2277,7 +2304,9 @@ function initSortable() {
                         const overlay = document.getElementById('processing-overlay');
                         if(overlay) overlay.style.display = 'flex';
                         try {
-                            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'unrouteOrder', rowId: stopId }) });
+                            let unroutePayload = { action: 'unrouteOrder', rowId: stopId, driverId: dId };
+                            if (!isManagerView) unroutePayload.routeId = routeId;
+                            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(unroutePayload) });
                         } catch (e) { console.error(e); }
                         finally { if(overlay) overlay.style.display = 'none'; }
                     }
