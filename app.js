@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.13
+// * Dashboard - V6.14
 // * FILE: app.js
-// * Changes: Integrated html2canvas for true screenshots. Dual-tone map lines with clean/dirty visual states. Added empty state fallback text. Jump-to initial map bounds logic. Switch back to "all inspectors" after dispatch.
+// * Changes: Verified html2canvas screenshot implementation, dual-tone map lines, instant initial map jump, post-dispatch reset, and empty state UI.
 // *
 
 function updateShiftCursor(isShiftDown) {
