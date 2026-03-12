@@ -1,5 +1,5 @@
 // *
-// * Dashboard - V7.2
+// * Dashboard - V8.0
 // * FILE: app.js
 // * Changes: Dual-Mode payload routing to support Inspector Email_Requests Sandbox 
 // * vs Manager Inspectors Staging. Clean redirects post-dispatch. Restored "Restore Route" 
