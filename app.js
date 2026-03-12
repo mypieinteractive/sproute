@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.3
+// * Dashboard - V6.4
 // * FILE: app.js
-// * Changes: Unified 14-element backend schema, simplified distance/ETA parsing, implemented Queued routing trigger, added isRouteAssigned() helper.
+// * Changes: Separated Global Route State (routeState) from Individual Order Status (status). Reverted status maps to standard physical states. Updated updateRoutingUI to strictly use routeState for button visibility.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -21,8 +21,8 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
-const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched', 'Q': 'Queued' };
-const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S', 'queued': 'Q' };
+const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
+const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
 
 function getStatusText(code) {
     if (!code) return 'Pending';
@@ -33,7 +33,6 @@ function getStatusText(code) {
     if (c === 'D' || c === 'DELETED') return 'Deleted';
     if (c === 'V' || c === 'O') return 'Validation Failed';
     if (c === 'P' || c === 'PENDING') return 'Pending';
-    if (c === 'Q' || c === 'QUEUED') return 'Queued';
     return STATUS_MAP_TO_TEXT[c] || 'Pending';
 }
 
@@ -45,7 +44,7 @@ function getStatusCode(text) {
 function isRouteAssigned(status) {
     if (!status) return false;
     const s = status.toLowerCase();
-    return s === 'routed' || s === 'queued' || s === 'completed' || s === 'dispatched';
+    return s === 'routed' || s === 'completed' || s === 'dispatched';
 }
 
 let COMPANY_SERVICE_DELAY = 0; 
@@ -146,17 +145,21 @@ function silentSaveRouteState() {
     if (inspId === 'all') return;
     
     let routedStops = stops.filter(s => s.routeTargetId === String(routeId) && isRouteAssigned(s.status));
-    
     if (routedStops.length === 0) return;
 
     let minified = routedStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
+    
+    let macroState = 'Ready';
+    if (dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint';
+    else if (dirtyRoutes.size > 0) macroState = 'Staging';
     
     fetch(WEB_APP_URL, {
         method: 'POST',
         body: JSON.stringify({
             action: 'saveRoute',
             routeId: routeId,
-            stops: minified
+            stops: minified,
+            routeState: macroState
         })
     }).catch(e => console.log("Silent save error", e));
 }
@@ -213,10 +216,6 @@ function expandStop(minStop) {
 }
 
 function minifyStop(s, routeNum) {
-    let statusCode = getStatusCode(s.status);
-    
-    if (statusCode === 'P' && routeNum > 0) statusCode = 'Q';
-
     return [
         s.rowId || s.id || "", 
         Number(s.seq) || 0, 
@@ -230,7 +229,7 @@ function minifyStop(s, routeNum) {
         s.dist ? Number(parseFloat(s.dist)) : 0, 
         s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0,       
         s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, 
-        statusCode, 
+        getStatusCode(s.status), 
         Number(s.durationSecs) || 0                              
     ];
 }
@@ -340,11 +339,9 @@ function updateRouteButtonColors() {
 
 function isActiveStop(s) {
     const status = (s.status || '').toLowerCase().trim();
-    const routeState = (s.routeState || '').toLowerCase().trim();
-
     if (isManagerView) {
-        if (routeState === 'dispatched' || status === 'dispatched' || status === 's') return false;
-        return (status === 'pending' || status === 'routed' || status === 'queued' || status === 'completed');
+        if (status === 'dispatched' || status === 's') return false;
+        return (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
         let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
         if (s.hiddenInInspector) active = false;
@@ -492,13 +489,13 @@ async function loadData() {
                 cluster: exp.cluster || 0,
                 manualCluster: false,
                 hiddenInInspector: false,
-                routeState: exp.routeState || s.routeState || getStatusText(exp.status),
+                routeState: exp.routeState || 'Pending',
                 routeTargetId: routeId || null
             };
         });
 
         stops.forEach(s => {
-            if (s.routeState === 'Staging' && s.driverId) {
+            if ((s.routeState === 'Staging' || s.routeState === 'Staging-endpoint') && s.driverId) {
                 markRouteDirty(s.driverId, s.cluster);
             }
         });
@@ -999,8 +996,6 @@ function handleOpenEmailModal() {
 
 function updateRoutingUI() {
     const activeStops = stops.filter(s => isActiveStop(s));
-    const routedCount = activeStops.filter(s => isRouteAssigned(s.status)).length;
-    const unroutedCount = activeStops.length - routedCount;
     const isDirty = dirtyRoutes.size > 0;
 
     const routingControls = document.getElementById('routing-controls');
@@ -1054,13 +1049,10 @@ function updateRoutingUI() {
     if(btnStartOver) btnStartOver.style.order = '6'; 
     if(btnSend) btnSend.style.order = '7'; 
     
-    if(btnGen) btnGen.style.display = 'none';
-    if(btnStartOver) btnStartOver.style.display = 'none';
-    if(btnRecalc) btnRecalc.style.display = 'none';
-    if(btnRestore) btnRestore.style.display = 'none';
-    if(optInspBtn) optInspBtn.style.display = 'none';
-    if(badgeChanges) badgeChanges.style.display = 'none';
-    if(btnSend) btnSend.style.display = 'none';
+    // Hide all action buttons initially
+    [btnGen, btnStartOver, btnRecalc, btnRestore, optInspBtn, badgeChanges, btnSend].forEach(btn => {
+        if (btn) btn.style.display = 'none';
+    });
 
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
@@ -1083,40 +1075,51 @@ function updateRoutingUI() {
 
     if (hintEl) hintEl.style.display = 'none';
 
-    if (isManagerView) {
-        if (unroutedCount > 25) {
-            if(routingControls) routingControls.style.display = 'flex';
-        } else {
-            if(routingControls) routingControls.style.display = 'none';
-        }
-
-        const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter && isRouteAssigned(s.status));
-        const isReady = activeInspStops.length > 0 && activeInspStops.some(s => s.routeState === 'Ready');
-        const isStaging = activeInspStops.some(s => s.routeState === 'Staging') || isDirty;
-
-        let showRecalcAndStartOver = false;
-        if (viewMode === 'managermobile') {
-            showRecalcAndStartOver = isDirty; 
-        } else {
-            showRecalcAndStartOver = isStaging;
-        }
-
-        if (unroutedCount > 0 && routedCount === 0) {
-            if(btnGen) btnGen.style.display = 'flex';
-            const headerGenBtnText = document.getElementById('btn-header-generate-text');
-            if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
-        } 
+    let currentState = 'Pending';
+    const activeInspStops = stops.filter(s => isActiveStop(s) && s.driverId === currentInspectorFilter);
+    
+    if (activeInspStops.length > 0) {
+        const targetStop = activeInspStops.find(s => s.routeState) || activeInspStops[0];
+        let rs = (targetStop.routeState || 'Pending').toLowerCase();
         
-        if (showRecalcAndStartOver || isStaging) {
-            if(btnRecalc) btnRecalc.style.display = (viewMode === 'managermobile' && !isDirty) ? 'none' : 'flex';
-            if(btnStartOver) btnStartOver.style.display = 'flex';
-        } else if (routedCount > 0) {
-            if(btnStartOver) btnStartOver.style.display = 'flex';
+        if (rs === 'queued') currentState = 'Queued';
+        else if (rs === 'ready') currentState = 'Ready';
+        else if (rs === 'staging') currentState = 'Staging';
+        else if (rs === 'staging-endpoint') currentState = 'Staging-endpoint';
+        else currentState = 'Pending';
+    }
+
+    if (isDirty) {
+        currentState = dirtyRoutes.has('endpoints_0') ? 'Staging-endpoint' : 'Staging';
+    }
+
+    if (isManagerView) {
+        let showControls = false;
+
+        if (currentState === 'Pending') {
+            const unroutedCount = activeInspStops.filter(s => !isRouteAssigned(s.status)).length;
+            if (unroutedCount > 0) {
+                if (btnGen) { btnGen.style.display = 'flex'; showControls = true; }
+                const headerGenBtnText = document.getElementById('btn-header-generate-text');
+                if (headerGenBtnText) headerGenBtnText.innerText = currentRouteCount > 1 ? "Generate Routes" : "Generate Route";
+            }
+        } else if (currentState === 'Queued') {
+            // Keep controls hidden while processing
+        } else if (currentState === 'Ready') {
+            if (btnStartOver) { btnStartOver.style.display = 'flex'; showControls = true; }
+            if (btnSend) { btnSend.style.display = 'flex'; showControls = true; }
+        } else if (currentState === 'Staging') {
+            if (btnRecalc) { btnRecalc.style.display = 'flex'; showControls = true; }
+            if (btnStartOver) { btnStartOver.style.display = 'flex'; showControls = true; }
+            if (badgeChanges && isDirty) { badgeChanges.style.display = 'flex'; showControls = true; }
+        } else if (currentState === 'Staging-endpoint') {
+            if (btnRecalc) { btnRecalc.style.display = 'flex'; showControls = true; }
+            if (optInspBtn) { optInspBtn.style.display = 'flex'; showControls = true; }
+            if (btnStartOver) { btnStartOver.style.display = 'flex'; showControls = true; }
+            if (badgeChanges && isDirty) { badgeChanges.style.display = 'flex'; showControls = true; }
         }
 
-        if (routedCount > 0 && !isDirty) {
-            if(btnSend) btnSend.style.display = 'flex';
-        }
+        if (routingControls) routingControls.style.display = showControls ? 'flex' : 'none';
 
     } else {
         if(routingControls) routingControls.style.display = 'flex';
@@ -1219,10 +1222,17 @@ async function handleGenerateRoute() {
     let sAddr = eps.start ? eps.start.address : '';
     let eAddr = eps.end ? eps.end.address : '';
 
+    stops.forEach(s => {
+        if (isActiveStop(s) && s.driverId === insp.id) {
+            s.routeState = 'Queued';
+        }
+    });
+    render(); 
+
     try {
         const res = await fetch(WEB_APP_URL, {
             method: 'POST',
-            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr })
+            body: JSON.stringify({ action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, routeClusters: clusteredArrays, startAddr: sAddr, endAddr: eAddr, routeState: 'Queued' })
         });
         
         const data = await res.json();
