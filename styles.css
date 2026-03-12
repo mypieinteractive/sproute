@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V6.13 */
+/* * Dashboard - V6.20 */
 /* * FILE: styles.css */
-/* * Changes: Maintained version sync with app.js and index.html */
+/* * Changes: Removed bulk complete styles. Styled map badge. Disabled map hint for Inspector view. */
 /* * */
 
 :root { 
@@ -41,7 +41,6 @@ body.view-inspector { flex-direction: column; }
 body.view-manager { flex-direction: row; }
 body.view-manager #map-wrapper { flex: 1; height: 100vh; width: auto; }
 body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100vh; border-left: none; flex: none; }
-body.view-manager #bulk-complete-btn { display: none !important; }
 body.view-manager #summary-metrics { display: none !important; } 
 
 /* MANAGER MOBILE VIEW */
@@ -49,9 +48,11 @@ body.view-managermobile { flex-direction: column; overflow: hidden; height: 100v
 body.view-managermobile #map-wrapper { height: 40vh; width: 100vw; flex: none; position: relative; z-index: 10; }
 body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: hidden; }
 body.view-managermobile #stop-list { overflow-y: auto; overflow-x: hidden; height: 100%; }
-body.view-managermobile #bulk-complete-btn { display: none !important; }
 body.view-managermobile #summary-metrics { display: none !important; } 
-body.view-managermobile #map-hint { display: none !important; }
+
+/* Hide Map Hint */
+body.view-managermobile #map-hint,
+body.view-inspector #map-hint { display: none !important; }
 
 /* Mobile Column Fitting */
 body.view-managermobile .col-eta { width: 55px; font-size: 12px; }
@@ -134,6 +135,25 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 #map-wrapper { position: relative; background-color: var(--bg-base); }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
 
+/* Unsaved Changes Badge overlay */
+#badge-changes-made {
+    position: absolute;
+    bottom: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    background-color: var(--red);
+    color: yellow;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    pointer-events: none;
+    border: 2px solid #b91c1c;
+    letter-spacing: 0.5px;
+}
+
 #map-hint { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.25); backdrop-filter: blur(4px); color: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; z-index: 200; pointer-events: none; border: 1px solid rgba(255,255,255,0.15); transition: opacity 0.2s; }
 
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
@@ -167,7 +187,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .floating-btn:active { opacity: 0.7; }
 #bulk-delete-btn { background: var(--red); color: white; border: none; }
 #bulk-unroute-btn { background: var(--orange); color: white; border: none; }
-#bulk-complete-btn { background: var(--green); color: white; border: none; }
 #move-r1-btn, #move-r2-btn, #move-r3-btn { border-left: 4px solid transparent; }
 
 #sidebar { display: flex; flex-direction: column; background: var(--bg-panel); z-index: 10; container-type: inline-size; container-name: sidebar; overflow-x: hidden; }
