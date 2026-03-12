@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.6
+// * Dashboard - V6.7
 // * FILE: app.js
-// * Changes: Decoupled header buttons from routingControls container to fix visual bug. Ensured ETAs and Distances correctly survive polling cycles.
+// * Changes: Removed date-based clustering, rewrote sortByEta for time-only strings, decoupled routeId from manager view payloads, enforced driverId in all API calls.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -140,11 +140,15 @@ function updateUndoUI() {
 }
 
 function silentSaveRouteState() {
-    if (!routeId) return;
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    if (inspId === 'all') return;
+    if (inspId === 'all' || !inspId) return;
     
-    let routedStops = stops.filter(s => s.routeTargetId === String(routeId) && isRouteAssigned(s.status));
+    let routedStops = stops.filter(s => {
+        if (!isRouteAssigned(s.status)) return false;
+        if (isManagerView) return s.driverId === inspId;
+        return s.routeTargetId === String(routeId);
+    });
+    
     if (routedStops.length === 0) return;
 
     let minified = routedStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
@@ -157,7 +161,8 @@ function silentSaveRouteState() {
         method: 'POST',
         body: JSON.stringify({
             action: 'saveRoute',
-            routeId: routeId,
+            routeId: routeId || null,
+            driverId: inspId,
             stops: minified,
             routeState: macroState
         })
@@ -234,10 +239,20 @@ function minifyStop(s, routeNum) {
     ];
 }
 
+function timeToMins(tStr) {
+    if (!tStr || typeof tStr !== 'string') return Number.MAX_SAFE_INTEGER;
+    let m = tStr.match(/(\d+):(\d+)\s*(AM|PM|am|pm)/i);
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    let h = parseInt(m[1], 10);
+    let mins = parseInt(m[2], 10);
+    let p = m[3].toUpperCase();
+    if (p === 'PM' && h < 12) h += 12;
+    if (p === 'AM' && h === 12) h = 0;
+    return (h * 60) + mins;
+}
+
 function sortByEta(a, b) {
-    let tA = a.eta ? new Date(a.eta).getTime() : 0;
-    let tB = b.eta ? new Date(b.eta).getTime() : 0;
-    return tA - tB;
+    return timeToMins(a.eta) - timeToMins(b.eta);
 }
 
 function updateInspectorDropdown() {
@@ -738,7 +753,7 @@ async function executeRouteReset(driverId) {
     try {
         await fetch(WEB_APP_URL, { 
             method: 'POST', 
-            body: JSON.stringify({ action: 'resetRoute', driverId: driverId, routeId: routeId }) 
+            body: JSON.stringify({ action: 'resetRoute', driverId: driverId, routeId: routeId || null }) 
         });
         
         historyStack = []; 
@@ -770,12 +785,10 @@ async function saveEndpointToBackend(type, address, lat, lng) {
     if (overlay) overlay.style.display = 'flex';
     
     let action = hasRouted ? 'updateEndpoint' : 'updateInspectorDefault';
-    let payload = { action, type, address, lat, lng };
+    let payload = { action, type, address, lat, lng, driverId: inspId };
     
-    if (hasRouted) {
+    if (hasRouted && routeId) {
         payload.routeId = routeId; 
-    } else {
-        payload.driverId = inspId;
     }
     
     try {
@@ -1198,7 +1211,7 @@ async function handleGenerateRoute() {
         if (data.status === 'queued' || data.success) {
             fetch(WEB_APP_URL, {
                 method: 'POST',
-                body: JSON.stringify({ action: 'processQueue', routeId: routeId, driverId: insp.id })
+                body: JSON.stringify({ action: 'processQueue', routeId: routeId || null, driverId: insp.id })
             }).catch(err => {
                 console.log("Ignored expected timeout from processQueue", err);
             });
@@ -1231,7 +1244,7 @@ async function handleRestoreOriginal() {
     try {
         await fetch(WEB_APP_URL, { 
             method: 'POST', 
-            body: JSON.stringify({ action: 'restoreOriginalRoute', routeId: routeId }) 
+            body: JSON.stringify({ action: 'restoreOriginalRoute', routeId: routeId || null }) 
         });
         
         await loadData(); 
@@ -1931,7 +1944,8 @@ async function handleCalculate() {
 
         let payload = {
             action: 'calculate',
-            routeId: routeId,
+            routeId: routeId || null,
+            driverId: isManagerView ? currentInspectorFilter : driverParam,
             driver: driverParam,
             startTime: currentStartTime,
             startAddr: eps.start?.address || null,
