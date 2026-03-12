@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.15
+// * Dashboard - V6.16
 // * FILE: app.js
-// * Changes: Reverted aggressive array flattening. Updated expandStop to natively parse 13-element arrays directly, aligning with the optimized calculate endpoint while maintaining schema strictness.
+// * Changes: Completely resolved the early-return extraction bug in expandStop. It now guarantees the 13-element tuple is processed as the absolute source of truth for ETAs, Clusters, and Distances.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -206,39 +206,43 @@ const MASTER_PALETTE = [
 ];
 
 function expandStop(minStop) {
-    if (minStop && minStop.address && !Array.isArray(minStop)) return minStop; 
-    
-    let t = Array.isArray(minStop) ? minStop : (minStop.rawTuple || minStop);
-    
-    if (Array.isArray(t)) {
+    if (!minStop) return {};
+
+    // If it's a simple object with NO tuple, return it natively
+    if (!Array.isArray(minStop) && !minStop.rawTuple && !minStop.data && !minStop.tuple && minStop.address) {
+        return minStop;
+    }
+
+    let t = null;
+    if (Array.isArray(minStop)) t = minStop;
+    else if (minStop.rawTuple) t = minStop.rawTuple;
+    else if (minStop.data) t = minStop.data;
+    else if (minStop.tuple) t = minStop.tuple;
+
+    let expanded = { ...minStop }; // Inherit wrapper properties (like driverId, routeState)
+
+    // Overwrite the 13 core properties using the nested array as the absolute source of truth
+    if (t && Array.isArray(t) && t.length >= 12) {
         let clusterIdx = parseInt(t[1]);
         if (isNaN(clusterIdx)) clusterIdx = 1;
         
-        let expanded = {
-            id: String(t[0]), 
-            cluster: Math.max(0, clusterIdx - 1),
-            address: String(t[2] || ''), 
-            client: String(t[3] || ''), 
-            app: String(t[4] || ''), 
-            dueDate: String(t[5] || ''), 
-            type: String(t[6] || ''),
-            eta: String(t[7] || ''), 
-            dist: parseFloat(t[8] || 0), 
-            lat: parseFloat(t[9] || 0), 
-            lng: parseFloat(t[10] || 0), 
-            status: String(t[11] || 'P'), 
-            durationSecs: parseInt(t[12] || 0, 10), 
-            rowId: String(t[0])
-        };
-
-        if (!Array.isArray(minStop) && typeof minStop === 'object') {
-            expanded = { ...minStop, ...expanded };
-        }
-
-        return expanded;
+        expanded.id = String(t[0]);
+        expanded.rowId = String(t[0]);
+        expanded.cluster = Math.max(0, clusterIdx - 1);
+        expanded.address = String(t[2] || '');
+        expanded.client = String(t[3] || '');
+        expanded.app = String(t[4] || '');
+        expanded.dueDate = String(t[5] || '');
+        expanded.type = String(t[6] || '');
+        expanded.eta = String(t[7] || '');
+        expanded.dist = parseFloat(t[8] || 0);
+        expanded.lat = parseFloat(t[9] || 0);
+        expanded.lng = parseFloat(t[10] || 0);
+        expanded.status = String(t[11] || 'P');
+        expanded.durationSecs = parseInt(t[12] || 0, 10);
     }
 
-    return minStop; 
+    return expanded;
 }
 
 function minifyStop(s, routeNum) {
