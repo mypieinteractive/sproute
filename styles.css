@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V6.21 */
+/* * Dashboard - V6.22 */
 /* * FILE: styles.css */
-/* * Changes: Truncated header button text for managermobile view instead of hiding completely. */
+/* * Changes: Hidden summary bar for Inspector view. Created .hidden-unrouted utility class. */
 /* * */
 
 :root { 
@@ -34,8 +34,9 @@ body[data-route-count="1"] #priority-container {
 
 /* VIEW MODES */
 body.view-inspector { flex-direction: column; }
-.view-inspector #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
-.view-inspector #sidebar { height: 65vh; min-height: 65vh; width: 100%; }
+body.view-inspector #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
+body.view-inspector #sidebar { height: 65vh; min-height: 65vh; width: 100%; }
+body.view-inspector #route-summary { display: none !important; }
 
 /* MANAGER VIEW */
 body.view-manager { flex-direction: row; }
@@ -203,6 +204,9 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
 .stop-item.selected { background: var(--fade-blue) !important; }
+
+/* Ghost visibility class for removed orders */
+.hidden-unrouted { display: none !important; }
 
 /* Tighter margins for compact rocker mode */
 .stop-item.compact { min-height: 40px; }
