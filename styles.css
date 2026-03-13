@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V6.20 */
+/* * Dashboard - V6.21 */
 /* * FILE: styles.css */
-/* * Changes: Removed bulk complete styles. Styled map badge. Disabled map hint for Inspector view. */
+/* * Changes: Truncated header button text for managermobile view instead of hiding completely. */
 /* * */
 
 :root { 
@@ -75,10 +75,15 @@ body.view-managermobile .header-action-btn {
 }
 @media (max-width: 380px) {
     body.view-managermobile .header-action-btn span {
-        display: none;
+        display: inline-block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 55px;
+        vertical-align: middle;
     }
     body.view-managermobile .header-action-btn {
-        padding: 6px 12px;
+        padding: 6px 8px;
     }
 }
 
