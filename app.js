@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.21
+// * Dashboard - V6.22
 // * FILE: app.js
-// * Changes: Removed sorting in render cycle to preserve grabber DOM order. Updated launchMaps to use lat/long app intents with visual labels. Swapped Inspector row details to display Distance instead of Client.
+// * Changes: Replaced grabber with long-press for mobile sorting. Fixed drag-and-drop reversion bug in render cycle. Suppressed map warnings on completed orders. Enabled visual unrouting list bypass.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -381,7 +381,6 @@ function isActiveStop(s) {
         return (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
         let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
-        if (s.hiddenInInspector) active = false;
         return active;
     }
 }
@@ -1024,7 +1023,8 @@ function handleOpenEmailModal() {
         overlaysToHide.forEach(el => el.style.display = '');
         
         if (dirtyRoutes.size > 0) {
-            document.getElementById('badge-changes-made').style.display = 'flex';
+            const b = document.getElementById('badge-changes-made');
+            if (b) b.style.display = 'flex';
         }
 
         const payload = {
@@ -1302,11 +1302,6 @@ async function handleGenerateRoute() {
                 if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
                 if (s.routeState === 'Queued') s.routeState = 'Ready';
                 return s;
-            });
-
-            stops.sort((a, b) => {
-                if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
-                return timeToMins(a.eta) - timeToMins(b.eta);
             });
 
             isPollingForRoute = false;
@@ -1745,6 +1740,10 @@ function render() {
         item.id = `item-${s.id}`;
         item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
         
+        if (!isManagerView && s.hiddenInInspector) {
+            item.classList.add('hidden-unrouted');
+        }
+        
         const due = s.dueDate ? new Date(s.dueDate) : null;
         let urgencyClass = '';
         
@@ -1817,14 +1816,13 @@ function render() {
             `;
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
+            if (s.hiddenInInspector) item.classList.add('hidden-unrouted');
             
             const distFmt = s.dist ? parseFloat(s.dist).toFixed(1) : "0.0";
             const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${distFmt} mi` : `${etaTime} | ${distFmt} mi`;
-            const handleHtml = PERMISSION_MODIFY ? `<div class="handle">☰</div>` : ``;
             
             item.innerHTML = `
                 <div class="stop-sidebar ${urgencyClass}">${displayIndex}</div>
-                ${handleHtml}
                 <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
                 <div class="stop-content">
                     <b>${(s.address||'').split(',')[0]}</b>
@@ -1852,7 +1850,7 @@ function render() {
             const style = getVisualStyle(s);
             el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};"><span>${displayIndex}</span></div>`;
 
-            if (urgencyClass) {
+            if (urgencyClass && s.status.toLowerCase() !== 'completed') {
                 const w = document.createElement('div'); w.className = 'marker-warning'; 
                 w.innerText = (urgencyClass === 'past-due') ? '⚠️' : '❕';
                 el.appendChild(w);
@@ -2419,7 +2417,8 @@ function initSortable() {
     } else if (!isManagerView) {
         document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
             const inst = Sortable.create(el, {
-                handle: '.handle',
+                delay: 200,
+                delayOnTouchOnly: true,
                 filter: '.static-endpoint, .list-subheading',
                 animation: 150,
                 onStart: () => pushToHistory(),
