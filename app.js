@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.20
+// * Dashboard - V6.21
 // * FILE: app.js
-// * Changes: Removed mark as completed bulk action. Changed meta-text to Distance. Relocated Changes Made to map overlay. Reverted Navigation to direct app intents. Renamed Generate button to Optimize.
+// * Changes: Removed sorting in render cycle to preserve grabber DOM order. Updated launchMaps to use lat/long app intents with visual labels. Swapped Inspector row details to display Distance instead of Client.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -587,6 +587,11 @@ async function loadData() {
             });
         }
 
+        stops.sort((a, b) => {
+            if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
+            return timeToMins(a.eta) - timeToMins(b.eta);
+        });
+
         let maxCluster = 0;
         stops.forEach(s => {
             if (s.cluster > maxCluster) maxCluster = s.cluster;
@@ -983,7 +988,7 @@ function handleOpenEmailModal() {
         const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
 
         const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint', '#badge-changes-made');
         overlaysToHide.forEach(el => el.style.display = 'none');
 
         const bounds = new mapboxgl.LngLatBounds();
@@ -1017,6 +1022,10 @@ function handleOpenEmailModal() {
         }
 
         overlaysToHide.forEach(el => el.style.display = '');
+        
+        if (dirtyRoutes.size > 0) {
+            document.getElementById('badge-changes-made').style.display = 'flex';
+        }
 
         const payload = {
             action: "dispatchRoute",
@@ -1293,6 +1302,11 @@ async function handleGenerateRoute() {
                 if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
                 if (s.routeState === 'Queued') s.routeState = 'Ready';
                 return s;
+            });
+
+            stops.sort((a, b) => {
+                if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
+                return timeToMins(a.eta) - timeToMins(b.eta);
             });
 
             isPollingForRoute = false;
@@ -1860,7 +1874,6 @@ function render() {
     if (isSingleInspector || !isManagerView) {
         const unroutedStops = activeStops.filter(s => !isRouteAssigned(s.status));
         const routedStops = activeStops.filter(s => isRouteAssigned(s.status));
-        routedStops.sort(sortByEta);
 
         let eps = getActiveEndpoints();
         listContainer.appendChild(createEndpointRow('start', eps.start));
@@ -2076,6 +2089,11 @@ async function handleCalculate() {
             return s;
         });
 
+        stops.sort((a, b) => {
+            if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
+            return timeToMins(a.eta) - timeToMins(b.eta);
+        });
+
         if (!isManagerView) isAlteredRoute = true;
         historyStack = []; 
         dirtyRoutes.clear();
@@ -2215,12 +2233,13 @@ function drawRoute() {
     
     if (routedStops.length === 0) return; 
 
-    routedStops.sort(sortByEta);
+    // Visual sorting only. Does not alter DOM array order.
+    let visualStops = [...routedStops].sort(sortByEta);
 
     const features = [];
     const routesMap = new Map();
 
-    routedStops.forEach(s => {
+    visualStops.forEach(s => {
         const key = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
         if (!routesMap.has(key)) routesMap.set(key, []);
         routesMap.get(key).push(s);
@@ -2283,18 +2302,12 @@ function openNav(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.ge
 function showNavChoice(la, ln, addr) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<h3>Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:none; border-radius:6px; background:#444; color:#fff" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div>`; }
 function setNavPref(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; launchMaps(p, la, ln, addr); }
 function launchMaps(p, la, ln, addr) { 
-    let destination = `${la},${ln}`;
-    if (addr) {
-        const parts = addr.split(',');
-        const street = parts[0].trim();
-        const zipMatch = addr.match(/\b\d{5}(?:-\d{4})?\b/);
-        if (zipMatch) {
-            destination = encodeURIComponent(`${street}, ${zipMatch[0]}`);
-        } else {
-            destination = encodeURIComponent(addr);
-        }
+    let safeAddr = encodeURIComponent(addr || "Destination");
+    if (p === 'google') {
+        window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; 
+    } else {
+        window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; 
     }
-    window.location.href = p === 'google' ? `comgooglemaps://?daddr=${destination}&directionsmode=driving` : `http://maps.apple.com/?daddr=${destination}&dirflg=d`; 
 }
 
 function reorderStopsFromDOM() {
