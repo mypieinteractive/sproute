@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V6.22
+// * Dashboard - V6.23
 // * FILE: app.js
-// * Changes: Replaced grabber with long-press for mobile sorting. Fixed drag-and-drop reversion bug in render cycle. Suppressed map warnings on completed orders. Enabled visual unrouting list bypass.
+// * Changes: Added &admin= URL param support to fetch adminEmail. Overhauled email modal to feature a "CC Me" toggle (passing the email string instead of a boolean) and an always-visible Additional CC input.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -58,6 +58,7 @@ let currentInspectorFilter = 'all';
 let defaultEmailMessage = "";
 let companyEmail = "";
 let managerEmail = "";
+let adminEmail = ""; 
 
 let routeStart = null;
 let routeEnd = null;
@@ -178,6 +179,7 @@ const params = new URLSearchParams(window.location.search);
 let routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
+const adminParam = params.get('admin');
 const viewMode = params.get('view') || 'inspector'; 
 const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
 
@@ -381,6 +383,7 @@ function isActiveStop(s) {
         return (status === 'pending' || status === 'routed' || status === 'completed');
     } else {
         let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
+        if (s.hiddenInInspector) active = false;
         return active;
     }
 }
@@ -484,7 +487,12 @@ async function loadData() {
     if (routeId) queryParams = `?id=${routeId}`;
     else if (companyParam) queryParams = `?company=${companyParam}`;
     else if (driverParam) queryParams = `?driver=${driverParam}`;
-    else {
+    
+    if (adminParam) {
+        queryParams += (queryParams ? '&' : '?') + `admin=${adminParam}`;
+    }
+
+    if (!queryParams) {
         const overlay = document.getElementById('processing-overlay');
         if (overlay) overlay.style.display = 'none';
         return;
@@ -518,6 +526,8 @@ async function loadData() {
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
+
+        if (data.adminEmail) adminEmail = data.adminEmail;
 
         if (isPollingForRoute) {
             let fetchedMap = new Map();
@@ -921,7 +931,7 @@ function handleOpenEmailModal() {
     m.style.display = 'flex';
     
     const displayCompanyEmail = companyEmail ? companyEmail : 'Company Email Not Found';
-    const displayDriverEmail = insp.email ? insp.email : '[Email not provided]';
+    const displayAdminEmail = adminEmail ? adminEmail : '[Email not provided]';
 
     const modalHtml = `
         <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
@@ -937,18 +947,23 @@ function handleOpenEmailModal() {
                 </label>
             </div>
 
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
+                <input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
+                <label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">
+                    CC Me<br>
+                    <span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${displayAdminEmail}</span>
+                </label>
+            </div>
+
             <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="cc-additional-checkbox" onchange="document.getElementById('additional-cc-wrapper').style.display = this.checked ? 'block' : 'none'" style="accent-color: #7b93b8; transform: scale(1.2);">
-                    <label for="cc-additional-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">Additional CC</label>
-                </div>
-                <div id="additional-cc-wrapper" style="display: none; padding-left: 28px;">
+                <label for="additional-cc-email" style="font-size: 16px; color: #e5e5e5; font-weight: 500;">Additional CC</label>
+                <div id="additional-cc-wrapper" style="padding-left: 0;">
                     <input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;">
                 </div>
             </div>
 
             <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">
-                A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${displayDriverEmail}</span>, along with a direct link to open the interactive map on their device.
+                A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.
             </div>
 
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
@@ -983,8 +998,11 @@ function handleOpenEmailModal() {
 
         const customBody = document.getElementById('email-body-text').value;
         const ccCompany = document.getElementById('cc-company-checkbox').checked;
-        const addCcChecked = document.getElementById('cc-additional-checkbox').checked;
-        const ccEmail = addCcChecked ? document.getElementById('additional-cc-email').value : '';
+        
+        const ccMeChecked = document.getElementById('cc-me-checkbox').checked;
+        const addCcValue = ccMeChecked ? adminEmail : '';
+        
+        const ccEmail = document.getElementById('additional-cc-email').value;
 
         const mapWrapper = document.getElementById('map-wrapper');
         const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint', '#badge-changes-made');
@@ -1033,7 +1051,7 @@ function handleOpenEmailModal() {
             companyId: companyParam || '',
             customBody: customBody,
             ccCompany: ccCompany,
-            addCc: addCcChecked,
+            addCc: addCcValue,
             ccEmail: ccEmail,
             mapBase64: mapBase64
         };
@@ -1302,6 +1320,11 @@ async function handleGenerateRoute() {
                 if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
                 if (s.routeState === 'Queued') s.routeState = 'Ready';
                 return s;
+            });
+
+            stops.sort((a, b) => {
+                if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
+                return timeToMins(a.eta) - timeToMins(b.eta);
             });
 
             isPollingForRoute = false;
@@ -2085,11 +2108,6 @@ async function handleCalculate() {
                 return returnedStopsMap.get(String(s.id));
             }
             return s;
-        });
-
-        stops.sort((a, b) => {
-            if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
-            return timeToMins(a.eta) - timeToMins(b.eta);
         });
 
         if (!isManagerView) isAlteredRoute = true;
