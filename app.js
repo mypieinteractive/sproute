@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.1
+// * Dashboard - V10.2
 // * FILE: app.js
-// * Changes: Implemented 'X' route logic for benched/unrouted orders. New and manually removed orders default to cluster 'X'. Optimization ignores 'X' orders if active routes exist.
+// * Changes: Refactored triggerBulkDelete to physically filter and remove deleted orders from local memory instead of just changing status. Updated undoLastAction to detect resurrected orders and dispatch a 'recreateOrders' API call to restore hard-deleted records on the backend.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -128,11 +128,36 @@ function pushToHistory() {
     updateUndoUI();
 }
 
-function undoLastAction() {
+async function undoLastAction() {
     if (historyStack.length === 0) return;
     const last = historyStack.pop();
+
+    // Deep compare to detect if any deleted stops are being resurrected
+    const resurrectedStops = last.stops.filter(oldStop => !stops.some(currentStop => String(currentStop.id) === String(oldStop.id)));
+
     stops = last.stops;
     dirtyRoutes = new Set(last.dirty);
+
+    // If orders were resurrected, alert the backend to recreate them
+    if (resurrectedStops.length > 0) {
+        const overlay = document.getElementById('processing-overlay');
+        if (overlay) overlay.style.display = 'flex';
+        try {
+            let payload = {
+                action: 'recreateOrders',
+                driverId: isManagerView ? currentInspectorFilter : driverParam,
+                orders: resurrectedStops
+            };
+            if (!isManagerView) payload.routeId = routeId;
+
+            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        } catch (e) {
+            console.error("Failed to resurrect orders:", e);
+        } finally {
+            if (overlay) overlay.style.display = 'none';
+        }
+    }
+
     render(); drawRoute(); updateSummary(); updateRouteTimes(); updateUndoUI();
     silentSaveRouteState(); 
 }
@@ -1507,7 +1532,9 @@ window.toggleSelectAll = function(cb) {
 
 async function triggerBulkDelete() { 
     if(!(await customConfirm("Delete selected orders?"))) return;
-    pushToHistory();
+    
+    // Push state BEFORE the objects are removed so history retains their data
+    pushToHistory(); 
     
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
@@ -1525,7 +1552,6 @@ async function triggerBulkDelete() {
             let dId = null;
             if (idx > -1) {
                 dId = stops[idx].driverId;
-                stops[idx].status = 'Deleted';
             }
             let payload = { action: 'markOrderDeleted', rowId: id, driverId: dId };
             if (!isManagerView) payload.routeId = routeId;
@@ -1533,6 +1559,9 @@ async function triggerBulkDelete() {
         });
         
         await Promise.all(deletePromises);
+        
+        // Physically clear deleted stops out of browser memory
+        stops = stops.filter(s => !selectedIds.has(s.id));
         
         selectedIds.clear(); 
         updateInspectorDropdown(); 
