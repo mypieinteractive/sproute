@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.2
+// * Dashboard - V10.3
 // * FILE: app.js
-// * Changes: Refactored triggerBulkDelete to physically filter and remove deleted orders from local memory instead of just changing status. Updated undoLastAction to detect resurrected orders and dispatch a 'recreateOrders' API call to restore hard-deleted records on the backend.
+// * Changes: Fixed updateRoutingUI to keep the UI in "Pending" (Optimize) state if manual clustering occurs before any active routes exist. Added missing manualCluster = true lock inside SortableJS onEnd handlers.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -132,13 +132,11 @@ async function undoLastAction() {
     if (historyStack.length === 0) return;
     const last = historyStack.pop();
 
-    // Deep compare to detect if any deleted stops are being resurrected
     const resurrectedStops = last.stops.filter(oldStop => !stops.some(currentStop => String(currentStop.id) === String(oldStop.id)));
 
     stops = last.stops;
     dirtyRoutes = new Set(last.dirty);
 
-    // If orders were resurrected, alert the backend to recreate them
     if (resurrectedStops.length > 0) {
         const overlay = document.getElementById('processing-overlay');
         if (overlay) overlay.style.display = 'flex';
@@ -1150,12 +1148,9 @@ function updateRoutingUI() {
         if (btn) btn.style.display = 'none';
     });
 
-    if (badgeChanges) {
-        badgeChanges.style.display = isDirty ? 'flex' : 'none';
-    }
-
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
+        if (badgeChanges) badgeChanges.style.display = 'none';
         
         let showHint = false;
         const allValidStops = stops.filter(s => {
@@ -1177,9 +1172,11 @@ function updateRoutingUI() {
 
     let currentState = 'Pending';
     const activeInspStops = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter));
+    const hasActiveRoutesUI = activeInspStops.some(s => isRouteAssigned(s.status));
     
     if (activeInspStops.length > 0) {
-        const targetStop = activeInspStops.find(s => s.routeState) || activeInspStops[0];
+        const routedStops = activeInspStops.filter(s => isRouteAssigned(s.status));
+        const targetStop = routedStops.length > 0 ? routedStops[0] : activeInspStops[0];
         let rs = (targetStop.routeState || 'Pending').toLowerCase();
         
         if (rs === 'queued') currentState = 'Queued';
@@ -1189,8 +1186,14 @@ function updateRoutingUI() {
         else currentState = 'Pending';
     }
 
-    if (isDirty) {
+    // Only force 'Staging' mode if active routes exist on the board
+    if (isDirty && hasActiveRoutesUI) {
         currentState = dirtyRoutes.has('endpoints_0') ? 'Staging-endpoint' : 'Staging';
+    }
+
+    if (badgeChanges) {
+        // Prevent unsaved changes badge from flashing while pre-routing
+        badgeChanges.style.display = (isDirty && hasActiveRoutesUI) ? 'flex' : 'none';
     }
 
     if (isManagerView) {
@@ -1533,7 +1536,6 @@ window.toggleSelectAll = function(cb) {
 async function triggerBulkDelete() { 
     if(!(await customConfirm("Delete selected orders?"))) return;
     
-    // Push state BEFORE the objects are removed so history retains their data
     pushToHistory(); 
     
     const overlay = document.getElementById('processing-overlay');
@@ -1560,7 +1562,6 @@ async function triggerBulkDelete() {
         
         await Promise.all(deletePromises);
         
-        // Physically clear deleted stops out of browser memory
         stops = stops.filter(s => !selectedIds.has(s.id));
         
         selectedIds.clear(); 
@@ -2447,6 +2448,7 @@ function initSortable() {
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
+                            stop.manualCluster = true;
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
@@ -2517,6 +2519,7 @@ function initSortable() {
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
+                            stop.manualCluster = true;
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
