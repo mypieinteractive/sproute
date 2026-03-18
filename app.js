@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.3
+// * Dashboard - V10.4
 // * FILE: app.js
-// * Changes: Fixed updateRoutingUI to keep the UI in "Pending" (Optimize) state if manual clustering occurs before any active routes exist. Added missing manualCluster = true lock inside SortableJS onEnd handlers.
+// * Changes: Refactored bulk operations (delete, unroute, reassign) to use single batched API requests instead of concurrent Promise.all() loops to prevent Google Apps Script race conditions and JSON overwriting. Removed redundant processReassignDriver helper.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1186,13 +1186,11 @@ function updateRoutingUI() {
         else currentState = 'Pending';
     }
 
-    // Only force 'Staging' mode if active routes exist on the board
     if (isDirty && hasActiveRoutesUI) {
         currentState = dirtyRoutes.has('endpoints_0') ? 'Staging-endpoint' : 'Staging';
     }
 
     if (badgeChanges) {
-        // Prevent unsaved changes badge from flashing while pre-routing
         badgeChanges.style.display = (isDirty && hasActiveRoutesUI) ? 'flex' : 'none';
     }
 
@@ -1542,25 +1540,18 @@ async function triggerBulkDelete() {
     if(overlay) overlay.style.display = 'flex';
 
     try {
-        selectedIds.forEach(id => {
+        let idsToDelete = Array.from(selectedIds);
+        idsToDelete.forEach(id => {
             const s = stops.find(st => String(st.id) === String(id));
             if (s && isRouteAssigned(s.status)) {
                 markRouteDirty(s.driverId, s.cluster);
             }
         });
 
-        const deletePromises = Array.from(selectedIds).map(id => {
-            const idx = stops.findIndex(s => String(s.id) === String(id));
-            let dId = null;
-            if (idx > -1) {
-                dId = stops[idx].driverId;
-            }
-            let payload = { action: 'markOrderDeleted', rowId: id, driverId: dId };
-            if (!isManagerView) payload.routeId = routeId;
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-        });
+        let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete };
+        if (!isManagerView) payload.routeId = routeId;
         
-        await Promise.all(deletePromises);
+        await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         
         stops = stops.filter(s => !selectedIds.has(s.id));
         
@@ -1587,7 +1578,8 @@ async function triggerBulkUnroute() {
     if(overlay) overlay.style.display = 'flex';
 
     try {
-        const unroutePromises = Array.from(selectedIds).map(id => {
+        let updatesArray = [];
+        Array.from(selectedIds).forEach(id => {
             const idx = stops.findIndex(s => String(s.id) === String(id));
             let dId = null;
             if (idx > -1) {
@@ -1603,12 +1595,17 @@ async function triggerBulkUnroute() {
                 stops[idx].durationSecs = 0;
                 if (!isManagerView) stops[idx].hiddenInInspector = true; 
             }
-            let payload = { action: 'updateOrder', rowId: id, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' } };
-            if (!isManagerView) payload.routeId = routeId;
-            return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+            updatesArray.push({ rowId: id, driverId: dId });
         });
         
-        await Promise.all(unroutePromises);
+        let payload = { 
+            action: 'updateMultipleOrders', 
+            updatesList: updatesArray, 
+            sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' } 
+        };
+        if (!isManagerView) payload.routeId = routeId;
+        
+        await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         
         selectedIds.clear(); 
         
@@ -1622,14 +1619,6 @@ async function triggerBulkUnroute() {
     } finally {
         if(overlay) overlay.style.display = 'none';
     }
-}
-
-async function processReassignDriver(rowId, newDriverName, newDriverId) {
-    const stopIdx = stops.findIndex(s => String(s.id) === String(rowId));
-    if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
-    let payload = { action: 'updateOrder', rowId: rowId, driverId: newDriverId, updates: { driverName: newDriverName, driverId: newDriverId } };
-    if (!isManagerView) payload.routeId = routeId;
-    return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
 }
 
 async function handleInspectorChange(e, rowId, selectEl) {
@@ -1657,9 +1646,18 @@ async function handleInspectorChange(e, rowId, selectEl) {
                 markRouteDirty(s.driverId, s.cluster); 
                 markRouteDirty(newDriverId, s.cluster); 
             }
+            const stopIdx = stops.findIndex(st => String(st.id) === String(id));
+            if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
         });
 
-        await Promise.all(idsToUpdate.map(id => processReassignDriver(id, newDriverName, newDriverId)));
+        let payload = { 
+            action: 'updateMultipleOrders', 
+            updatesList: idsToUpdate.map(id => ({ rowId: id })), 
+            sharedUpdates: { driverName: newDriverName, driverId: newDriverId } 
+        };
+        if (!isManagerView) payload.routeId = routeId;
+
+        await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         
         updateInspectorDropdown(); 
         await loadData();
