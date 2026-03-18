@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.6
+// * Dashboard - V10.7
 // * FILE: app.js
-// * Changes: Fixed Bug 1 by ensuring 'Move to Route' and drag-and-drop actions correctly flip status to 'Routed' and 'Staging'. Fixed Bug 2 by implementing a cluster mapping catcher in handleGenerateRoute and handleCalculate to prevent the backend from resetting targeted optimizations back to Route 1.
+// * Changes: Added a `hasActiveRoutes` gate to `moveSelectedToRoute` and SortableJS handlers. Pre-routing staging now correctly locks pin colors without prematurely triggering the "Re-Optimize / Staging" UI.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1258,6 +1258,8 @@ function setRoutes(num) {
 function moveSelectedToRoute(cIdx) {
     pushToHistory();
     let movedStops = [];
+    const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
+    
     selectedIds.forEach(id => {
         const s = stops.find(st => String(st.id) === String(id));
         if (s) {
@@ -1266,9 +1268,12 @@ function moveSelectedToRoute(cIdx) {
             }
             s.cluster = cIdx;
             s.manualCluster = true; 
-            s.status = 'Routed';
-            s.routeState = 'Staging';
-            markRouteDirty(s.driverId, s.cluster); 
+            
+            if (hasActiveRoutes) {
+                s.status = 'Routed';
+                s.routeState = 'Staging';
+                markRouteDirty(s.driverId, s.cluster); 
+            }
             movedStops.push(s);
         }
     });
@@ -2474,6 +2479,7 @@ function initSortable() {
                 onStart: () => pushToHistory(),
                 onEnd: async (evt) => {
                     let isMovedToUnrouted = false;
+                    const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
                     
                     const stopId = evt.item.id.replace('item-', '');
                     const stop = stops.find(s => String(s.id) === String(stopId));
@@ -2487,9 +2493,11 @@ function initSortable() {
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
                             stop.manualCluster = true;
-                            stop.status = 'Routed';
-                            stop.routeState = 'Staging';
-                            markRouteDirty(dId, stop.cluster);
+                            if (hasActiveRoutes) {
+                                stop.status = 'Routed';
+                                stop.routeState = 'Staging';
+                                markRouteDirty(dId, stop.cluster);
+                            }
                         }
                     }
 
@@ -2549,6 +2557,7 @@ function initSortable() {
                 animation: 150,
                 onStart: () => pushToHistory(),
                 onEnd: (evt) => {
+                    const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
                     const stopId = evt.item.id.replace('item-', '');
                     const stop = stops.find(s => String(s.id) === String(stopId));
                     if (stop) {
@@ -2560,9 +2569,11 @@ function initSortable() {
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
                             stop.manualCluster = true;
-                            stop.status = 'Routed';
-                            stop.routeState = 'Staging';
-                            markRouteDirty(dId, stop.cluster);
+                            if (hasActiveRoutes) {
+                                stop.status = 'Routed';
+                                stop.routeState = 'Staging';
+                                markRouteDirty(dId, stop.cluster);
+                            }
                         }
                     }
 
