@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.4
+// * Dashboard - V10.6
 // * FILE: app.js
-// * Changes: Refactored bulk operations (delete, unroute, reassign) to use single batched API requests instead of concurrent Promise.all() loops to prevent Google Apps Script race conditions and JSON overwriting. Removed redundant processReassignDriver helper.
+// * Changes: Fixed Bug 1 by ensuring 'Move to Route' and drag-and-drop actions correctly flip status to 'Routed' and 'Staging'. Fixed Bug 2 by implementing a cluster mapping catcher in handleGenerateRoute and handleCalculate to prevent the backend from resetting targeted optimizations back to Route 1.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1257,6 +1257,7 @@ function setRoutes(num) {
 
 function moveSelectedToRoute(cIdx) {
     pushToHistory();
+    let movedStops = [];
     selectedIds.forEach(id => {
         const s = stops.find(st => String(st.id) === String(id));
         if (s) {
@@ -1265,12 +1266,20 @@ function moveSelectedToRoute(cIdx) {
             }
             s.cluster = cIdx;
             s.manualCluster = true; 
+            s.status = 'Routed';
+            s.routeState = 'Staging';
             markRouteDirty(s.driverId, s.cluster); 
+            movedStops.push(s);
         }
     });
+    
+    // Physically move the modified items to the end of the stops array
+    // so they are rendered at the bottom of the target route list.
+    stops = stops.filter(s => !selectedIds.has(s.id));
+    stops.push(...movedStops);
+    
     selectedIds.clear();
     
-    reorderStopsFromDOM();
     render(); 
     drawRoute();
     updateSummary();
@@ -1321,6 +1330,8 @@ async function handleGenerateRoute() {
             return dirtyRoutes.has(routeKey) || !isRouteAssigned(s.status);
         });
     }
+    
+    let sentClusters = [...new Set(stopsToOptimize.map(s => s.cluster))].filter(c => c !== 'X').sort();
 
     let flatStopsPayload = stopsToOptimize.map(s => {
         let outCluster = s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1;
@@ -1356,7 +1367,21 @@ async function handleGenerateRoute() {
             const returnedStopsMap = new Map();
             optimizedData.forEach(s => {
                 let exp = expandStop(s);
-                returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster, manualCluster: false });
+                let backendCluster = exp.cluster;
+                let mappedCluster = backendCluster;
+
+                // Safely map backend clusters back to the original clusters we sent
+                if (sentClusters.length > 0) {
+                    if (sentClusters.includes(backendCluster)) {
+                        mappedCluster = backendCluster; // Backend preserved it
+                    } else if (backendCluster < sentClusters.length) {
+                        mappedCluster = sentClusters[backendCluster]; // Backend compressed it
+                    } else if (sentClusters.length === 1) {
+                        mappedCluster = sentClusters[0]; // Fallback for single route
+                    }
+                }
+
+                returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
             });
 
             stops = stops.map(s => {
@@ -2137,6 +2162,8 @@ async function handleCalculate() {
             render(); drawRoute(); updateSummary();
             return; 
         }
+        
+        let sentClusters = [...new Set(stopsToCalculate.map(s => s.cluster))].filter(c => c !== 'X').sort();
 
         const eps = getActiveEndpoints();
 
@@ -2163,7 +2190,20 @@ async function handleCalculate() {
         const returnedStopsMap = new Map();
         data.updatedStops.forEach(s => {
             let exp = expandStop(s);
-            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster, manualCluster: false });
+            let backendCluster = exp.cluster;
+            let mappedCluster = backendCluster;
+
+            if (sentClusters.length > 0) {
+                if (sentClusters.includes(backendCluster)) {
+                    mappedCluster = backendCluster;
+                } else if (backendCluster < sentClusters.length) {
+                    mappedCluster = sentClusters[backendCluster];
+                } else if (sentClusters.length === 1) {
+                    mappedCluster = sentClusters[0];
+                }
+            }
+
+            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
         });
 
         stops = stops.map(s => {
@@ -2447,6 +2487,8 @@ function initSortable() {
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
                             stop.manualCluster = true;
+                            stop.status = 'Routed';
+                            stop.routeState = 'Staging';
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
@@ -2518,6 +2560,8 @@ function initSortable() {
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]);
                             stop.manualCluster = true;
+                            stop.status = 'Routed';
+                            stop.routeState = 'Staging';
                             markRouteDirty(dId, stop.cluster);
                         }
                     }
