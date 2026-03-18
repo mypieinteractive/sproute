@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.0
+// * Dashboard - V10.1
 // * FILE: app.js
-// * Changes: Added &admin= URL param support to fetch adminEmail. Overhauled email modal to feature a "CC Me" toggle (passing the email string instead of a boolean) and an always-visible Additional CC input.
+// * Changes: Implemented 'X' route logic for benched/unrouted orders. New and manually removed orders default to cluster 'X'. Optimization ignores 'X' orders if active routes exist.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -154,7 +154,7 @@ function silentSaveRouteState() {
     
     if (routedStops.length === 0) return;
 
-    let minified = routedStops.map(s => minifyStop(s, (s.cluster || 0) + 1));
+    let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
     
     let macroState = 'Ready';
     if (dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint';
@@ -223,12 +223,18 @@ function expandStop(minStop) {
     let expanded = { ...minStop }; 
 
     if (t && Array.isArray(t) && t.length >= 12) {
-        let clusterIdx = parseInt(t[1]);
-        if (isNaN(clusterIdx)) clusterIdx = 1;
+        let rawCluster = String(t[1] || '').trim().toUpperCase();
         
         expanded.id = String(t[0]);
         expanded.rowId = String(t[0]);
-        expanded.cluster = Math.max(0, clusterIdx - 1);
+        
+        if (rawCluster === 'X' || rawCluster === '') {
+            expanded.cluster = 'X';
+        } else {
+            let clusterIdx = parseInt(rawCluster);
+            expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1);
+        }
+        
         expanded.address = String(t[2] || '');
         expanded.client = String(t[3] || '');
         expanded.app = String(t[4] || '');
@@ -403,7 +409,7 @@ function getVisualStyle(stopData) {
     }
     
     const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
-    const cluster = stopData.cluster || 0;
+    const cluster = stopData.cluster === 'X' ? 0 : (stopData.cluster || 0);
     const hasRoutedForInsp = stops.some(s => String(s.driverId) === String(stopData.driverId) && isRouteAssigned(s.status));
     
     const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
@@ -537,7 +543,7 @@ async function loadData() {
                     ...exp,
                     id: exp.rowId || exp.id,
                     status: getStatusText(exp.status),
-                    cluster: exp.cluster !== undefined ? exp.cluster : 0,
+                    cluster: exp.cluster,
                     manualCluster: false,
                     hiddenInInspector: false,
                     routeState: exp.routeState || s.routeState || globalRouteState,
@@ -580,7 +586,7 @@ async function loadData() {
                     ...exp,
                     id: exp.rowId || exp.id,
                     status: getStatusText(exp.status),
-                    cluster: exp.cluster !== undefined ? exp.cluster : 0,
+                    cluster: exp.cluster,
                     manualCluster: false,
                     hiddenInInspector: false,
                     routeState: exp.routeState || s.routeState || globalRouteState,
@@ -597,13 +603,15 @@ async function loadData() {
         }
 
         stops.sort((a, b) => {
-            if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
+            let cA = a.cluster === 'X' ? 999 : (a.cluster || 0);
+            let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
+            if (cA !== cB) return cA - cB;
             return timeToMins(a.eta) - timeToMins(b.eta);
         });
 
         let maxCluster = 0;
         stops.forEach(s => {
-            if (s.cluster > maxCluster) maxCluster = s.cluster;
+            if (s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster;
         });
 
         currentRouteCount = Math.max(1, maxCluster + 1);
@@ -1271,18 +1279,27 @@ async function handleGenerateRoute() {
 
     let stopsToOptimize = [];
     const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
+    const hasActiveRoutes = stops.some(s => isRouteAssigned(s.status));
 
     if (isEndpointsDirty) {
         stopsToOptimize = stops.filter(s => isActiveStop(s) && s.lng && s.lat && String(s.driverId) === String(insp.id));
+        if (hasActiveRoutes) {
+            stopsToOptimize = stopsToOptimize.filter(s => s.cluster !== 'X');
+        }
     } else {
         stopsToOptimize = stops.filter(s => {
             if (!isActiveStop(s) || !s.lng || !s.lat || String(s.driverId) !== String(insp.id)) return false;
-            const routeKey = `${s.driverId}_${s.cluster || 0}`;
+            if (hasActiveRoutes && s.cluster === 'X') return false;
+            
+            const routeKey = `${s.driverId}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
             return dirtyRoutes.has(routeKey) || !isRouteAssigned(s.status);
         });
     }
 
-    let flatStopsPayload = stopsToOptimize.map(s => minifyStop(s, (s.cluster || 0) + 1));
+    let flatStopsPayload = stopsToOptimize.map(s => {
+        let outCluster = s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1;
+        return minifyStop(s, outCluster);
+    });
 
     const eps = getActiveEndpoints();
     let sAddr = eps.start ? eps.start.address : '';
@@ -1313,7 +1330,7 @@ async function handleGenerateRoute() {
             const returnedStopsMap = new Map();
             optimizedData.forEach(s => {
                 let exp = expandStop(s);
-                returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster !== undefined ? exp.cluster : 0, manualCluster: false });
+                returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster, manualCluster: false });
             });
 
             stops = stops.map(s => {
@@ -1323,7 +1340,9 @@ async function handleGenerateRoute() {
             });
 
             stops.sort((a, b) => {
-                if ((a.cluster || 0) !== (b.cluster || 0)) return (a.cluster || 0) - (b.cluster || 0);
+                let cA = a.cluster === 'X' ? 999 : (a.cluster || 0);
+                let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
+                if (cA !== cB) return cA - cB;
                 return timeToMins(a.eta) - timeToMins(b.eta);
             });
 
@@ -1385,7 +1404,13 @@ function liveClusterUpdate() {
     const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     if(activeStops.length === 0) return;
 
-    const unroutedStops = activeStops.filter(s => !isRouteAssigned(s.status));
+    const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
+    
+    const unroutedStops = activeStops.filter(s => {
+        if (isRouteAssigned(s.status)) return false;
+        if (hasActiveRoutes && s.cluster === 'X') return false;
+        return true;
+    });
 
     if(k === 1) {
         unroutedStops.forEach(s => { s.cluster = 0; s.manualCluster = false; });
@@ -1541,12 +1566,14 @@ async function triggerBulkUnroute() {
                     markRouteDirty(stops[idx].driverId, stops[idx].cluster);
                 }
                 stops[idx].status = 'Pending';
+                stops[idx].cluster = 'X';
+                stops[idx].manualCluster = false;
                 stops[idx].eta = '';
                 stops[idx].dist = 0;
                 stops[idx].durationSecs = 0;
                 if (!isManagerView) stops[idx].hiddenInInspector = true; 
             }
-            let payload = { action: 'updateOrder', rowId: id, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0 } };
+            let payload = { action: 'updateOrder', rowId: id, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' } };
             if (!isManagerView) payload.routeId = routeId;
             return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         });
@@ -1780,7 +1807,7 @@ function render() {
         const dueFmt = due ? `${due.getMonth()+1}/${due.getDate()}` : "N/A";
 
         const isRoutedStop = isRouteAssigned(s.status);
-        const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
+        const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
         let etaTime = s.eta || '--';
         
         if (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) {
@@ -1914,9 +1941,9 @@ function render() {
         }
         
         if (routedStops.length > 0) {
-            const uniqueClusters = [...new Set(routedStops.map(s => s.cluster || 0))].sort();
+            const uniqueClusters = [...new Set(routedStops.map(s => s.cluster === 'X' ? 0 : (s.cluster || 0)))].sort();
             uniqueClusters.forEach(clusterId => {
-                const cStops = routedStops.filter(s => (s.cluster || 0) === clusterId);
+                const cStops = routedStops.filter(s => (s.cluster === 'X' ? 0 : (s.cluster || 0)) === clusterId);
                 if (cStops.length > 0) {
                     const routedDiv = document.createElement('div');
                     routedDiv.id = isManagerView ? `routed-list-${clusterId}` : `driver-list-${clusterId}`;
@@ -2060,13 +2087,18 @@ async function handleCalculate() {
     try {
         const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
         const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
+        const hasActiveRoutes = stops.some(s => isRouteAssigned(s.status));
         let stopsToCalculate = [];
 
         if (isEndpointsDirty) {
             stopsToCalculate = activeStops;
+            if (hasActiveRoutes) {
+                stopsToCalculate = stopsToCalculate.filter(s => s.cluster !== 'X');
+            }
         } else {
             stopsToCalculate = activeStops.filter(s => {
-                const routeKey = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
+                if (hasActiveRoutes && s.cluster === 'X') return false;
+                const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
                 return dirtyRoutes.has(routeKey);
             });
         }
@@ -2088,7 +2120,10 @@ async function handleCalculate() {
             startAddr: eps.start?.address || null,
             endAddr: eps.end?.address || null,
             isManager: isManagerView,
-            stops: stopsToCalculate.map(s => minifyStop(s, (s.cluster || 0) + 1))
+            stops: stopsToCalculate.map(s => {
+                let outC = s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1;
+                return minifyStop(s, outC);
+            })
         };
         if (!isManagerView) payload.routeId = routeId;
 
@@ -2100,7 +2135,7 @@ async function handleCalculate() {
         const returnedStopsMap = new Map();
         data.updatedStops.forEach(s => {
             let exp = expandStop(s);
-            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster || 0, manualCluster: false });
+            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: exp.cluster, manualCluster: false });
         });
 
         stops = stops.map(s => {
@@ -2256,7 +2291,7 @@ function drawRoute() {
     const routesMap = new Map();
 
     visualStops.forEach(s => {
-        const key = `${s.driverId || 'unassigned'}_${s.cluster || 0}`;
+        const key = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 0 : (s.cluster || 0)}`;
         if (!routesMap.has(key)) routesMap.set(key, []);
         routesMap.get(key).push(s);
     });
@@ -2395,6 +2430,8 @@ function initSortable() {
                             dId = stops[idx].driverId;
                             stops[idx].status = 'Pending'; 
                             stops[idx].routeState = 'Pending';
+                            stops[idx].cluster = 'X';
+                            stops[idx].manualCluster = false;
                             stops[idx].eta = '';
                             stops[idx].dist = 0;
                             stops[idx].durationSecs = 0;
@@ -2403,7 +2440,7 @@ function initSortable() {
                         const overlay = document.getElementById('processing-overlay');
                         if(overlay) overlay.style.display = 'flex';
                         try {
-                            let unroutePayload = { action: 'updateOrder', rowId: stopId, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0 } };
+                            let unroutePayload = { action: 'updateOrder', rowId: stopId, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' } };
                             if (!isManagerView) unroutePayload.routeId = routeId;
                             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(unroutePayload) });
                         } catch (e) { console.error(e); }
