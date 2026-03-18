@@ -1,5 +1,5 @@
 // *
-// * Dashboard - V6.23
+// * Dashboard - V10.0
 // * FILE: app.js
 // * Changes: Added &admin= URL param support to fetch adminEmail. Overhauled email modal to feature a "CC Me" toggle (passing the email string instead of a boolean) and an always-visible Additional CC input.
 // *
