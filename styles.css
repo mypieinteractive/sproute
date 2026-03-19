@@ -1,7 +1,7 @@
 /* * */
 /* * Dashboard - V10.0 */
 /* * FILE: styles.css */
-/* * Changes: Hidden summary bar for Inspector view. Created .hidden-unrouted utility class. */
+/* * Changes: Hidden summary bar for Inspector view. Created .hidden-unrouted utility class. Shifted map overlay buttons to bottom-right for Inspector/ManagerMobile. Added SortableJS long-press visual feedback classes. */
 /* * */
 
 :root { 
@@ -37,6 +37,16 @@ body.view-inspector { flex-direction: column; }
 body.view-inspector #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
 body.view-inspector #sidebar { height: 65vh; min-height: 65vh; width: 100%; }
 body.view-inspector #route-summary { display: none !important; }
+
+/* Move map buttons to bottom right for Inspector and ManagerMobile */
+body.view-inspector .map-overlay-btns, 
+body.view-managermobile .map-overlay-btns {
+    top: auto !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    display: flex;
+    flex-direction: column;
+}
 
 /* MANAGER VIEW */
 body.view-manager { flex-direction: row; }
@@ -204,6 +214,19 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
 .stop-item.selected { background: var(--fade-blue) !important; }
+
+/* Visual feedback when long-press threshold is crossed */
+.sortable-chosen {
+    transform: scale(1.02);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.6) !important;
+    border: 2px solid var(--blue) !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    z-index: 1000;
+    background-color: var(--bg-hover) !important;
+}
+.sortable-drag {
+    opacity: 0.8 !important;
+}
 
 /* Ghost visibility class for removed orders */
 .hidden-unrouted { display: none !important; }
