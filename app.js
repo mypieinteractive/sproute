@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.9
+// * Dashboard - V10.10
 // * FILE: app.js
-// * Changes: Removed View-Only UI restrictions in favor of an all-or-nothing backend visibility model. Added an `uploadError` catcher in loadData() to alert users of locked route rejections. Streamlined the heartbeat to ping based purely on the admin URL parameter.
+// * Changes: Added `isManager` boolean to the `loadData()` fetch query parameters so the backend can bypass lock filters for inspectors. Gated `startHeartbeat()` to strictly only run if `isManagerView` is true.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -79,7 +79,7 @@ let heartbeatInterval = null;
 
 function startHeartbeat() {
     clearInterval(heartbeatInterval);
-    if (!adminParam) return;
+    if (!isManagerView || !adminParam) return;
     heartbeatInterval = setInterval(() => {
         fetch(WEB_APP_URL, {
             method: 'POST',
@@ -379,7 +379,7 @@ function handleInspectorFilterChange(val) {
     if (val !== 'all') liveClusterUpdate();
     
     updateRouteButtonColors();
-    render(); drawRoute(); updateSummary(); initSortable();
+    render(); drawRoute(); updateSummary();
 }
 
 function updateRouteButtonColors() {
@@ -535,6 +535,9 @@ async function loadData() {
     if (adminParam) {
         queryParams += (queryParams ? '&' : '?') + `admin=${adminParam}`;
     }
+    
+    // Explicitly pass manager status so the backend knows whether to apply locks
+    queryParams += (queryParams ? '&' : '?') + `isManager=${isManagerView}`;
 
     if (!queryParams) {
         const overlay = document.getElementById('processing-overlay');
@@ -546,7 +549,6 @@ async function loadData() {
         const res = await fetch(`${WEB_APP_URL}${queryParams}`);
         const data = await res.json();
 
-        // Catcher for Upload Lock Rejections
         if (data.uploadError) {
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'none';
@@ -742,7 +744,6 @@ async function loadData() {
 
         render(); drawRoute(); updateSummary(); initSortable();
         
-        // Start heartbeat to keep the active admin session alive
         startHeartbeat();
 
     } catch (e) { 
