@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.14
+// * Dashboard - V10.15
 // * FILE: app.js
-// * Changes: Created toTitleCase() for addresses. Added Delete keyboard shortcut for bulk deletion. Hid "Unsaved Changes" badge for managers. Preserved hiddenInInspector state across data reloads. Streamlined empty header layout for managermobile. Removed dynamic CSS injection block (styles moved to styles.css).
+// * Changes: Applied currentInspectorFilter constraints to render(), drawRoute(), liveClusterUpdate(), updateSummary(), updateRouteTimes(), and selection UI functions to ensure the dashboard strictly isolates the view when a single inspector is selected from the dropdown.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1255,6 +1255,7 @@ function updateRoutingUI() {
     }
 
     if (badgeChanges) {
+        // Enforce the badge is permanently hidden for managers, and only visible for inspectors if necessary
         badgeChanges.style.display = (isDirty && hasActiveRoutesUI && !isManagerView) ? 'flex' : 'none';
     }
 
@@ -1356,7 +1357,7 @@ function moveSelectedToRoute(cIdx) {
 
 function updateRouteTimes() {
     if(!isManagerView || currentInspectorFilter === 'all') return;
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat && String(s.driverId) === String(currentInspectorFilter));
     for(let i=0; i<3; i++) {
         const clusterStops = activeStops.filter(s => s.cluster === i);
         const count = clusterStops.length;
@@ -1518,7 +1519,9 @@ function liveClusterUpdate() {
     const k = currentRouteCount;
     const w = parseInt(document.getElementById('slider-priority').value) / 100;
     
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    let activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    activeStops = activeStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
+    
     if(activeStops.length === 0) return;
 
     const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
@@ -1615,15 +1618,20 @@ function updateMarkerColors() {
 }
 
 window.toggleSelectAll = function(cb) {
+    if (!hasLock) return;
     selectedIds.clear();
     if (cb.checked) {
-        stops.filter(s => isActiveStop(s)).forEach(s => selectedIds.add(s.id));
+        let visibleStops = stops.filter(s => isActiveStop(s));
+        if (isManagerView && currentInspectorFilter !== 'all') {
+            visibleStops = visibleStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
+        }
+        visibleStops.forEach(s => selectedIds.add(s.id));
     }
     updateSelectionUI();
 };
 
 async function triggerBulkDelete() { 
-    if(!(await customConfirm("Delete selected orders?"))) return;
+    if(!hasLock || !(await customConfirm("Delete selected orders?"))) return;
     
     pushToHistory(); 
     
@@ -1662,7 +1670,7 @@ async function triggerBulkDelete() {
 }
 
 async function triggerBulkUnroute() { 
-    if(!(await customConfirm("Remove selected orders from route?"))) return;
+    if(!hasLock || !(await customConfirm("Remove selected orders from route?"))) return;
     pushToHistory();
     
     const overlay = document.getElementById('processing-overlay');
@@ -1713,6 +1721,7 @@ async function triggerBulkUnroute() {
 }
 
 async function handleInspectorChange(e, rowId, selectEl) {
+    if (!hasLock) { e.preventDefault(); return; }
     e.stopPropagation(); 
     const newDriverId = selectEl.value;
     const newDriverName = selectEl.options[selectEl.selectedIndex].text;
@@ -1823,6 +1832,7 @@ function createRouteSubheading(clusterNum, clusterStops) {
 }
 
 window.checkEndpointModified = function() {
+    if (!hasLock) return;
     const sVal = document.getElementById('input-endpoint-start')?.value || '';
     const eVal = document.getElementById('input-endpoint-end')?.value || '';
     
@@ -1842,13 +1852,15 @@ function createEndpointRow(type, endpointData) {
     const inputId = `input-endpoint-${type}`;
     const rowIcon = type === 'start' ? '🏠' : '🏁';
     
+    const disableAttr = !hasLock ? 'disabled' : '';
+
     const el = document.createElement('div');
     el.className = 'stop-item static-endpoint compact';
     el.innerHTML = `
         <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${rowIcon}</div>
         <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
             <div style="position:relative; width:100%; flex:1;">
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)" ${disableAttr}>
             </div>
         </div>
         <div class="stop-actions" style="width: 40px;"></div>
@@ -1870,8 +1882,16 @@ function render() {
     const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
     
-    const activeStops = stops.filter(s => isActiveStop(s));
+    // Core Fix: Filter activeStops explicitly by currentInspectorFilter for rendering
+    let activeStops = stops.filter(s => isActiveStop(s));
+    if (isSingleInspector) {
+        activeStops = activeStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
+    }
+    
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
+
+    const showHandle = hasLock; 
+    const disableSelectAttr = (!PERMISSION_MODIFY || !hasLock) ? 'disabled' : '';
 
     if (isManagerView) {
         const header = document.createElement('div');
@@ -1891,7 +1911,7 @@ function render() {
 
         header.innerHTML = `
             <div class="col-num">
-                <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
+                <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)" ${!hasLock ? 'disabled' : ''}>
             </div>
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
@@ -1899,12 +1919,12 @@ function render() {
             <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
             <div class="col-app ${appSortClass}" ${appSortClick}>App ${appSortIcon}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
-            <div class="col-handle" style="visibility:${hasRouted ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
+            <div class="col-handle" style="visibility:${hasRouted && showHandle ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
         `;
         listContainer.appendChild(header);
     }
     
-    const processStop = (s, displayIndex, showHandle) => {
+    const processStop = (s, displayIndex, shouldShowHandle) => {
         const item = document.createElement('div');
         item.id = `item-${s.id}`;
         item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
@@ -1943,7 +1963,6 @@ function render() {
                     return `<option value="${insp.id}" style="color: ${color}; font-weight: bold;" ${String(s.driverId) === String(insp.id) ? 'selected' : ''}>${insp.name}</option>`;
                 }).join('');
                 const defaultPlaceholder = !s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : '';
-                const disableSelectAttr = !PERMISSION_MODIFY ? 'disabled' : '';
 
                 let currentInspColor = 'var(--text-main)';
                 if (s.driverId) {
@@ -1962,7 +1981,7 @@ function render() {
             }
 
             const style = getVisualStyle(s);
-            const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}" style="visibility:${showHandle ? 'visible' : 'hidden'};">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
+            const handleHtml = `<div class="col-handle ${shouldShowHandle ? 'handle' : ''}" style="visibility:${shouldShowHandle ? 'visible' : 'hidden'};">${shouldShowHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             let metaHtml = '';
             if (viewMode === 'managermobile') {
@@ -1990,6 +2009,8 @@ function render() {
             const distFmt = s.dist ? parseFloat(s.dist).toFixed(1) : "0.0";
             const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${distFmt} mi` : `${etaTime} | ${distFmt} mi`;
             
+            const checkmarkHtml = hasLock ? `<i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>` : '';
+
             item.innerHTML = `
                 <div class="stop-sidebar ${urgencyClass}">${displayIndex}</div>
                 <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
@@ -2000,13 +2021,14 @@ function render() {
                 </div>
                 <div class="due-date-container ${urgencyClass}">${dueFmt}</div>
                 <div class="stop-actions">
-                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>
+                    ${checkmarkHtml}
                     <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
                 </div>
             `;
         }
         
         item.onclick = (e) => {
+            if (!hasLock) return;
             if (!e.shiftKey) selectedIds.clear();
             selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
             updateSelectionUI(); focusPin(s.id);
@@ -2026,6 +2048,7 @@ function render() {
             }
             
             el.addEventListener('click', (e) => {
+                if (!hasLock) return;
                 e.stopPropagation();
                 if (!e.shiftKey) selectedIds.clear();
                 selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
@@ -2056,7 +2079,7 @@ function render() {
                 unroutedDiv.appendChild(el); 
             }
             
-            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted)); });
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted && showHandle)); });
         }
         
         if (routedStops.length > 0) {
@@ -2072,7 +2095,7 @@ function render() {
                     
                     routedDiv.appendChild(createRouteSubheading(clusterId, cStops)); 
                     
-                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
+                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, showHandle)); });
                 }
             });
         }
@@ -2158,7 +2181,11 @@ function render() {
 }
 
 function updateSummary() {
-    const active = stops.filter(s => isActiveStop(s) && s.status !== 'Completed');
+    let active = stops.filter(s => isActiveStop(s) && s.status !== 'Completed');
+    if (isManagerView && currentInspectorFilter !== 'all') {
+        active = active.filter(s => String(s.driverId) === String(currentInspectorFilter));
+    }
+    
     let totalMi = 0;
     let totalSecs = 0;
     
@@ -2171,8 +2198,11 @@ function updateSummary() {
     
     let totalHrs = active.length > 0 ? ((totalSecs + (active.length * COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
     
-    document.getElementById('sum-dist').innerText = `${totalMi.toFixed(1)} mi`;
-    document.getElementById('sum-time').innerText = `${totalHrs} hrs`;
+    const sumDist = document.getElementById('sum-dist');
+    if (sumDist) sumDist.innerText = `${totalMi.toFixed(1)} mi`;
+    
+    const sumTime = document.getElementById('sum-time');
+    if (sumTime) sumTime.innerText = `${totalHrs} hrs`;
     
     const totalOrders = active.length;
     let dueToday = 0;
@@ -2200,6 +2230,7 @@ function updateSummary() {
 }
 
 async function handleCalculate() {
+    if (!hasLock) return;
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
 
@@ -2295,6 +2326,7 @@ async function handleCalculate() {
 }
 
 async function toggleComplete(e, id) {
+    if (!hasLock) return;
     e.stopPropagation();
     pushToHistory();
     const idx = stops.findIndex(s => String(s.id) === String(id));
@@ -2318,6 +2350,7 @@ map.on('click', (e) => { if (e.originalEvent.target.classList.contains('mapboxgl
 const canvas = map.getCanvasContainer();
 
 canvas.addEventListener('mousedown', (e) => { 
+    if (!hasLock) return;
     if (e.target.closest('.mapboxgl-marker')) return; 
     if(e.shiftKey) { 
         map.dragPan.disable(); start_pos = mousePos(e); 
@@ -2366,17 +2399,20 @@ function updateSelectionUI() {
 
     const selectAllCb = document.getElementById('bulk-select-all');
     if (selectAllCb) {
-        const activeStops = stops.filter(s => isActiveStop(s));
-        selectAllCb.checked = (activeStops.length > 0 && selectedIds.size === activeStops.length);
+        let visibleStops = stops.filter(s => isActiveStop(s));
+        if (isManagerView && currentInspectorFilter !== 'all') {
+            visibleStops = visibleStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
+        }
+        selectAllCb.checked = (visibleStops.length > 0 && selectedIds.size === visibleStops.length);
     }
     
-    document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY && isManagerView) ? 'block' : 'none'; 
-    document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY) ? 'block' : 'none'; 
+    document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY && isManagerView && hasLock) ? 'block' : 'none'; 
+    document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY && hasLock) ? 'block' : 'none'; 
 
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`move-r${i}-btn`);
         if(btn) {
-            if(isManagerView && currentInspectorFilter !== 'all' && has && i <= currentRouteCount && currentRouteCount > 1) {
+            if(isManagerView && currentInspectorFilter !== 'all' && has && hasLock && i <= currentRouteCount && currentRouteCount > 1) {
                 let allInTargetRoute = true;
                 selectedIds.forEach(id => {
                     const s = stops.find(st => String(st.id) === String(id));
@@ -2407,7 +2443,11 @@ function drawRoute() {
     layerIds.forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
     if (map.getSource('route')) map.removeSource('route');
 
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    let activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    if (isManagerView && currentInspectorFilter !== 'all') {
+        activeStops = activeStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
+    }
+
     let routedStops = [];
     
     if (isManagerView) {
@@ -2526,7 +2566,7 @@ function initSortable() {
     sortableInstances = [];
     if (sortableUnrouted) { sortableUnrouted.destroy(); sortableUnrouted = null; }
 
-    if (!PERMISSION_MODIFY) return;
+    if (!PERMISSION_MODIFY || !hasLock) return;
 
     if (isManagerView && currentInspectorFilter !== 'all') {
         const unroutedEl = document.getElementById('unrouted-list');
