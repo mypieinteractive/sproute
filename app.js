@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.10
+// * Dashboard - V10.11
 // * FILE: app.js
-// * Changes: Added `isManager` boolean to the `loadData()` fetch query parameters so the backend can bypass lock filters for inspectors. Gated `startHeartbeat()` to strictly only run if `isManagerView` is true.
+// * Changes: Removed the `uploadError` catcher in loadData() as upload conflict UI is now natively handled by Glide wrapper visibility conditions.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -379,7 +379,7 @@ function handleInspectorFilterChange(val) {
     if (val !== 'all') liveClusterUpdate();
     
     updateRouteButtonColors();
-    render(); drawRoute(); updateSummary();
+    render(); drawRoute(); updateSummary(); initSortable();
 }
 
 function updateRouteButtonColors() {
@@ -548,13 +548,6 @@ async function loadData() {
     try {
         const res = await fetch(`${WEB_APP_URL}${queryParams}`);
         const data = await res.json();
-
-        if (data.uploadError) {
-            const overlay = document.getElementById('processing-overlay');
-            if (overlay) overlay.style.display = 'none';
-            customAlert(data.message || "Upload cancelled. Another admin is currently modifying this route.");
-            return;
-        }
         
         if (data.status === 'processing' || data.status === 'queued') {
             const overlay = document.getElementById('processing-overlay');
