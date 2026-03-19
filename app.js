@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.7
+// * Dashboard - V10.9
 // * FILE: app.js
-// * Changes: Added a `hasActiveRoutes` gate to `moveSelectedToRoute` and SortableJS handlers. Pre-routing staging now correctly locks pin colors without prematurely triggering the "Re-Optimize / Staging" UI.
+// * Changes: Removed View-Only UI restrictions in favor of an all-or-nothing backend visibility model. Added an `uploadError` catcher in loadData() to alert users of locked route rejections. Streamlined the heartbeat to ping based purely on the admin URL parameter.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -73,6 +73,21 @@ let pollRetries = 0;
 let isFirstMapRender = true;
 
 let latestSuggestions = { start: null, end: null };
+
+// --- LOCKING VARIABLES ---
+let heartbeatInterval = null;
+
+function startHeartbeat() {
+    clearInterval(heartbeatInterval);
+    if (!adminParam) return;
+    heartbeatInterval = setInterval(() => {
+        fetch(WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'heartbeat', adminId: adminParam })
+        }).catch(e => console.log('Heartbeat silent error'));
+    }, 180000);
+}
+// -------------------------
 
 function customAlert(msg) {
     return new Promise(resolve => {
@@ -364,7 +379,7 @@ function handleInspectorFilterChange(val) {
     if (val !== 'all') liveClusterUpdate();
     
     updateRouteButtonColors();
-    render(); drawRoute(); updateSummary();
+    render(); drawRoute(); updateSummary(); initSortable();
 }
 
 function updateRouteButtonColors() {
@@ -530,6 +545,14 @@ async function loadData() {
     try {
         const res = await fetch(`${WEB_APP_URL}${queryParams}`);
         const data = await res.json();
+
+        // Catcher for Upload Lock Rejections
+        if (data.uploadError) {
+            const overlay = document.getElementById('processing-overlay');
+            if (overlay) overlay.style.display = 'none';
+            customAlert(data.message || "Upload cancelled. Another admin is currently modifying this route.");
+            return;
+        }
         
         if (data.status === 'processing' || data.status === 'queued') {
             const overlay = document.getElementById('processing-overlay');
@@ -718,6 +741,9 @@ async function loadData() {
         }
 
         render(); drawRoute(); updateSummary(); initSortable();
+        
+        // Start heartbeat to keep the active admin session alive
+        startHeartbeat();
 
     } catch (e) { 
         console.error("Error loading data:", e); 
@@ -1278,8 +1304,6 @@ function moveSelectedToRoute(cIdx) {
         }
     });
     
-    // Physically move the modified items to the end of the stops array
-    // so they are rendered at the bottom of the target route list.
     stops = stops.filter(s => !selectedIds.has(s.id));
     stops.push(...movedStops);
     
@@ -1375,14 +1399,13 @@ async function handleGenerateRoute() {
                 let backendCluster = exp.cluster;
                 let mappedCluster = backendCluster;
 
-                // Safely map backend clusters back to the original clusters we sent
                 if (sentClusters.length > 0) {
                     if (sentClusters.includes(backendCluster)) {
-                        mappedCluster = backendCluster; // Backend preserved it
+                        mappedCluster = backendCluster; 
                     } else if (backendCluster < sentClusters.length) {
-                        mappedCluster = sentClusters[backendCluster]; // Backend compressed it
+                        mappedCluster = sentClusters[backendCluster]; 
                     } else if (sentClusters.length === 1) {
-                        mappedCluster = sentClusters[0]; // Fallback for single route
+                        mappedCluster = sentClusters[0]; 
                     }
                 }
 
