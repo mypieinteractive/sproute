@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.13
+// * Dashboard - V10.14
 // * FILE: app.js
-// * Changes: Updated loadData() to handle dynamic backend upload errors (conflict, size_limit) and integrated the 'clearAlert' POST payload which fires instantly after the user dismisses the custom alert modal. Verified existing 3-minute heartbeat functionality.
+// * Changes: Created toTitleCase() for addresses. Added Delete keyboard shortcut for bulk deletion. Hid "Unsaved Changes" badge for managers. Preserved hiddenInInspector state across data reloads. Streamlined empty header layout for managermobile. Removed dynamic CSS injection block (styles moved to styles.css).
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -14,7 +14,18 @@ function updateShiftCursor(isShiftDown) {
         }
     }
 }
-document.addEventListener('keydown', (e) => { if (e.key === 'Shift') updateShiftCursor(true); });
+
+document.addEventListener('keydown', (e) => { 
+    if (e.key === 'Shift') updateShiftCursor(true); 
+    
+    // Global Keyboard Delete Shortcut
+    if ((e.key === 'Delete' || e.key === 'Backspace') && isManagerView && selectedIds.size > 0 && hasLock) {
+        // Prevent deletion if user is typing in a search bar, email input, or select dropdown
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+        triggerBulkDelete();
+    }
+});
+
 document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCursor(false); });
 document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
 
@@ -47,6 +58,13 @@ function isRouteAssigned(status) {
     return s === 'routed' || s === 'completed' || s === 'dispatched';
 }
 
+function toTitleCase(str) {
+    if (!str) return '';
+    return str.toLowerCase().replace(/(?:^|\s|-)\w/g, function(match) {
+        return match.toUpperCase();
+    });
+}
+
 let COMPANY_SERVICE_DELAY = 0; 
 let PERMISSION_MODIFY = true;
 let PERMISSION_REOPTIMIZE = true;
@@ -77,6 +95,7 @@ let latestSuggestions = { start: null, end: null };
 
 // --- LOCKING VARIABLES ---
 let heartbeatInterval = null;
+let hasLock = true; 
 
 function startHeartbeat() {
     clearInterval(heartbeatInterval);
@@ -274,7 +293,7 @@ function expandStop(minStop) {
             expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1);
         }
         
-        expanded.address = String(t[2] || '');
+        expanded.address = toTitleCase(String(t[2] || ''));
         expanded.client = String(t[3] || '');
         expanded.app = String(t[4] || '');
         expanded.dueDate = String(t[5] || '');
@@ -550,16 +569,13 @@ async function loadData() {
         const res = await fetch(fetchUrl);
         const data = await res.json();
         
-        // Catch specific backend upload errors (Conflict or Size Limits)
         if (data.uploadError) {
             isPollingForUpload = false;
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'none';
             
-            // Present the alert and wait for the user to dismiss it
             await customAlert(data.message || "An upload error occurred.");
             
-            // Fire the clearAlert payload to release the lock once dismissed
             if (adminParam) {
                 fetch(WEB_APP_URL, {
                     method: 'POST',
@@ -603,13 +619,14 @@ async function loadData() {
             let fetchedMap = new Map();
             rawStops.forEach(s => {
                 let exp = expandStop(s);
+                let existingStop = stops.find(old => String(old.id) === String(exp.rowId || exp.id));
                 fetchedMap.set(String(exp.rowId || exp.id), {
                     ...exp,
                     id: exp.rowId || exp.id,
                     status: getStatusText(exp.status),
                     cluster: exp.cluster,
                     manualCluster: false,
-                    hiddenInInspector: false,
+                    hiddenInInspector: existingStop ? existingStop.hiddenInInspector : false,
                     routeState: exp.routeState || s.routeState || globalRouteState,
                     driverId: exp.driverId || s.driverId || globalDriverId,
                     routeTargetId: routeId || null
@@ -646,13 +663,14 @@ async function loadData() {
         } else {
             stops = rawStops.map(s => {
                 let exp = expandStop(s);
+                let existingStop = stops.find(old => String(old.id) === String(exp.rowId || exp.id));
                 return {
                     ...exp,
                     id: exp.rowId || exp.id,
                     status: getStatusText(exp.status),
                     cluster: exp.cluster,
                     manualCluster: false,
-                    hiddenInInspector: false,
+                    hiddenInInspector: existingStop ? existingStop.hiddenInInspector : false,
                     routeState: exp.routeState || s.routeState || globalRouteState,
                     driverId: exp.driverId || s.driverId || globalDriverId,
                     routeTargetId: routeId || null
@@ -733,6 +751,9 @@ async function loadData() {
                 }
                 if (sidebarLogo) sidebarLogo.style.display = 'block';
                 if (filterSelect) filterSelect.style.display = 'none';
+                
+                const filterWrapper = document.getElementById('inspector-dropdown-wrapper');
+                if (filterWrapper) filterWrapper.style.display = 'none';
             } else if (isManagerView && data.tier && data.tier.toLowerCase() !== 'individual') {
                 if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
                 if (sidebarLogo) sidebarLogo.style.display = 'none'; 
@@ -1114,9 +1135,9 @@ function handleOpenEmailModal() {
 
         overlaysToHide.forEach(el => el.style.display = '');
         
-        if (dirtyRoutes.size > 0) {
-            const b = document.getElementById('badge-changes-made');
-            if (b) b.style.display = 'flex';
+        const badgeChanges = document.getElementById('badge-changes-made');
+        if (dirtyRoutes.size > 0 && badgeChanges) {
+            badgeChanges.style.display = 'none'; // Ensure it stays hidden for manager views
         }
 
         const payload = {
@@ -1234,7 +1255,7 @@ function updateRoutingUI() {
     }
 
     if (badgeChanges) {
-        badgeChanges.style.display = (isDirty && hasActiveRoutesUI) ? 'flex' : 'none';
+        badgeChanges.style.display = (isDirty && hasActiveRoutesUI && !isManagerView) ? 'flex' : 'none';
     }
 
     if (isManagerView) {
