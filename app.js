@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.11
+// * Dashboard - V10.12
 // * FILE: app.js
-// * Changes: Removed the `uploadError` catcher in loadData() as upload conflict UI is now natively handled by Glide wrapper visibility conditions.
+// * Changes: Fixed the flashing overlay bug by introducing `isPollingForUpload` to prevent the `finally` block from hiding the overlay during a processing loop. Added a cache-busting timestamp (`_t`) to the fetch URL to prevent Google Apps Script from serving stale cached data during the 5-second polling loop.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -68,6 +68,7 @@ let historyStack = [];
 let isAlteredRoute = false;
 
 let isPollingForRoute = false;
+let isPollingForUpload = false;
 let pollRetries = 0;
 
 let isFirstMapRender = true;
@@ -536,7 +537,6 @@ async function loadData() {
         queryParams += (queryParams ? '&' : '?') + `admin=${adminParam}`;
     }
     
-    // Explicitly pass manager status so the backend knows whether to apply locks
     queryParams += (queryParams ? '&' : '?') + `isManager=${isManagerView}`;
 
     if (!queryParams) {
@@ -546,15 +546,20 @@ async function loadData() {
     }
 
     try {
-        const res = await fetch(`${WEB_APP_URL}${queryParams}`);
+        // Cache buster guarantees we pull fresh data every 5 seconds during an upload loop
+        let fetchUrl = `${WEB_APP_URL}${queryParams}&_t=${new Date().getTime()}`;
+        const res = await fetch(fetchUrl);
         const data = await res.json();
         
         if (data.status === 'processing' || data.status === 'queued') {
+            isPollingForUpload = true;
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'flex';
             setTimeout(loadData, 5000);
             return; 
         }
+
+        isPollingForUpload = false;
 
         if (data.routeId) {
             routeId = data.routeId;
@@ -743,7 +748,7 @@ async function loadData() {
         console.error("Error loading data:", e); 
     } finally {
         const overlay = document.getElementById('processing-overlay');
-        if (overlay && !isPollingForRoute) overlay.style.display = 'none';
+        if (overlay && !isPollingForRoute && !isPollingForUpload) overlay.style.display = 'none';
         updateUndoUI();
     }
 }
