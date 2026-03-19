@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.12
+// * Dashboard - V10.13
 // * FILE: app.js
-// * Changes: Fixed the flashing overlay bug by introducing `isPollingForUpload` to prevent the `finally` block from hiding the overlay during a processing loop. Added a cache-busting timestamp (`_t`) to the fetch URL to prevent Google Apps Script from serving stale cached data during the 5-second polling loop.
+// * Changes: Updated loadData() to handle dynamic backend upload errors (conflict, size_limit) and integrated the 'clearAlert' POST payload which fires instantly after the user dismisses the custom alert modal. Verified existing 3-minute heartbeat functionality.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -546,10 +546,28 @@ async function loadData() {
     }
 
     try {
-        // Cache buster guarantees we pull fresh data every 5 seconds during an upload loop
         let fetchUrl = `${WEB_APP_URL}${queryParams}&_t=${new Date().getTime()}`;
         const res = await fetch(fetchUrl);
         const data = await res.json();
+        
+        // Catch specific backend upload errors (Conflict or Size Limits)
+        if (data.uploadError) {
+            isPollingForUpload = false;
+            const overlay = document.getElementById('processing-overlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            // Present the alert and wait for the user to dismiss it
+            await customAlert(data.message || "An upload error occurred.");
+            
+            // Fire the clearAlert payload to release the lock once dismissed
+            if (adminParam) {
+                fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'clearAlert', adminId: adminParam })
+                }).catch(e => console.log('Clear alert silent error', e));
+            }
+            return;
+        }
         
         if (data.status === 'processing' || data.status === 'queued') {
             isPollingForUpload = true;
