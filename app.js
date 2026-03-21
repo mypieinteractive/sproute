@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.14
+// * Dashboard - V10.15
 // * FILE: app.js
-// * Changes: Updated the active lock alert text per user request. Added the `confirmHijack` interceptor in loadData() to prompt the user with an OK/Cancel confirm dialog when trying to upload over a lock that is > 5 minutes old. Added 'executeHijack' and 'cancelHijack' POST commands.
+// * Changes: Converted the company address Mapbox geocoding call inside loadData() to use async/await. This ensures the function pauses and waits for the map to jump to the company address before dropping the processing overlay on initial load.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -550,7 +550,6 @@ async function loadData() {
         const res = await fetch(fetchUrl);
         const data = await res.json();
         
-        // 1. Catcher for Expired Locks (OK/Cancel Interceptor)
         if (data.confirmHijack) {
             isPollingForUpload = false;
             const overlay = document.getElementById('processing-overlay');
@@ -558,7 +557,7 @@ async function loadData() {
             
             const proceed = await customConfirm(data.message || "The previous admin's session has expired. Do you want to take over and overwrite this Inspector's route?");
             
-            if (overlay) overlay.style.display = 'flex'; // Turn overlay back on while backend processes decision
+            if (overlay) overlay.style.display = 'flex'; 
             
             if (proceed) {
                 await fetch(WEB_APP_URL, {
@@ -572,11 +571,10 @@ async function loadData() {
                 }).catch(e => console.log('Hijack cancel failed:', e));
             }
             
-            setTimeout(loadData, 2000); // Reload board after decision
+            setTimeout(loadData, 2000); 
             return;
         }
 
-        // 2. Catcher for Active Locks (< 5 Mins) or Size Limits
         if (data.uploadError) {
             isPollingForUpload = false;
             const overlay = document.getElementById('processing-overlay');
@@ -593,7 +591,6 @@ async function loadData() {
             return;
         }
         
-        // 3. Catcher for Active CSV Processing
         if (data.status === 'processing' || data.status === 'queued') {
             isPollingForUpload = true;
             const overlay = document.getElementById('processing-overlay');
@@ -775,11 +772,15 @@ async function loadData() {
             let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
             if (!hasValidStops && data.companyAddress) {
                 const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.companyAddress)}.json?access_token=${MAPBOX_TOKEN}`;
-                fetch(geoUrl).then(r => r.json()).then(geo => {
+                try {
+                    const geoRes = await fetch(geoUrl);
+                    const geo = await geoRes.json();
                     if (geo.features && geo.features.length > 0) {
                         map.jumpTo({ center: geo.features[0].center, zoom: 11 });
                     }
-                }).catch(err => console.error("Geocoding failed for company address.", err));
+                } catch (err) {
+                    console.error("Geocoding failed for company address.", err);
+                }
             }
         }
 
