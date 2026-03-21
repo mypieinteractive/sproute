@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.16
+// * Dashboard - V10.17
 // * FILE: app.js
-// * Changes: Added a "cooldown" fetch block inside loadData(). When transitioning out of an active upload polling state, the front end will pause for 2 seconds and execute one final fetch before dropping the overlay. This prevents the dashboard from rendering empty data due to Google Sheets' eventual consistency delays.
+// * Changes: Implemented `currentRouteViewFilter` to toggle visibility between 'all', 0, 1, and 2. Automatically replaces `#routing-controls` with `#route-view-toggles` when multiple routes exist. Filtering logic added to `render()`, `drawRoute()`, `updateSummary()`, and `toggleSelectAll()`. Header buttons now dynamically check if the currently viewed route is in a dirty state.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -71,6 +71,8 @@ let isPollingForRoute = false;
 let isPollingForUpload = false;
 let pollRetries = 0;
 
+let currentRouteViewFilter = 'all';
+
 let isFirstMapRender = true;
 
 let latestSuggestions = { start: null, end: null };
@@ -89,6 +91,30 @@ function startHeartbeat() {
     }, 180000);
 }
 // -------------------------
+
+window.setRouteViewFilter = function(val) {
+    currentRouteViewFilter = val;
+    document.getElementById('view-rall-btn').classList.toggle('active', val === 'all');
+    document.getElementById('view-r0-btn').classList.toggle('active', val === 0);
+    document.getElementById('view-r1-btn').classList.toggle('active', val === 1);
+    document.getElementById('view-r2-btn').classList.toggle('active', val === 2);
+    
+    // Deselect any selected orders that are no longer visible
+    if (val !== 'all') {
+        const hiddenIds = [];
+        selectedIds.forEach(id => {
+            const s = stops.find(st => String(st.id) === String(id));
+            if (s && isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster !== val) {
+                hiddenIds.push(id);
+            }
+        });
+        hiddenIds.forEach(id => selectedIds.delete(id));
+    }
+
+    render();
+    drawRoute();
+    updateSummary();
+};
 
 function customAlert(msg) {
     return new Promise(resolve => {
@@ -367,6 +393,12 @@ function handleInspectorFilterChange(val) {
     document.body.classList.toggle('manager-single-inspector', val !== 'all');
     selectedIds.clear();
     
+    currentRouteViewFilter = 'all';
+    document.getElementById('view-rall-btn').classList.add('active');
+    document.getElementById('view-r0-btn').classList.remove('active');
+    document.getElementById('view-r1-btn').classList.remove('active');
+    document.getElementById('view-r2-btn').classList.remove('active');
+    
     const filterSelect = document.getElementById('inspector-filter');
     if (filterSelect) {
         if (val === 'all') {
@@ -599,14 +631,11 @@ async function loadData() {
             return; 
         }
 
-        // --- Eventual Consistency Cooldown ---
         if (isPollingForUpload) {
-            // Backend has finished, but give Google Sheets API 2s to catch up before grabbing data
             isPollingForUpload = false;
             setTimeout(loadData, 2000);
             return;
         }
-        // -------------------------------------
 
         isPollingForUpload = false;
 
@@ -1024,6 +1053,11 @@ function getActiveEndpoints() {
 }
 
 function handleOpenEmailModal() {
+    // Reset view to 'all' prior to screenshot to ensure all routes are captured
+    if (currentRouteViewFilter !== 'all') {
+        setRouteViewFilter('all');
+    }
+
     const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
     if (!insp) return;
 
@@ -1228,6 +1262,8 @@ function updateRoutingUI() {
 
     if (isManagerView && currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
+        const routeToggles = document.getElementById('route-view-toggles');
+        if(routeToggles) routeToggles.style.display = 'none';
         if (badgeChanges) badgeChanges.style.display = 'none';
         
         let showHint = false;
@@ -1268,8 +1304,43 @@ function updateRoutingUI() {
         currentState = dirtyRoutes.has('endpoints_0') ? 'Staging-endpoint' : 'Staging';
     }
 
+    // Determine how many active routes exist to toggle the new views
+    let maxCluster = -1;
+    activeInspStops.forEach(s => {
+        if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) {
+            maxCluster = s.cluster;
+        }
+    });
+
+    const togglesEl = document.getElementById('route-view-toggles');
+    if (isManagerView && currentInspectorFilter !== 'all' && maxCluster > 0) {
+        togglesEl.style.display = 'flex';
+        document.getElementById('view-r1-btn').style.display = maxCluster >= 1 ? 'block' : 'none';
+        document.getElementById('view-r2-btn').style.display = maxCluster >= 2 ? 'block' : 'none';
+    } else {
+        if(togglesEl) togglesEl.style.display = 'none';
+        if (currentRouteViewFilter !== 'all') {
+            currentRouteViewFilter = 'all';
+            document.getElementById('view-rall-btn').classList.add('active');
+            for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`).classList.remove('active');
+        }
+    }
+
+    // Determine if the *currently viewed* route is dirty
+    let isCurrentViewDirty = false;
+    if (isDirty) {
+        if (currentRouteViewFilter === 'all') {
+            isCurrentViewDirty = true;
+        } else {
+            let rKey = `${currentInspectorFilter}_${currentRouteViewFilter}`;
+            if (dirtyRoutes.has(rKey) || dirtyRoutes.has('endpoints_0') || dirtyRoutes.has('all')) {
+                isCurrentViewDirty = true;
+            }
+        }
+    }
+
     if (badgeChanges) {
-        badgeChanges.style.display = (isDirty && hasActiveRoutesUI) ? 'flex' : 'none';
+        badgeChanges.style.display = (isCurrentViewDirty && hasActiveRoutesUI) ? 'flex' : 'none';
     }
 
     if (isManagerView) {
@@ -1282,13 +1353,17 @@ function updateRoutingUI() {
         } else if (currentState === 'Queued') {
             // Processing
         } else if (currentState === 'Ready') {
-            if (btnSend && !isDirty) btnSend.style.display = 'flex';
+            if (btnSend && !isCurrentViewDirty) btnSend.style.display = 'flex';
         } else if (currentState === 'Staging') {
-            if (btnRecalc) btnRecalc.style.display = 'flex';
-            if (optInspBtn) optInspBtn.style.display = 'flex';
+            if (isCurrentViewDirty) {
+                if (btnRecalc) btnRecalc.style.display = 'flex';
+                if (optInspBtn) optInspBtn.style.display = 'flex';
+            }
         } else if (currentState === 'Staging-endpoint') {
-            if (btnRecalc) btnRecalc.style.display = 'flex';
-            if (optInspBtn) optInspBtn.style.display = 'flex';
+            if (isCurrentViewDirty) {
+                if (btnRecalc) btnRecalc.style.display = 'flex';
+                if (optInspBtn) optInspBtn.style.display = 'flex';
+            }
         }
 
         if (routingControls) {
@@ -1631,7 +1706,14 @@ function updateMarkerColors() {
 window.toggleSelectAll = function(cb) {
     selectedIds.clear();
     if (cb.checked) {
-        stops.filter(s => isActiveStop(s)).forEach(s => selectedIds.add(s.id));
+        stops.filter(s => {
+            if (!isActiveStop(s)) return false;
+            // Respect the current view filter so we don't accidentally select hidden orders
+            if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
+                if (s.cluster !== currentRouteViewFilter) return false;
+            }
+            return true;
+        }).forEach(s => selectedIds.add(s.id));
     }
     updateSelectionUI();
 };
@@ -1884,7 +1966,15 @@ function render() {
     const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
     
-    const activeStops = stops.filter(s => isActiveStop(s));
+    // Core visibility filter: hides orders that aren't part of the toggled route
+    const activeStops = stops.filter(s => {
+        if (!isActiveStop(s)) return false;
+        if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
+            if (s.cluster !== currentRouteViewFilter) return false;
+        }
+        return true;
+    });
+
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
 
     if (isManagerView) {
@@ -2172,7 +2262,14 @@ function render() {
 }
 
 function updateSummary() {
-    const active = stops.filter(s => isActiveStop(s) && s.status !== 'Completed');
+    const active = stops.filter(s => {
+        if (!isActiveStop(s) || s.status === 'Completed') return false;
+        if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
+            if (s.cluster !== currentRouteViewFilter) return false;
+        }
+        return true;
+    });
+
     let totalMi = 0;
     let totalSecs = 0;
     
@@ -2380,7 +2477,13 @@ function updateSelectionUI() {
 
     const selectAllCb = document.getElementById('bulk-select-all');
     if (selectAllCb) {
-        const activeStops = stops.filter(s => isActiveStop(s));
+        const activeStops = stops.filter(s => {
+            if (!isActiveStop(s)) return false;
+            if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
+                if (s.cluster !== currentRouteViewFilter) return false;
+            }
+            return true;
+        });
         selectAllCb.checked = (activeStops.length > 0 && selectedIds.size === activeStops.length);
     }
     
@@ -2421,9 +2524,15 @@ function drawRoute() {
     layerIds.forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
     if (map.getSource('route')) map.removeSource('route');
 
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    const activeStops = stops.filter(s => {
+        if (!isActiveStop(s) || !s.lng || !s.lat) return false;
+        if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
+            if (s.cluster !== currentRouteViewFilter) return false;
+        }
+        return true;
+    });
+
     let routedStops = [];
-    
     if (isManagerView) {
         routedStops = activeStops.filter(s => isRouteAssigned(s.status));
     } else {
