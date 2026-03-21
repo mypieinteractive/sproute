@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.21
+// * Dashboard - V10.22
 // * FILE: app.js
-// * Changes: Upgraded the Eventual Consistency Snapshot logic to use `sessionStorage`. Because Glide forces an iframe refresh on upload, standard JavaScript variables are wiped. Storing the `sproute_snapshot` in sessionStorage ensures the pre-upload data state survives the page reload so the checksum validation can properly hold the processing overlay until the Google Sheets read replica updates.
+// * Changes: Added `sessionStorage` for `currentInspectorFilter` so the dashboard remembers the active inspector view across iframe refreshes and CSV uploads. Created a dynamic `updateHeaderUI()` function inside `render()` to automatically hide the Inspector Dropdown and reinstate the "Upload a CSV" header the moment all orders are deleted from the board. 
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -53,7 +53,9 @@ let PERMISSION_REOPTIMIZE = true;
 let sortableInstances = [];
 let sortableUnrouted = null;
 let currentRouteCount = 1; 
-let currentInspectorFilter = 'all';
+
+// Retrieve the last active inspector view, default to 'all'
+let currentInspectorFilter = sessionStorage.getItem('sproute_inspector_filter') || 'all';
 
 let defaultEmailMessage = "";
 let companyEmail = "";
@@ -351,19 +353,50 @@ function sortByEta(a, b) {
     return timeToMins(a.eta) - timeToMins(b.eta);
 }
 
+function updateHeaderUI() {
+    if (!isManagerView) return;
+    const validActiveStops = stops.filter(s => isActiveStop(s));
+    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
+    const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
+    const sidebarLogo = document.getElementById('brand-logo-sidebar');
+    const isCompanyTier = document.body.classList.contains('tier-company');
+
+    if (validActiveStops.length === 0) {
+        if (sidebarDriverEl) {
+            sidebarDriverEl.innerText = "Upload a CSV to begin";
+            sidebarDriverEl.style.display = 'block';
+        }
+        if (sidebarLogo) sidebarLogo.style.display = 'block';
+        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
+    } else if (isCompanyTier) {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
+        if (sidebarLogo) sidebarLogo.style.display = 'none'; 
+        if (filterSelectWrap) filterSelectWrap.style.display = 'block';
+    } else {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
+        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
+    }
+}
+
 function updateInspectorDropdown() {
     const filterSelect = document.getElementById('inspector-filter');
-    if (!filterSelect || !isManagerView || inspectors.length === 0) return;
+    if (!filterSelect || !isManagerView) return;
 
     const validInspectorIds = new Set();
     stops.forEach(s => {
-        const status = (s.status || '').toLowerCase();
-        if (status !== 'cancelled' && status !== 'deleted' && s.driverId) {
+        if (isActiveStop(s) && s.driverId) {
             validInspectorIds.add(String(s.driverId));
         }
     });
 
-    const currentVal = filterSelect.value || 'all';
+    // If the currently selected inspector no longer has orders, revert to 'all'
+    if (currentInspectorFilter !== 'all' && !validInspectorIds.has(String(currentInspectorFilter))) {
+        currentInspectorFilter = 'all';
+        sessionStorage.setItem('sproute_inspector_filter', 'all');
+        document.body.classList.add('manager-all-inspectors');
+        document.body.classList.remove('manager-single-inspector');
+    }
+
     let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
     inspectors.forEach((i, idx) => { 
@@ -374,22 +407,19 @@ function updateInspectorDropdown() {
     });
     
     filterSelect.innerHTML = filterHtml;
-    if (currentVal !== 'all' && !validInspectorIds.has(String(currentVal))) {
-        filterSelect.value = 'all';
-        handleInspectorFilterChange('all');
+    filterSelect.value = currentInspectorFilter;
+    
+    if (currentInspectorFilter !== 'all') {
+        const inspIdx = inspectors.findIndex(i => String(i.id) === String(currentInspectorFilter));
+        if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
     } else {
-        filterSelect.value = currentVal;
-        if (currentVal !== 'all') {
-            const inspIdx = inspectors.findIndex(i => String(i.id) === String(currentVal));
-            if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
-        } else {
-            filterSelect.style.color = 'var(--text-main)';
-        }
+        filterSelect.style.color = 'var(--text-main)';
     }
 }
 
 function handleInspectorFilterChange(val) {
     currentInspectorFilter = val;
+    sessionStorage.setItem('sproute_inspector_filter', val);
     document.body.classList.toggle('manager-all-inspectors', val === 'all');
     document.body.classList.toggle('manager-single-inspector', val !== 'all');
     selectedIds.clear();
@@ -400,16 +430,8 @@ function handleInspectorFilterChange(val) {
     document.getElementById('view-r1-btn').classList.remove('active');
     document.getElementById('view-r2-btn').classList.remove('active');
     
-    const filterSelect = document.getElementById('inspector-filter');
-    if (filterSelect) {
-        if (val === 'all') {
-            filterSelect.style.color = 'var(--text-main)';
-        } else {
-            const inspIdx = inspectors.findIndex(i => String(i.id) === String(val));
-            if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
-        }
-    }
-
+    updateInspectorDropdown();
+    
     if (val !== 'all') liveClusterUpdate();
     
     updateRouteButtonColors();
@@ -769,6 +791,9 @@ async function loadData() {
         
         historyStack = [];
 
+        document.body.classList.toggle('manager-all-inspectors', currentInspectorFilter === 'all');
+        document.body.classList.toggle('manager-single-inspector', currentInspectorFilter !== 'all');
+
         if (!Array.isArray(data)) {
             if (data.defaultEmailMessage) defaultEmailMessage = data.defaultEmailMessage;
             if (data.companyEmail) companyEmail = data.companyEmail;
@@ -802,27 +827,11 @@ async function loadData() {
             if (mapDriverEl) mapDriverEl.innerText = displayName;
             
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
-            const filterSelect = document.getElementById('inspector-dropdown-wrapper');
-
-            if (stops.length === 0 && isManagerView) {
-                if (sidebarDriverEl) {
-                    sidebarDriverEl.innerText = "Upload a CSV to begin";
-                    sidebarDriverEl.style.display = 'block';
-                }
-                if (sidebarLogo) sidebarLogo.style.display = 'block';
-                if (filterSelect) filterSelect.style.display = 'none';
-            } else if (isManagerView && data.tier && data.tier.toLowerCase() !== 'individual') {
-                if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
-                if (sidebarLogo) sidebarLogo.style.display = 'none'; 
-                if (filterSelect) filterSelect.style.display = 'block';
-                updateInspectorDropdown(); 
-            } else {
-                if (sidebarDriverEl) {
-                    sidebarDriverEl.innerText = displayName;
-                    sidebarDriverEl.style.display = 'block';
-                }
+            if (sidebarDriverEl && (!data.tier || data.tier.toLowerCase() !== 'company')) {
+                sidebarDriverEl.innerText = displayName;
             }
-            
+
+            updateInspectorDropdown(); 
             updateRouteButtonColors();
             
             let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
@@ -1758,7 +1767,6 @@ async function triggerBulkDelete() {
         stops = stops.filter(s => !selectedIds.has(s.id));
         
         selectedIds.clear(); 
-        updateInspectorDropdown(); 
         
         reorderStopsFromDOM();
         render(); drawRoute(); updateSummary(); updateRouteTimes();
@@ -1967,8 +1975,35 @@ function createEndpointRow(type, endpointData) {
     return el;
 }
 
+function updateHeaderUI() {
+    if (!isManagerView) return;
+    const validActiveStops = stops.filter(s => isActiveStop(s));
+    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
+    const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
+    const sidebarLogo = document.getElementById('brand-logo-sidebar');
+    const isCompanyTier = document.body.classList.contains('tier-company');
+
+    if (validActiveStops.length === 0) {
+        if (sidebarDriverEl) {
+            sidebarDriverEl.innerText = "Upload a CSV to begin";
+            sidebarDriverEl.style.display = 'block';
+        }
+        if (sidebarLogo) sidebarLogo.style.display = 'block';
+        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
+    } else if (isCompanyTier) {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
+        if (sidebarLogo) sidebarLogo.style.display = 'none'; 
+        if (filterSelectWrap) filterSelectWrap.style.display = 'block';
+    } else {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
+        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
+    }
+}
+
 function render() {
+    updateHeaderUI();
     updateRoutingUI();
+    
     const listContainer = document.getElementById('stop-list');
     listContainer.innerHTML = ''; 
     markers.forEach(m => m.remove()); 
