@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.17
+// * Dashboard - V10.21
 // * FILE: app.js
-// * Changes: Implemented `currentRouteViewFilter` to toggle visibility between 'all', 0, 1, and 2. Automatically replaces `#routing-controls` with `#route-view-toggles` when multiple routes exist. Filtering logic added to `render()`, `drawRoute()`, `updateSummary()`, and `toggleSelectAll()`. Header buttons now dynamically check if the currently viewed route is in a dirty state.
+// * Changes: Upgraded the Eventual Consistency Snapshot logic to use `sessionStorage`. Because Glide forces an iframe refresh on upload, standard JavaScript variables are wiped. Storing the `sproute_snapshot` in sessionStorage ensures the pre-upload data state survives the page reload so the checksum validation can properly hold the processing overlay until the Google Sheets read replica updates.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -71,6 +71,8 @@ let isPollingForRoute = false;
 let isPollingForUpload = false;
 let pollRetries = 0;
 
+let uploadStaleRetries = 0;
+
 let currentRouteViewFilter = 'all';
 
 let isFirstMapRender = true;
@@ -99,7 +101,6 @@ window.setRouteViewFilter = function(val) {
     document.getElementById('view-r1-btn').classList.toggle('active', val === 1);
     document.getElementById('view-r2-btn').classList.toggle('active', val === 2);
     
-    // Deselect any selected orders that are no longer visible
     if (val !== 'all') {
         const hiddenIds = [];
         selectedIds.forEach(id => {
@@ -625,19 +626,37 @@ async function loadData() {
         
         if (data.status === 'processing' || data.status === 'queued') {
             isPollingForUpload = true;
+            uploadStaleRetries = 0; 
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'flex';
             setTimeout(loadData, 5000);
             return; 
         }
 
-        if (isPollingForUpload) {
-            isPollingForUpload = false;
-            setTimeout(loadData, 2000);
-            return;
-        }
+        // Prepare raw JSON payload for snapshot comparison
+        let rawStops = Array.isArray(data) ? data : (data.stops || []);
+        let currentSnapshot = JSON.stringify(rawStops);
 
-        isPollingForUpload = false;
+        // Retrieve pre-upload snapshot from persistent sessionStorage
+        let preUploadSnapshot = sessionStorage.getItem('sproute_snapshot');
+
+        // --- Eventual Consistency Snapshot Check ---
+        if (isPollingForUpload) {
+            if (preUploadSnapshot && (currentSnapshot === preUploadSnapshot || rawStops.length === 0) && uploadStaleRetries < 5) {
+                uploadStaleRetries++;
+                setTimeout(loadData, 2000);
+                return; 
+            }
+            
+            isPollingForUpload = false;
+            uploadStaleRetries = 0;
+        }
+        
+        // Always record the verified state into sessionStorage for the *next* upload
+        if (!isPollingForUpload && !data.uploadError && !data.confirmHijack) {
+            sessionStorage.setItem('sproute_snapshot', currentSnapshot);
+        }
+        // ------------------------------------------
 
         if (data.routeId) {
             routeId = data.routeId;
@@ -653,7 +672,6 @@ async function loadData() {
         
         if (data.isAlteredRoute) isAlteredRoute = true;
 
-        let rawStops = Array.isArray(data) ? data : (data.stops || []);
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
 
@@ -1053,7 +1071,6 @@ function getActiveEndpoints() {
 }
 
 function handleOpenEmailModal() {
-    // Reset view to 'all' prior to screenshot to ensure all routes are captured
     if (currentRouteViewFilter !== 'all') {
         setRouteViewFilter('all');
     }
@@ -1304,7 +1321,6 @@ function updateRoutingUI() {
         currentState = dirtyRoutes.has('endpoints_0') ? 'Staging-endpoint' : 'Staging';
     }
 
-    // Determine how many active routes exist to toggle the new views
     let maxCluster = -1;
     activeInspStops.forEach(s => {
         if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) {
@@ -1326,7 +1342,6 @@ function updateRoutingUI() {
         }
     }
 
-    // Determine if the *currently viewed* route is dirty
     let isCurrentViewDirty = false;
     if (isDirty) {
         if (currentRouteViewFilter === 'all') {
@@ -1899,7 +1914,7 @@ function createRouteSubheading(clusterNum, clusterStops) {
     clusterStops.forEach(s => {
         const distVal = parseFloat(s.dist || 0);
         if (!isNaN(distVal)) totalMi += distVal;
-        
+
         totalSecs += parseFloat(s.durationSecs || 0);
 
         if(s.dueDate) {
