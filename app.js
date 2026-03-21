@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.15
+// * Dashboard - V10.16
 // * FILE: app.js
-// * Changes: Converted the company address Mapbox geocoding call inside loadData() to use async/await. This ensures the function pauses and waits for the map to jump to the company address before dropping the processing overlay on initial load.
+// * Changes: Added a "cooldown" fetch block inside loadData(). When transitioning out of an active upload polling state, the front end will pause for 2 seconds and execute one final fetch before dropping the overlay. This prevents the dashboard from rendering empty data due to Google Sheets' eventual consistency delays.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -598,6 +598,15 @@ async function loadData() {
             setTimeout(loadData, 5000);
             return; 
         }
+
+        // --- Eventual Consistency Cooldown ---
+        if (isPollingForUpload) {
+            // Backend has finished, but give Google Sheets API 2s to catch up before grabbing data
+            isPollingForUpload = false;
+            setTimeout(loadData, 2000);
+            return;
+        }
+        // -------------------------------------
 
         isPollingForUpload = false;
 
