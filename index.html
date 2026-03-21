@@ -15,7 +15,13 @@
 </head>
 <body class="view-inspector manager-all-inspectors">
 
-<div id="processing-overlay">Processing...</div>
+<div id="processing-overlay" style="display: none;">
+    <div class="spinner-container">
+        <div class="loader"></div>
+        <div class="loading-text">Processing...</div>
+        <div class="loading-subtext">Syncing data with the server</div>
+    </div>
+</div>
 
 <div id="map-wrapper">
     <div id="badge-changes-made" style="display:none;">Unsaved Changes</div>
