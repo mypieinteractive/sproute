@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.24
+// * Dashboard - V10.25
 // * FILE: app.js
-// * Changes: Removed backend dependency for the "Processing" overlay. The dashboard now tracks `window.location.search` to detect when Glide forces an upload refresh. If a refresh is detected, it compares incoming data to the `sessionStorage` snapshot and holds the processing overlay until the data changes (capped at a 15-second safety timeout to prevent infinite loops).
+// * Changes: Patched a bug in the `loadData()` execution where the `finally` block was prematurely hiding the processing overlay during the frontend upload validation loop. The `finally` block now explicitly respects the `isFreshGlideRefresh` flag, ensuring the overlay stays firmly on screen until the new data completely finishes populating. Added a safety release in the catch block to prevent infinite loading spinners on network errors.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -115,7 +115,10 @@ let historyStack = [];
 let isAlteredRoute = false;
 
 let isPollingForRoute = false;
+let isPollingForUpload = false;
 let pollRetries = 0;
+
+let uploadStaleRetries = 0;
 
 let currentRouteViewFilter = 'all';
 
@@ -641,6 +644,7 @@ async function loadData() {
         if (data.confirmHijack) {
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'none';
+            isFreshGlideRefresh = false;
             
             const proceed = await customConfirm(data.message || "The previous admin's session has expired. Do you want to take over and overwrite this Inspector's route?");
             
@@ -665,6 +669,7 @@ async function loadData() {
         if (data.uploadError) {
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'none';
+            isFreshGlideRefresh = false;
             
             await customAlert(data.message || "Upload cancelled. Another admin is currently modifying this Inspector's route.");
             
@@ -684,7 +689,7 @@ async function loadData() {
 
         // --- Front-End Only Upload Detection ---
         // If Glide forced a refresh, wait until the incoming data differs from the old snapshot
-        if (isFreshGlideRefresh && preUploadSnapshot && currentSnapshot === preUploadSnapshot && pageLoadRetries < MAX_RETRIES) {
+        if (isFreshGlideRefresh && preUploadSnapshot && (currentSnapshot === preUploadSnapshot || rawStops.length === 0) && pageLoadRetries < MAX_RETRIES) {
             pageLoadRetries++;
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'flex';
@@ -875,9 +880,13 @@ async function loadData() {
 
     } catch (e) { 
         console.error("Error loading data:", e); 
+        isFreshGlideRefresh = false; // Safety release on error
     } finally {
         const overlay = document.getElementById('processing-overlay');
-        if (overlay && !isPollingForRoute) overlay.style.display = 'none';
+        // Prevent the finally block from dropping the overlay if we are actively looping/polling
+        if (overlay && !isPollingForRoute && !isFreshGlideRefresh) {
+            overlay.style.display = 'none';
+        }
         updateUndoUI();
     }
 }
