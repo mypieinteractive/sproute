@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V10.0 */
+/* * Dashboard - V10.1 */
 /* * FILE: styles.css */
-/* * Changes: Hidden summary bar for Inspector view. Created .hidden-unrouted utility class. Shifted map overlay buttons to bottom-right for Inspector/ManagerMobile. Added SortableJS long-press visual feedback classes. */
+/* * Changes: Replaced old processing overlay styling with new frosted-glass backdrop, dual-ring spinner animations, and pulsing text logic. */
 /* * */
 
 :root { 
@@ -327,8 +327,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .modal-box { background: var(--bg-panel); color: var(--text-main); padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid var(--border-color); }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
-#processing-overlay { display: flex; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center; color: white; font-size: 22px; font-weight: bold; letter-spacing: 1px; }
-
 /* Custom Light Grey Checkbox */
 .grey-checkbox {
     appearance: none;
@@ -356,3 +354,69 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .static-endpoint.compact { background: var(--bg-panel); min-height: 45px; }
 .static-endpoint.compact .endpoint-input { background: transparent; border: 1px dashed var(--border-color); padding: 6px; }
 .static-endpoint.compact .endpoint-input:focus { background: var(--bg-base); border-style: solid; }
+
+/* --- PROCESSING OVERLAY --- */
+#processing-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.75); /* Dark slate with opacity */
+    backdrop-filter: blur(6px); /* Modern frosted glass effect */
+    -webkit-backdrop-filter: blur(6px);
+    display: none; /* Handled by app.js (flex) */
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 99999; /* Ensures it sits above everything, including Mapbox */
+}
+
+.spinner-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: var(--bg-panel, #1E293B);
+    padding: 40px 60px;
+    border-radius: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0px 15px rgba(59, 130, 246, 0.1);
+    border: 1px solid var(--border-color, #334155);
+}
+
+/* Smooth Dual-Ring Spinner */
+.loader {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 4px solid rgba(59, 130, 246, 0.1); /* Faint blue track */
+    border-top-color: var(--blue, #3B82F6); /* Vibrant blue spinner */
+    border-bottom-color: var(--blue, #3B82F6);
+    animation: spin 1.2s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
+    margin-bottom: 24px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: #F8FAFC;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: sans-serif;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    animation: pulse-text 2s infinite ease-in-out;
+}
+
+.loading-subtext {
+    color: #94A3B8;
+    font-size: 13px;
+    font-family: sans-serif;
+}
+
+@keyframes pulse-text {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
