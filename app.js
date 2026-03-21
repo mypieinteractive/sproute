@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.30
+// * Dashboard - V10.31
 // * FILE: app.js
-// * Changes: Centralized list/map filtering logic into a master `isStopVisible()` helper function. This fixes the bug where single-inspector manager views were displaying the entire company's active orders. Additionally, the route view toggle buttons ("All Routes", "Route 1", etc.) are now enabled for the standard Inspector view.
+// * Changes: Updated `isStopVisible()` to strictly hide unrouted orders (Pending) from the Inspector view across the map, list, and summary bar. Added `cooperativeGestures: true` to the Mapbox initialization config for mobile-styled views to require two fingers for panning/zooming, preventing accidental scrolling.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -151,7 +151,12 @@ function isStopVisible(s, applyRouteFilter = true) {
         if (String(s.driverId) !== String(currentInspectorFilter)) return false;
     }
 
-    // 3. Is it part of the currently toggled Route tab?
+    // 3. Hide unrouted orders entirely in the Inspector View
+    if (!isManagerView && !isRouteAssigned(s.status)) {
+        return false;
+    }
+
+    // 4. Is it part of the currently toggled Route tab?
     if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
         if (s.cluster !== currentRouteViewFilter) return false;
     }
@@ -318,7 +323,9 @@ const mapConfig = {
     zoom: 11, 
     attributionControl: false,
     boxZoom: false,
-    preserveDrawingBuffer: true 
+    preserveDrawingBuffer: true,
+    // Requires two-finger pan on touch devices for mobile-style views
+    cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile')
 };
 const map = new mapboxgl.Map(mapConfig);
 
@@ -412,7 +419,6 @@ function sortByEta(a, b) {
 
 function updateHeaderUI() {
     if (!isManagerView) return;
-    // Check if the overall active order count is completely 0 across all drivers
     const validActiveStops = stops.filter(s => isActiveStop(s));
     const sidebarDriverEl = document.getElementById('sidebar-driver-name');
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
@@ -1382,7 +1388,6 @@ function updateRoutingUI() {
 
     let currentState = 'Pending';
     
-    // Base the active stops entirely off the current view (Manager targeting an inspector, or the Inspector themselves)
     let targetStops = [];
     if (isManagerView) {
         targetStops = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter));
@@ -1882,6 +1887,7 @@ async function triggerBulkUnroute() {
                 stops[idx].eta = '';
                 stops[idx].dist = 0;
                 stops[idx].durationSecs = 0;
+                // Safety catch for explicit DB unrouting logic
                 if (viewMode === 'inspector') stops[idx].hiddenInInspector = true; 
             }
             updatesArray.push({ rowId: id, driverId: dId });
