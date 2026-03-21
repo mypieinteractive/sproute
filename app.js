@@ -1,21 +1,8 @@
 // *
-// * Dashboard - V10.23
+// * Dashboard - V10.24
 // * FILE: app.js
-// * Changes: Promoted URL parsing constants to the top of the file to fix case-sensitivity bugs preventing ManagerMobile from inheriting true Manager rules. Explicitly tied the `hiddenInInspector` marker hide logic specifically to `viewMode === 'inspector'` rather than general views. Added keyboard listeners for Delete/Backspace in Manager View. 
+// * Changes: Removed backend dependency for the "Processing" overlay. The dashboard now tracks `window.location.search` to detect when Glide forces an upload refresh. If a refresh is detected, it compares incoming data to the `sessionStorage` snapshot and holds the processing overlay until the data changes (capped at a 15-second safety timeout to prevent infinite loops).
 // *
-
-const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
-
-const params = new URLSearchParams(window.location.search);
-let routeId = params.get('id');
-const driverParam = params.get('driver');
-const companyParam = params.get('company');
-const adminParam = params.get('admin');
-
-// Enforce lowercase to prevent 'ManagerMobile' vs 'managermobile' bugs
-const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
-const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -27,6 +14,21 @@ function updateShiftCursor(isShiftDown) {
         }
     }
 }
+document.addEventListener('keydown', (e) => { if (e.key === 'Shift') updateShiftCursor(true); });
+document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCursor(false); });
+document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
+
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+
+const params = new URLSearchParams(window.location.search);
+let routeId = params.get('id');
+const driverParam = params.get('driver');
+const companyParam = params.get('company');
+const adminParam = params.get('admin');
+
+const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
+const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
 
 // Global Keyboard Listeners
 document.addEventListener('keydown', (e) => { 
@@ -82,7 +84,23 @@ let sortableInstances = [];
 let sortableUnrouted = null;
 let currentRouteCount = 1; 
 
+// Retrieve the last active inspector view, default to 'all'
 let currentInspectorFilter = sessionStorage.getItem('sproute_inspector_filter') || 'all';
+
+// --- GLIDE REFRESH TRACKING (Front-End Upload Detection) ---
+const currentQuery = window.location.search;
+const lastQuery = sessionStorage.getItem('sproute_last_query');
+let isFreshGlideRefresh = false;
+
+// If the URL parameters have changed, Glide forced a refresh (likely an upload)
+if (lastQuery && currentQuery !== lastQuery) {
+    isFreshGlideRefresh = true;
+}
+sessionStorage.setItem('sproute_last_query', currentQuery);
+
+let pageLoadRetries = 0;
+const MAX_RETRIES = 5; // 15 seconds max polling to prevent infinite loops
+// -----------------------------------------------------------
 
 let defaultEmailMessage = "";
 let companyEmail = "";
@@ -97,10 +115,7 @@ let historyStack = [];
 let isAlteredRoute = false;
 
 let isPollingForRoute = false;
-let isPollingForUpload = false;
 let pollRetries = 0;
-
-let uploadStaleRetries = 0;
 
 let currentRouteViewFilter = 'all';
 
@@ -624,7 +639,6 @@ async function loadData() {
         const data = await res.json();
         
         if (data.confirmHijack) {
-            isPollingForUpload = false;
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'none';
             
@@ -649,7 +663,6 @@ async function loadData() {
         }
 
         if (data.uploadError) {
-            isPollingForUpload = false;
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'none';
             
@@ -663,35 +676,29 @@ async function loadData() {
             }
             return;
         }
-        
-        if (data.status === 'processing' || data.status === 'queued') {
-            isPollingForUpload = true;
-            uploadStaleRetries = 0; 
-            const overlay = document.getElementById('processing-overlay');
-            if (overlay) overlay.style.display = 'flex';
-            setTimeout(loadData, 5000);
-            return; 
-        }
 
+        // Extract raw array for snapshotting
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         let currentSnapshot = JSON.stringify(rawStops);
-
         let preUploadSnapshot = sessionStorage.getItem('sproute_snapshot');
 
-        if (isPollingForUpload) {
-            if (preUploadSnapshot && (currentSnapshot === preUploadSnapshot || rawStops.length === 0) && uploadStaleRetries < 5) {
-                uploadStaleRetries++;
-                setTimeout(loadData, 2000);
-                return; 
-            }
-            
-            isPollingForUpload = false;
-            uploadStaleRetries = 0;
+        // --- Front-End Only Upload Detection ---
+        // If Glide forced a refresh, wait until the incoming data differs from the old snapshot
+        if (isFreshGlideRefresh && preUploadSnapshot && currentSnapshot === preUploadSnapshot && pageLoadRetries < MAX_RETRIES) {
+            pageLoadRetries++;
+            const overlay = document.getElementById('processing-overlay');
+            if (overlay) overlay.style.display = 'flex';
+            setTimeout(loadData, 3000); 
+            return; 
         }
         
-        if (!isPollingForUpload && !data.uploadError && !data.confirmHijack) {
+        // Polling loop finished (either data changed, or max retries hit)
+        isFreshGlideRefresh = false; 
+        
+        if (!data.uploadError && !data.confirmHijack) {
             sessionStorage.setItem('sproute_snapshot', currentSnapshot);
         }
+        // ------------------------------------------
 
         if (data.routeId) {
             routeId = data.routeId;
@@ -870,7 +877,7 @@ async function loadData() {
         console.error("Error loading data:", e); 
     } finally {
         const overlay = document.getElementById('processing-overlay');
-        if (overlay && !isPollingForRoute && !isPollingForUpload) overlay.style.display = 'none';
+        if (overlay && !isPollingForRoute) overlay.style.display = 'none';
         updateUndoUI();
     }
 }
@@ -1780,6 +1787,7 @@ async function triggerBulkDelete() {
         stops = stops.filter(s => !selectedIds.has(s.id));
         
         selectedIds.clear(); 
+        updateInspectorDropdown(); 
         
         reorderStopsFromDOM();
         render(); drawRoute(); updateSummary(); updateRouteTimes();
@@ -1816,7 +1824,6 @@ async function triggerBulkUnroute() {
                 stops[idx].eta = '';
                 stops[idx].dist = 0;
                 stops[idx].durationSecs = 0;
-                // Exclusively enforce hiding unrouted items ONLY for the strict inspector view
                 if (viewMode === 'inspector') stops[idx].hiddenInInspector = true; 
             }
             updatesArray.push({ rowId: id, driverId: dId });
