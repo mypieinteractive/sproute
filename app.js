@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.27
+// * Dashboard - V10.28
 // * FILE: app.js
-// * Changes: Optimized `setDisplayMode()` to toggle CSS classes directly on the DOM elements instead of calling the heavy `render()` function. This prevents the map, markers, and drag-and-drop instances from needlessly rebuilding, restoring the instantaneous "snappy" feel to the Detailed/Compact rocker switch.
+// * Changes: Restored the accidentally deleted `document.body.className` assignment line. This ensures the dashboard actually applies the correct CSS layout classes (like `.view-manager` for the side-by-side desktop view) instead of falling back to the default vertically-stacked inspector view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -287,6 +287,9 @@ function silentSaveRouteState() {
         body: JSON.stringify(payload)
     }).catch(e => console.log("Silent save error", e));
 }
+
+// APPLY CSS CLASS BEFORE RENDER
+document.body.className = `view-${viewMode} manager-all-inspectors`;
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 const mapConfig = { 
