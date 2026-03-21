@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.28
+// * Dashboard - V10.30
 // * FILE: app.js
-// * Changes: Restored the accidentally deleted `document.body.className` assignment line. This ensures the dashboard actually applies the correct CSS layout classes (like `.view-manager` for the side-by-side desktop view) instead of falling back to the default vertically-stacked inspector view.
+// * Changes: Centralized list/map filtering logic into a master `isStopVisible()` helper function. This fixes the bug where single-inspector manager views were displaying the entire company's active orders. Additionally, the route view toggle buttons ("All Routes", "Route 1", etc.) are now enabled for the standard Inspector view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -140,6 +140,25 @@ function startHeartbeat() {
     }, 180000);
 }
 // -------------------------
+
+// --- CORE VISIBILITY FILTER ---
+function isStopVisible(s, applyRouteFilter = true) {
+    // 1. Is it mathematically an active order?
+    if (!isActiveStop(s)) return false;
+    
+    // 2. Is it assigned to the currently viewed Inspector? (Manager View Only)
+    if (isManagerView && currentInspectorFilter !== 'all') {
+        if (String(s.driverId) !== String(currentInspectorFilter)) return false;
+    }
+
+    // 3. Is it part of the currently toggled Route tab?
+    if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
+        if (s.cluster !== currentRouteViewFilter) return false;
+    }
+    
+    return true;
+}
+// ------------------------------
 
 window.setRouteViewFilter = function(val) {
     currentRouteViewFilter = val;
@@ -393,6 +412,7 @@ function sortByEta(a, b) {
 
 function updateHeaderUI() {
     if (!isManagerView) return;
+    // Check if the overall active order count is completely 0 across all drivers
     const validActiveStops = stops.filter(s => isActiveStop(s));
     const sidebarDriverEl = document.getElementById('sidebar-driver-name');
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
@@ -1320,7 +1340,6 @@ function handleOpenEmailModal() {
 }
 
 function updateRoutingUI() {
-    const activeStops = stops.filter(s => isActiveStop(s));
     const isDirty = dirtyRoutes.size > 0;
 
     const routingControls = document.getElementById('routing-controls');
@@ -1362,12 +1381,20 @@ function updateRoutingUI() {
     if (hintEl) hintEl.style.display = 'none';
 
     let currentState = 'Pending';
-    const activeInspStops = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter));
-    const hasActiveRoutesUI = activeInspStops.some(s => isRouteAssigned(s.status));
     
-    if (activeInspStops.length > 0) {
-        const routedStops = activeInspStops.filter(s => isRouteAssigned(s.status));
-        const targetStop = routedStops.length > 0 ? routedStops[0] : activeInspStops[0];
+    // Base the active stops entirely off the current view (Manager targeting an inspector, or the Inspector themselves)
+    let targetStops = [];
+    if (isManagerView) {
+        targetStops = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter));
+    } else {
+        targetStops = stops.filter(s => isActiveStop(s));
+    }
+    
+    const hasActiveRoutesUI = targetStops.some(s => isRouteAssigned(s.status));
+    
+    if (targetStops.length > 0) {
+        const routedStops = targetStops.filter(s => isRouteAssigned(s.status));
+        const targetStop = routedStops.length > 0 ? routedStops[0] : targetStops[0];
         let rs = (targetStop.routeState || 'Pending').toLowerCase();
         
         if (rs === 'queued') currentState = 'Queued';
@@ -1382,23 +1409,29 @@ function updateRoutingUI() {
     }
 
     let maxCluster = -1;
-    activeInspStops.forEach(s => {
+    targetStops.forEach(s => {
         if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) {
             maxCluster = s.cluster;
         }
     });
 
     const togglesEl = document.getElementById('route-view-toggles');
-    if (isManagerView && currentInspectorFilter !== 'all' && maxCluster > 0) {
-        togglesEl.style.display = 'flex';
-        document.getElementById('view-r1-btn').style.display = maxCluster >= 1 ? 'block' : 'none';
-        document.getElementById('view-r2-btn').style.display = maxCluster >= 2 ? 'block' : 'none';
+    if (maxCluster > 0) {
+        if(togglesEl) togglesEl.style.display = 'flex';
+        const b1 = document.getElementById('view-r1-btn');
+        const b2 = document.getElementById('view-r2-btn');
+        if (b1) b1.style.display = maxCluster >= 1 ? 'block' : 'none';
+        if (b2) b2.style.display = maxCluster >= 2 ? 'block' : 'none';
     } else {
         if(togglesEl) togglesEl.style.display = 'none';
         if (currentRouteViewFilter !== 'all') {
             currentRouteViewFilter = 'all';
-            document.getElementById('view-rall-btn').classList.add('active');
-            for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`).classList.remove('active');
+            const rAll = document.getElementById('view-rall-btn');
+            if (rAll) rAll.classList.add('active');
+            for(let i=0; i<=2; i++) {
+                const rBtn = document.getElementById(`view-r${i}-btn`);
+                if (rBtn) rBtn.classList.remove('active');
+            }
         }
     }
 
@@ -1407,7 +1440,8 @@ function updateRoutingUI() {
         if (currentRouteViewFilter === 'all') {
             isCurrentViewDirty = true;
         } else {
-            let rKey = `${currentInspectorFilter}_${currentRouteViewFilter}`;
+            let inspKey = isManagerView ? currentInspectorFilter : driverParam;
+            let rKey = `${inspKey}_${currentRouteViewFilter}`;
             if (dirtyRoutes.has(rKey) || dirtyRoutes.has('endpoints_0') || dirtyRoutes.has('all')) {
                 isCurrentViewDirty = true;
             }
@@ -1419,7 +1453,7 @@ function updateRoutingUI() {
     }
 
     if (isManagerView) {
-        const unroutedCount = activeInspStops.filter(s => !isRouteAssigned(s.status)).length;
+        const unroutedCount = targetStops.filter(s => !isRouteAssigned(s.status)).length;
 
         if (currentState === 'Pending') {
             if (unroutedCount > 0 && btnGen) btnGen.style.display = 'flex';
@@ -1519,8 +1553,8 @@ function moveSelectedToRoute(cIdx) {
 }
 
 function updateRouteTimes() {
-    if(!isManagerView || currentInspectorFilter === 'all') return;
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    if (isManagerView && currentInspectorFilter === 'all') return;
+    const activeStops = stops.filter(s => isStopVisible(s, false) && s.lng && s.lat);
     for(let i=0; i<3; i++) {
         const clusterStops = activeStops.filter(s => s.cluster === i);
         const count = clusterStops.length;
@@ -1677,12 +1711,12 @@ async function handleRestoreOriginal() {
 }
 
 function liveClusterUpdate() {
-    if(!isManagerView || currentInspectorFilter === 'all') return;
+    if (isManagerView && currentInspectorFilter === 'all') return;
     
     const k = currentRouteCount;
     const w = parseInt(document.getElementById('slider-priority').value) / 100;
     
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+    const activeStops = stops.filter(s => isStopVisible(s, false) && s.lng && s.lat);
     if(activeStops.length === 0) return;
 
     const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
@@ -1781,14 +1815,7 @@ function updateMarkerColors() {
 window.toggleSelectAll = function(cb) {
     selectedIds.clear();
     if (cb.checked) {
-        stops.filter(s => {
-            if (!isActiveStop(s)) return false;
-            // Respect the current view filter so we don't accidentally select hidden orders
-            if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
-                if (s.cluster !== currentRouteViewFilter) return false;
-            }
-            return true;
-        }).forEach(s => selectedIds.add(s.id));
+        stops.filter(s => isStopVisible(s, true)).forEach(s => selectedIds.add(s.id));
     }
     updateSelectionUI();
 };
@@ -2078,15 +2105,8 @@ function render() {
     const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
     
-    // Core visibility filter: hides orders that aren't part of the toggled route
-    const activeStops = stops.filter(s => {
-        if (!isActiveStop(s)) return false;
-        if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
-            if (s.cluster !== currentRouteViewFilter) return false;
-        }
-        return true;
-    });
-
+    // Master visibility filter
+    const activeStops = stops.filter(s => isStopVisible(s, true));
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
 
     if (isManagerView) {
@@ -2374,13 +2394,7 @@ function render() {
 }
 
 function updateSummary() {
-    const active = stops.filter(s => {
-        if (!isActiveStop(s) || s.status === 'Completed') return false;
-        if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
-            if (s.cluster !== currentRouteViewFilter) return false;
-        }
-        return true;
-    });
+    const active = stops.filter(s => isStopVisible(s, true) && s.status !== 'Completed');
 
     let totalMi = 0;
     let totalSecs = 0;
@@ -2427,7 +2441,7 @@ async function handleCalculate() {
     if (overlay) overlay.style.display = 'flex';
 
     try {
-        const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
+        const activeStops = stops.filter(s => isStopVisible(s, false) && s.lng && s.lat);
         const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
         const hasActiveRoutes = stops.some(s => isRouteAssigned(s.status));
         let stopsToCalculate = [];
@@ -2589,13 +2603,7 @@ function updateSelectionUI() {
 
     const selectAllCb = document.getElementById('bulk-select-all');
     if (selectAllCb) {
-        const activeStops = stops.filter(s => {
-            if (!isActiveStop(s)) return false;
-            if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
-                if (s.cluster !== currentRouteViewFilter) return false;
-            }
-            return true;
-        });
+        const activeStops = stops.filter(s => isStopVisible(s, true));
         selectAllCb.checked = (activeStops.length > 0 && selectedIds.size === activeStops.length);
     }
     
@@ -2636,13 +2644,7 @@ function drawRoute() {
     layerIds.forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
     if (map.getSource('route')) map.removeSource('route');
 
-    const activeStops = stops.filter(s => {
-        if (!isActiveStop(s) || !s.lng || !s.lat) return false;
-        if (currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
-            if (s.cluster !== currentRouteViewFilter) return false;
-        }
-        return true;
-    });
+    const activeStops = stops.filter(s => isStopVisible(s, true) && s.lng && s.lat);
 
     let routedStops = [];
     if (isManagerView) {
