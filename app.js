@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.26
+// * Dashboard - V10.27
 // * FILE: app.js
-// * Changes: Added a snapshot diffing routine inside the `isFreshGlideRefresh` sequence. When the dashboard detects that a Glide upload just finished and new data has arrived, it automatically calculates which Inspector's data was modified. It updates `currentInspectorFilter` to auto-switch the UI into that newly uploaded Inspector's view.
+// * Changes: Optimized `setDisplayMode()` to toggle CSS classes directly on the DOM elements instead of calling the heavy `render()` function. This prevents the map, markers, and drag-and-drop instances from needlessly rebuilding, restoring the instantaneous "snappy" feel to the Detailed/Compact rocker switch.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1957,7 +1957,17 @@ function setDisplayMode(mode) {
     currentDisplayMode = mode;
     document.getElementById('btn-detailed').classList.toggle('active', mode === 'detailed');
     document.getElementById('btn-compact').classList.toggle('active', mode === 'compact');
-    render();
+    
+    // Fast DOM update instead of full render()
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el => {
+        if (mode === 'compact') {
+            el.classList.add('compact');
+            el.classList.remove('detailed');
+        } else {
+            el.classList.add('detailed');
+            el.classList.remove('compact');
+        }
+    });
 }
 
 function createRouteSubheading(clusterNum, clusterStops) {
