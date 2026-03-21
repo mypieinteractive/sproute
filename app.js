@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.25
+// * Dashboard - V10.26
 // * FILE: app.js
-// * Changes: Patched a bug in the `loadData()` execution where the `finally` block was prematurely hiding the processing overlay during the frontend upload validation loop. The `finally` block now explicitly respects the `isFreshGlideRefresh` flag, ensuring the overlay stays firmly on screen until the new data completely finishes populating. Added a safety release in the catch block to prevent infinite loading spinners on network errors.
+// * Changes: Added a snapshot diffing routine inside the `isFreshGlideRefresh` sequence. When the dashboard detects that a Glide upload just finished and new data has arrived, it automatically calculates which Inspector's data was modified. It updates `currentInspectorFilter` to auto-switch the UI into that newly uploaded Inspector's view.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -287,8 +287,6 @@ function silentSaveRouteState() {
         body: JSON.stringify(payload)
     }).catch(e => console.log("Silent save error", e));
 }
-
-document.body.className = `view-${viewMode} manager-all-inspectors`;
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 const mapConfig = { 
@@ -697,6 +695,27 @@ async function loadData() {
             return; 
         }
         
+        // Once data has officially changed, pinpoint WHO was uploaded to auto-switch the view
+        if (isFreshGlideRefresh && preUploadSnapshot && currentSnapshot !== preUploadSnapshot) {
+            try {
+                const oldStops = JSON.parse(preUploadSnapshot);
+                // Look for a single stop that didn't exist in the old snapshot or has drastically changed
+                let diffStop = rawStops.find(n => {
+                    let oldStr = oldStops.find(o => (o.rowId || o.id || o[0]) === (n.rowId || n.id || n[0]));
+                    if (!oldStr) return true; 
+                    return JSON.stringify(oldStr) !== JSON.stringify(n);
+                });
+
+                if (diffStop) {
+                    let expandedDiff = expandStop(diffStop);
+                    if (expandedDiff.driverId && isManagerView) {
+                        currentInspectorFilter = String(expandedDiff.driverId);
+                        sessionStorage.setItem('sproute_inspector_filter', currentInspectorFilter);
+                    }
+                }
+            } catch(e) { console.error("Snapshot diff error:", e); }
+        }
+
         // Polling loop finished (either data changed, or max retries hit)
         isFreshGlideRefresh = false; 
         
