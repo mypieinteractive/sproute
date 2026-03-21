@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V10.1 */
+/* * Dashboard - V10.2 */
 /* * FILE: styles.css */
-/* * Changes: Replaced old processing overlay styling with new frosted-glass backdrop, dual-ring spinner animations, and pulsing text logic. */
+/* * Changes: Added styling classes for the new `.route-view-btn` toggle buttons. */
 /* * */
 
 :root { 
@@ -131,6 +131,15 @@ body.view-managermobile .list-subheading {
 .rbtn-circle { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
 .rbtn-title { font-size: 13px; font-weight: bold; color: var(--text-main); pointer-events: none; }
 .rbtn-time { font-size: 11px; color: var(--text-muted); pointer-events: none; margin-top: 2px; }
+
+/* Route View Toggles */
+.route-view-btn {
+    flex: 1; border: 1px solid var(--border-color); background: var(--bg-base);
+    color: var(--text-main); border-radius: 4px; padding: 6px 10px; cursor: pointer;
+    font-size: 13px; font-weight: bold; transition: 0.2s; opacity: 0.7;
+}
+.route-view-btn:hover { opacity: 1; background: var(--bg-hover); }
+.route-view-btn.active { opacity: 1; border-color: var(--blue); background: rgba(37, 99, 235, 0.1); color: var(--blue); }
 
 #inspector-filter {
     background: var(--bg-panel); color: var(--text-main); font-size: 16px; font-weight: bold;
