@@ -1,8 +1,21 @@
 // *
-// * Dashboard - V10.22
+// * Dashboard - V10.23
 // * FILE: app.js
-// * Changes: Added `sessionStorage` for `currentInspectorFilter` so the dashboard remembers the active inspector view across iframe refreshes and CSV uploads. Created a dynamic `updateHeaderUI()` function inside `render()` to automatically hide the Inspector Dropdown and reinstate the "Upload a CSV" header the moment all orders are deleted from the board. 
+// * Changes: Promoted URL parsing constants to the top of the file to fix case-sensitivity bugs preventing ManagerMobile from inheriting true Manager rules. Explicitly tied the `hiddenInInspector` marker hide logic specifically to `viewMode === 'inspector'` rather than general views. Added keyboard listeners for Delete/Backspace in Manager View. 
 // *
+
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+
+const params = new URLSearchParams(window.location.search);
+let routeId = params.get('id');
+const driverParam = params.get('driver');
+const companyParam = params.get('company');
+const adminParam = params.get('admin');
+
+// Enforce lowercase to prevent 'ManagerMobile' vs 'managermobile' bugs
+const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
+const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -14,12 +27,27 @@ function updateShiftCursor(isShiftDown) {
         }
     }
 }
-document.addEventListener('keydown', (e) => { if (e.key === 'Shift') updateShiftCursor(true); });
+
+// Global Keyboard Listeners
+document.addEventListener('keydown', (e) => { 
+    if (e.key === 'Shift') updateShiftCursor(true); 
+
+    // Physical Delete Shortcut for Manager View
+    if (viewMode === 'manager' && (e.key === 'Delete' || e.key === 'Backspace')) {
+        const tag = e.target.tagName.toUpperCase();
+        // Prevent deleting orders when the user is simply typing in the search bar or endpoint inputs
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        // Prevent stacking alerts if a modal is already open
+        if (document.getElementById('modal-overlay').style.display === 'flex') return;
+        
+        if (selectedIds.size > 0 && PERMISSION_MODIFY) {
+            triggerBulkDelete();
+        }
+    }
+});
+
 document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCursor(false); });
 document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
-
-const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
 const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
 const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
@@ -54,7 +82,6 @@ let sortableInstances = [];
 let sortableUnrouted = null;
 let currentRouteCount = 1; 
 
-// Retrieve the last active inspector view, default to 'all'
 let currentInspectorFilter = sessionStorage.getItem('sproute_inspector_filter') || 'all';
 
 let defaultEmailMessage = "";
@@ -243,14 +270,6 @@ function silentSaveRouteState() {
     }).catch(e => console.log("Silent save error", e));
 }
 
-const params = new URLSearchParams(window.location.search);
-let routeId = params.get('id');
-const driverParam = params.get('driver');
-const companyParam = params.get('company');
-const adminParam = params.get('admin');
-const viewMode = params.get('view') || 'inspector'; 
-const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
-
 document.body.className = `view-${viewMode} manager-all-inspectors`;
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -389,7 +408,6 @@ function updateInspectorDropdown() {
         }
     });
 
-    // If the currently selected inspector no longer has orders, revert to 'all'
     if (currentInspectorFilter !== 'all' && !validInspectorIds.has(String(currentInspectorFilter))) {
         currentInspectorFilter = 'all';
         sessionStorage.setItem('sproute_inspector_filter', 'all');
@@ -655,14 +673,11 @@ async function loadData() {
             return; 
         }
 
-        // Prepare raw JSON payload for snapshot comparison
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         let currentSnapshot = JSON.stringify(rawStops);
 
-        // Retrieve pre-upload snapshot from persistent sessionStorage
         let preUploadSnapshot = sessionStorage.getItem('sproute_snapshot');
 
-        // --- Eventual Consistency Snapshot Check ---
         if (isPollingForUpload) {
             if (preUploadSnapshot && (currentSnapshot === preUploadSnapshot || rawStops.length === 0) && uploadStaleRetries < 5) {
                 uploadStaleRetries++;
@@ -674,11 +689,9 @@ async function loadData() {
             uploadStaleRetries = 0;
         }
         
-        // Always record the verified state into sessionStorage for the *next* upload
         if (!isPollingForUpload && !data.uploadError && !data.confirmHijack) {
             sessionStorage.setItem('sproute_snapshot', currentSnapshot);
         }
-        // ------------------------------------------
 
         if (data.routeId) {
             routeId = data.routeId;
@@ -1803,7 +1816,8 @@ async function triggerBulkUnroute() {
                 stops[idx].eta = '';
                 stops[idx].dist = 0;
                 stops[idx].durationSecs = 0;
-                if (!isManagerView) stops[idx].hiddenInInspector = true; 
+                // Exclusively enforce hiding unrouted items ONLY for the strict inspector view
+                if (viewMode === 'inspector') stops[idx].hiddenInInspector = true; 
             }
             updatesArray.push({ rowId: id, driverId: dId });
         });
@@ -2063,7 +2077,7 @@ function render() {
         item.id = `item-${s.id}`;
         item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
         
-        if (!isManagerView && s.hiddenInInspector) {
+        if (viewMode === 'inspector' && s.hiddenInInspector) {
             item.classList.add('hidden-unrouted');
         }
         
@@ -2139,7 +2153,7 @@ function render() {
             `;
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${currentDisplayMode}`;
-            if (s.hiddenInInspector) item.classList.add('hidden-unrouted');
+            if (viewMode === 'inspector' && s.hiddenInInspector) item.classList.add('hidden-unrouted');
             
             const distFmt = s.dist ? parseFloat(s.dist).toFixed(1) : "0.0";
             const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${distFmt} mi` : `${etaTime} | ${distFmt} mi`;
@@ -2748,6 +2762,7 @@ function initSortable() {
                             stops[idx].eta = '';
                             stops[idx].dist = 0;
                             stops[idx].durationSecs = 0;
+                            if (viewMode === 'inspector') stops[idx].hiddenInInspector = true;
                         }
                         
                         const overlay = document.getElementById('processing-overlay');
