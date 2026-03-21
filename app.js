@@ -1,7 +1,7 @@
 // *
-// * Dashboard - V10.15
+// * Dashboard - V10.14
 // * FILE: app.js
-// * Changes: Applied currentInspectorFilter constraints to render(), drawRoute(), liveClusterUpdate(), updateSummary(), updateRouteTimes(), and selection UI functions to ensure the dashboard strictly isolates the view when a single inspector is selected from the dropdown.
+// * Changes: Updated the active lock alert text per user request. Added the `confirmHijack` interceptor in loadData() to prompt the user with an OK/Cancel confirm dialog when trying to upload over a lock that is > 5 minutes old. Added 'executeHijack' and 'cancelHijack' POST commands.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -14,18 +14,7 @@ function updateShiftCursor(isShiftDown) {
         }
     }
 }
-
-document.addEventListener('keydown', (e) => { 
-    if (e.key === 'Shift') updateShiftCursor(true); 
-    
-    // Global Keyboard Delete Shortcut
-    if ((e.key === 'Delete' || e.key === 'Backspace') && isManagerView && selectedIds.size > 0 && hasLock) {
-        // Prevent deletion if user is typing in a search bar, email input, or select dropdown
-        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
-        triggerBulkDelete();
-    }
-});
-
+document.addEventListener('keydown', (e) => { if (e.key === 'Shift') updateShiftCursor(true); });
 document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCursor(false); });
 document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
 
@@ -58,13 +47,6 @@ function isRouteAssigned(status) {
     return s === 'routed' || s === 'completed' || s === 'dispatched';
 }
 
-function toTitleCase(str) {
-    if (!str) return '';
-    return str.toLowerCase().replace(/(?:^|\s|-)\w/g, function(match) {
-        return match.toUpperCase();
-    });
-}
-
 let COMPANY_SERVICE_DELAY = 0; 
 let PERMISSION_MODIFY = true;
 let PERMISSION_REOPTIMIZE = true;
@@ -95,7 +77,6 @@ let latestSuggestions = { start: null, end: null };
 
 // --- LOCKING VARIABLES ---
 let heartbeatInterval = null;
-let hasLock = true; 
 
 function startHeartbeat() {
     clearInterval(heartbeatInterval);
@@ -293,7 +274,7 @@ function expandStop(minStop) {
             expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1);
         }
         
-        expanded.address = toTitleCase(String(t[2] || ''));
+        expanded.address = String(t[2] || '');
         expanded.client = String(t[3] || '');
         expanded.app = String(t[4] || '');
         expanded.dueDate = String(t[5] || '');
@@ -569,12 +550,39 @@ async function loadData() {
         const res = await fetch(fetchUrl);
         const data = await res.json();
         
+        // 1. Catcher for Expired Locks (OK/Cancel Interceptor)
+        if (data.confirmHijack) {
+            isPollingForUpload = false;
+            const overlay = document.getElementById('processing-overlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            const proceed = await customConfirm(data.message || "The previous admin's session has expired. Do you want to take over and overwrite this Inspector's route?");
+            
+            if (overlay) overlay.style.display = 'flex'; // Turn overlay back on while backend processes decision
+            
+            if (proceed) {
+                await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'executeHijack', adminId: adminParam, driverId: data.driverId || currentInspectorFilter })
+                }).catch(e => console.log('Hijack execute failed:', e));
+            } else {
+                await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'cancelHijack', adminId: adminParam, driverId: data.driverId || currentInspectorFilter })
+                }).catch(e => console.log('Hijack cancel failed:', e));
+            }
+            
+            setTimeout(loadData, 2000); // Reload board after decision
+            return;
+        }
+
+        // 2. Catcher for Active Locks (< 5 Mins) or Size Limits
         if (data.uploadError) {
             isPollingForUpload = false;
             const overlay = document.getElementById('processing-overlay');
             if (overlay) overlay.style.display = 'none';
             
-            await customAlert(data.message || "An upload error occurred.");
+            await customAlert(data.message || "Upload cancelled. Another admin is currently modifying this Inspector's route.");
             
             if (adminParam) {
                 fetch(WEB_APP_URL, {
@@ -585,6 +593,7 @@ async function loadData() {
             return;
         }
         
+        // 3. Catcher for Active CSV Processing
         if (data.status === 'processing' || data.status === 'queued') {
             isPollingForUpload = true;
             const overlay = document.getElementById('processing-overlay');
@@ -619,14 +628,13 @@ async function loadData() {
             let fetchedMap = new Map();
             rawStops.forEach(s => {
                 let exp = expandStop(s);
-                let existingStop = stops.find(old => String(old.id) === String(exp.rowId || exp.id));
                 fetchedMap.set(String(exp.rowId || exp.id), {
                     ...exp,
                     id: exp.rowId || exp.id,
                     status: getStatusText(exp.status),
                     cluster: exp.cluster,
                     manualCluster: false,
-                    hiddenInInspector: existingStop ? existingStop.hiddenInInspector : false,
+                    hiddenInInspector: false,
                     routeState: exp.routeState || s.routeState || globalRouteState,
                     driverId: exp.driverId || s.driverId || globalDriverId,
                     routeTargetId: routeId || null
@@ -663,14 +671,13 @@ async function loadData() {
         } else {
             stops = rawStops.map(s => {
                 let exp = expandStop(s);
-                let existingStop = stops.find(old => String(old.id) === String(exp.rowId || exp.id));
                 return {
                     ...exp,
                     id: exp.rowId || exp.id,
                     status: getStatusText(exp.status),
                     cluster: exp.cluster,
                     manualCluster: false,
-                    hiddenInInspector: existingStop ? existingStop.hiddenInInspector : false,
+                    hiddenInInspector: false,
                     routeState: exp.routeState || s.routeState || globalRouteState,
                     driverId: exp.driverId || s.driverId || globalDriverId,
                     routeTargetId: routeId || null
@@ -751,9 +758,6 @@ async function loadData() {
                 }
                 if (sidebarLogo) sidebarLogo.style.display = 'block';
                 if (filterSelect) filterSelect.style.display = 'none';
-                
-                const filterWrapper = document.getElementById('inspector-dropdown-wrapper');
-                if (filterWrapper) filterWrapper.style.display = 'none';
             } else if (isManagerView && data.tier && data.tier.toLowerCase() !== 'individual') {
                 if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
                 if (sidebarLogo) sidebarLogo.style.display = 'none'; 
@@ -1135,9 +1139,9 @@ function handleOpenEmailModal() {
 
         overlaysToHide.forEach(el => el.style.display = '');
         
-        const badgeChanges = document.getElementById('badge-changes-made');
-        if (dirtyRoutes.size > 0 && badgeChanges) {
-            badgeChanges.style.display = 'none'; // Ensure it stays hidden for manager views
+        if (dirtyRoutes.size > 0) {
+            const b = document.getElementById('badge-changes-made');
+            if (b) b.style.display = 'flex';
         }
 
         const payload = {
@@ -1255,8 +1259,7 @@ function updateRoutingUI() {
     }
 
     if (badgeChanges) {
-        // Enforce the badge is permanently hidden for managers, and only visible for inspectors if necessary
-        badgeChanges.style.display = (isDirty && hasActiveRoutesUI && !isManagerView) ? 'flex' : 'none';
+        badgeChanges.style.display = (isDirty && hasActiveRoutesUI) ? 'flex' : 'none';
     }
 
     if (isManagerView) {
@@ -1357,7 +1360,7 @@ function moveSelectedToRoute(cIdx) {
 
 function updateRouteTimes() {
     if(!isManagerView || currentInspectorFilter === 'all') return;
-    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat && String(s.driverId) === String(currentInspectorFilter));
+    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     for(let i=0; i<3; i++) {
         const clusterStops = activeStops.filter(s => s.cluster === i);
         const count = clusterStops.length;
@@ -1519,9 +1522,7 @@ function liveClusterUpdate() {
     const k = currentRouteCount;
     const w = parseInt(document.getElementById('slider-priority').value) / 100;
     
-    let activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-    activeStops = activeStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
-    
+    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     if(activeStops.length === 0) return;
 
     const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
@@ -1618,20 +1619,15 @@ function updateMarkerColors() {
 }
 
 window.toggleSelectAll = function(cb) {
-    if (!hasLock) return;
     selectedIds.clear();
     if (cb.checked) {
-        let visibleStops = stops.filter(s => isActiveStop(s));
-        if (isManagerView && currentInspectorFilter !== 'all') {
-            visibleStops = visibleStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
-        }
-        visibleStops.forEach(s => selectedIds.add(s.id));
+        stops.filter(s => isActiveStop(s)).forEach(s => selectedIds.add(s.id));
     }
     updateSelectionUI();
 };
 
 async function triggerBulkDelete() { 
-    if(!hasLock || !(await customConfirm("Delete selected orders?"))) return;
+    if(!(await customConfirm("Delete selected orders?"))) return;
     
     pushToHistory(); 
     
@@ -1670,7 +1666,7 @@ async function triggerBulkDelete() {
 }
 
 async function triggerBulkUnroute() { 
-    if(!hasLock || !(await customConfirm("Remove selected orders from route?"))) return;
+    if(!(await customConfirm("Remove selected orders from route?"))) return;
     pushToHistory();
     
     const overlay = document.getElementById('processing-overlay');
@@ -1721,7 +1717,6 @@ async function triggerBulkUnroute() {
 }
 
 async function handleInspectorChange(e, rowId, selectEl) {
-    if (!hasLock) { e.preventDefault(); return; }
     e.stopPropagation(); 
     const newDriverId = selectEl.value;
     const newDriverName = selectEl.options[selectEl.selectedIndex].text;
@@ -1832,7 +1827,6 @@ function createRouteSubheading(clusterNum, clusterStops) {
 }
 
 window.checkEndpointModified = function() {
-    if (!hasLock) return;
     const sVal = document.getElementById('input-endpoint-start')?.value || '';
     const eVal = document.getElementById('input-endpoint-end')?.value || '';
     
@@ -1852,15 +1846,13 @@ function createEndpointRow(type, endpointData) {
     const inputId = `input-endpoint-${type}`;
     const rowIcon = type === 'start' ? '🏠' : '🏁';
     
-    const disableAttr = !hasLock ? 'disabled' : '';
-
     const el = document.createElement('div');
     el.className = 'stop-item static-endpoint compact';
     el.innerHTML = `
         <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${rowIcon}</div>
         <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
             <div style="position:relative; width:100%; flex:1;">
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)" ${disableAttr}>
+                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
         <div class="stop-actions" style="width: 40px;"></div>
@@ -1882,16 +1874,8 @@ function render() {
     const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
     
-    // Core Fix: Filter activeStops explicitly by currentInspectorFilter for rendering
-    let activeStops = stops.filter(s => isActiveStop(s));
-    if (isSingleInspector) {
-        activeStops = activeStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
-    }
-    
+    const activeStops = stops.filter(s => isActiveStop(s));
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
-
-    const showHandle = hasLock; 
-    const disableSelectAttr = (!PERMISSION_MODIFY || !hasLock) ? 'disabled' : '';
 
     if (isManagerView) {
         const header = document.createElement('div');
@@ -1911,7 +1895,7 @@ function render() {
 
         header.innerHTML = `
             <div class="col-num">
-                <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)" ${!hasLock ? 'disabled' : ''}>
+                <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
             </div>
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
@@ -1919,12 +1903,12 @@ function render() {
             <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
             <div class="col-app ${appSortClass}" ${appSortClick}>App ${appSortIcon}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
-            <div class="col-handle" style="visibility:${hasRouted && showHandle ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
+            <div class="col-handle" style="visibility:${hasRouted ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
         `;
         listContainer.appendChild(header);
     }
     
-    const processStop = (s, displayIndex, shouldShowHandle) => {
+    const processStop = (s, displayIndex, showHandle) => {
         const item = document.createElement('div');
         item.id = `item-${s.id}`;
         item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
@@ -1963,6 +1947,7 @@ function render() {
                     return `<option value="${insp.id}" style="color: ${color}; font-weight: bold;" ${String(s.driverId) === String(insp.id) ? 'selected' : ''}>${insp.name}</option>`;
                 }).join('');
                 const defaultPlaceholder = !s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : '';
+                const disableSelectAttr = !PERMISSION_MODIFY ? 'disabled' : '';
 
                 let currentInspColor = 'var(--text-main)';
                 if (s.driverId) {
@@ -1981,7 +1966,7 @@ function render() {
             }
 
             const style = getVisualStyle(s);
-            const handleHtml = `<div class="col-handle ${shouldShowHandle ? 'handle' : ''}" style="visibility:${shouldShowHandle ? 'visible' : 'hidden'};">${shouldShowHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
+            const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}" style="visibility:${showHandle ? 'visible' : 'hidden'};">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             let metaHtml = '';
             if (viewMode === 'managermobile') {
@@ -2009,8 +1994,6 @@ function render() {
             const distFmt = s.dist ? parseFloat(s.dist).toFixed(1) : "0.0";
             const metaDisplay = (!isRoutedStop || dirtyRoutes.has(routeKey) || dirtyRoutes.has('all')) ? `-- | ${distFmt} mi` : `${etaTime} | ${distFmt} mi`;
             
-            const checkmarkHtml = hasLock ? `<i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>` : '';
-
             item.innerHTML = `
                 <div class="stop-sidebar ${urgencyClass}">${displayIndex}</div>
                 <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
@@ -2021,14 +2004,13 @@ function render() {
                 </div>
                 <div class="due-date-container ${urgencyClass}">${dueFmt}</div>
                 <div class="stop-actions">
-                    ${checkmarkHtml}
+                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>
                     <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
                 </div>
             `;
         }
         
         item.onclick = (e) => {
-            if (!hasLock) return;
             if (!e.shiftKey) selectedIds.clear();
             selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
             updateSelectionUI(); focusPin(s.id);
@@ -2048,7 +2030,6 @@ function render() {
             }
             
             el.addEventListener('click', (e) => {
-                if (!hasLock) return;
                 e.stopPropagation();
                 if (!e.shiftKey) selectedIds.clear();
                 selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
@@ -2079,7 +2060,7 @@ function render() {
                 unroutedDiv.appendChild(el); 
             }
             
-            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted && showHandle)); });
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted)); });
         }
         
         if (routedStops.length > 0) {
@@ -2095,7 +2076,7 @@ function render() {
                     
                     routedDiv.appendChild(createRouteSubheading(clusterId, cStops)); 
                     
-                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, showHandle)); });
+                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
                 }
             });
         }
@@ -2181,11 +2162,7 @@ function render() {
 }
 
 function updateSummary() {
-    let active = stops.filter(s => isActiveStop(s) && s.status !== 'Completed');
-    if (isManagerView && currentInspectorFilter !== 'all') {
-        active = active.filter(s => String(s.driverId) === String(currentInspectorFilter));
-    }
-    
+    const active = stops.filter(s => isActiveStop(s) && s.status !== 'Completed');
     let totalMi = 0;
     let totalSecs = 0;
     
@@ -2198,11 +2175,8 @@ function updateSummary() {
     
     let totalHrs = active.length > 0 ? ((totalSecs + (active.length * COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
     
-    const sumDist = document.getElementById('sum-dist');
-    if (sumDist) sumDist.innerText = `${totalMi.toFixed(1)} mi`;
-    
-    const sumTime = document.getElementById('sum-time');
-    if (sumTime) sumTime.innerText = `${totalHrs} hrs`;
+    document.getElementById('sum-dist').innerText = `${totalMi.toFixed(1)} mi`;
+    document.getElementById('sum-time').innerText = `${totalHrs} hrs`;
     
     const totalOrders = active.length;
     let dueToday = 0;
@@ -2230,7 +2204,6 @@ function updateSummary() {
 }
 
 async function handleCalculate() {
-    if (!hasLock) return;
     const overlay = document.getElementById('processing-overlay');
     if (overlay) overlay.style.display = 'flex';
 
@@ -2326,7 +2299,6 @@ async function handleCalculate() {
 }
 
 async function toggleComplete(e, id) {
-    if (!hasLock) return;
     e.stopPropagation();
     pushToHistory();
     const idx = stops.findIndex(s => String(s.id) === String(id));
@@ -2350,7 +2322,6 @@ map.on('click', (e) => { if (e.originalEvent.target.classList.contains('mapboxgl
 const canvas = map.getCanvasContainer();
 
 canvas.addEventListener('mousedown', (e) => { 
-    if (!hasLock) return;
     if (e.target.closest('.mapboxgl-marker')) return; 
     if(e.shiftKey) { 
         map.dragPan.disable(); start_pos = mousePos(e); 
@@ -2399,20 +2370,17 @@ function updateSelectionUI() {
 
     const selectAllCb = document.getElementById('bulk-select-all');
     if (selectAllCb) {
-        let visibleStops = stops.filter(s => isActiveStop(s));
-        if (isManagerView && currentInspectorFilter !== 'all') {
-            visibleStops = visibleStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
-        }
-        selectAllCb.checked = (visibleStops.length > 0 && selectedIds.size === visibleStops.length);
+        const activeStops = stops.filter(s => isActiveStop(s));
+        selectAllCb.checked = (activeStops.length > 0 && selectedIds.size === activeStops.length);
     }
     
-    document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY && isManagerView && hasLock) ? 'block' : 'none'; 
-    document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY && hasLock) ? 'block' : 'none'; 
+    document.getElementById('bulk-delete-btn').style.display = (has && PERMISSION_MODIFY && isManagerView) ? 'block' : 'none'; 
+    document.getElementById('bulk-unroute-btn').style.display = (hasRouted && PERMISSION_MODIFY) ? 'block' : 'none'; 
 
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`move-r${i}-btn`);
         if(btn) {
-            if(isManagerView && currentInspectorFilter !== 'all' && has && hasLock && i <= currentRouteCount && currentRouteCount > 1) {
+            if(isManagerView && currentInspectorFilter !== 'all' && has && i <= currentRouteCount && currentRouteCount > 1) {
                 let allInTargetRoute = true;
                 selectedIds.forEach(id => {
                     const s = stops.find(st => String(st.id) === String(id));
@@ -2443,11 +2411,7 @@ function drawRoute() {
     layerIds.forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
     if (map.getSource('route')) map.removeSource('route');
 
-    let activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
-    if (isManagerView && currentInspectorFilter !== 'all') {
-        activeStops = activeStops.filter(s => String(s.driverId) === String(currentInspectorFilter));
-    }
-
+    const activeStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat);
     let routedStops = [];
     
     if (isManagerView) {
@@ -2566,7 +2530,7 @@ function initSortable() {
     sortableInstances = [];
     if (sortableUnrouted) { sortableUnrouted.destroy(); sortableUnrouted = null; }
 
-    if (!PERMISSION_MODIFY || !hasLock) return;
+    if (!PERMISSION_MODIFY) return;
 
     if (isManagerView && currentInspectorFilter !== 'all') {
         const unroutedEl = document.getElementById('unrouted-list');
