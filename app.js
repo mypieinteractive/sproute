@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V11.5
+// * Dashboard - V11.6
 // * FILE: app.js
 // * Changes: 
-// * 1. Fixed the priority slider binary bug in `liveClusterUpdate()`. Removed the hardcoded `MAX_PULL` of 1000 and replaced it with a dynamically calculated `maxGeoDist` relative to the current map coordinates.
-// * 2. This normalizes the slider math so it scales smoothly from 0 to 100%, allowing Route 1 gravity to incrementally overcome geographic distance based on user input.
+// * 1. Cleaned `updateHeaderUI()` to never override the inspector's name with "Upload a CSV to begin".
+// * 2. Updated the `render()` function to dynamically inject a stylized "Empty State" widget (Upload a CSV...) into the center of the list container whenever there are no active stops.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -429,18 +429,11 @@ function sortByEta(a, b) {
 
 function updateHeaderUI() {
     if (!isManagerView) return;
-    const validActiveStops = stops.filter(s => isActiveStop(s));
     const sidebarDriverEl = document.getElementById('sidebar-driver-name');
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
 
-    if (validActiveStops.length === 0) {
-        if (sidebarDriverEl) {
-            sidebarDriverEl.innerText = "Upload a CSV to begin";
-            sidebarDriverEl.style.display = 'block';
-        }
-        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
-    } else if (isCompanyTier) {
+    if (isCompanyTier) {
         if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
         if (filterSelectWrap) filterSelectWrap.style.display = 'block';
     } else {
@@ -2374,6 +2367,19 @@ function render() {
         let eps = getActiveEndpoints();
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
+        if (activeStops.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center;';
+            emptyState.innerHTML = `
+                <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 50%; margin-bottom: 15px;">
+                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 36px; color: var(--blue);"></i>
+                </div>
+                <div style="font-size: 16px; font-weight: bold; color: var(--text-main); margin-bottom: 6px;">Ready to Route</div>
+                <div style="font-size: 13px; color: var(--text-muted); max-width: 220px; line-height: 1.4;">Upload a CSV to begin assigning and optimizing routes.</div>
+            `;
+            listContainer.appendChild(emptyState);
+        }
+
         if (unroutedStops.length > 0) {
             const unroutedDiv = document.createElement('div');
             unroutedDiv.id = 'unrouted-list';
@@ -2412,7 +2418,21 @@ function render() {
         const mainDiv = document.createElement('div');
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
-        activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+        
+        if (activeStops.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center; min-height: 300px;';
+            emptyState.innerHTML = `
+                <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px;">
+                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i>
+                </div>
+                <div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px;">Ready to Route</div>
+                <div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5;">Upload a CSV to begin assigning and optimizing routes.</div>
+            `;
+            mainDiv.appendChild(emptyState);
+        } else {
+            activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+        }
     }
 
     let endpointsToDraw = [];
