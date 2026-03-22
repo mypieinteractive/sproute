@@ -1,10 +1,9 @@
 // *
-// * Dashboard - V11.4
+// * Dashboard - V11.5
 // * FILE: app.js
 // * Changes: 
-// * 1. Rewrote the `liveClusterUpdate()` function to implement a "Route 1 Priority" algorithm. 
-// * 2. The clustering now calculates natural geographic centers, automatically assigns the most urgent center to Route 1, and uses an affinity-based greedy assignment to pull urgent orders into Route 1 based on the slider weight. 
-// * 3. A "Fair Share" capacity limit ensures balanced non-urgent distribution (spillover) when the slider is not maxed out.
+// * 1. Fixed the priority slider binary bug in `liveClusterUpdate()`. Removed the hardcoded `MAX_PULL` of 1000 and replaced it with a dynamically calculated `maxGeoDist` relative to the current map coordinates.
+// * 2. This normalizes the slider math so it scales smoothly from 0 to 100%, allowing Route 1 gravity to incrementally overcome geographic distance based on user input.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1796,7 +1795,18 @@ function liveClusterUpdate() {
 
     // 3. Gravity and Spillover (Load Balancing)
     let capacity = Math.ceil(unroutedStops.length / k);
-    const MAX_PULL = 1000; // Arbitrary massive distance to guarantee override at w=1
+    
+    // Calculate maximum geographic spread on the map to normalize the slider's pull
+    let maxGeoDist = 0.0001; // absolute minimum fallback
+    unroutedStops.forEach(s => {
+        centroids.forEach(c => {
+            let d = Math.sqrt(Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2));
+            if (d > maxGeoDist) maxGeoDist = d;
+        });
+    });
+
+    // Multiplier guarantees that at 100% (w=1), even urgency=1 overrides the max map distance
+    const pullMultiplier = maxGeoDist * 2.5; 
 
     unroutedStops.forEach(s => {
         if (s.manualCluster) return;
@@ -1810,7 +1820,8 @@ function liveClusterUpdate() {
             if (d < bestAltDist) { bestAltDist = d; bestAltIdx = i; }
         }
 
-        let effectiveDist0 = dist0 - (s._urgency * w * MAX_PULL);
+        // Scale urgency 1 or 2 down to 0.5 or 1.0, then apply slider weight and map scale
+        let effectiveDist0 = dist0 - ((s._urgency / 2) * w * pullMultiplier);
         s._dist0 = dist0;
         s._bestAltDist = bestAltDist;
         s._bestAltIdx = bestAltIdx;
