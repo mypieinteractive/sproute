@@ -24,33 +24,49 @@
 </div>
 
 <div id="map-wrapper">
-    <div id="map-header" style="padding: 12px 15px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: flex-start; gap: 12px; height: 61px; position: absolute; top: 0; width: 100%; z-index: 10; box-sizing: border-box;">
+    <div id="map-header" style="padding: 12px 15px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: flex-start; gap: 12px; height: 61px; flex: none; z-index: 10; box-sizing: border-box;">
         <img id="brand-logo-map" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
         <span id="map-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
     </div>
-    <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
-    <div class="map-overlay-btns">
-        <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()">
-            <i class="fa-solid fa-expand"></i> Reset View
-        </button>
-        <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()">
-            <i class="fa-solid fa-route"></i> Remove selected from route
-        </button>
-        <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()">
-            <i class="fa-solid fa-trash-can"></i> Delete selected
-        </button>
-        
-        <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)">
-            Move to Route 1
-        </button>
-        <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)">
-            Move to Route 2
-        </button>
-        <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)">
-            Move to Route 3
-        </button>
+    
+    <div id="route-summary">
+        <div class="summary-left">
+            <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+        </div>
+        <div class="summary-right">
+            <div id="order-stats">
+                <span id="stat-total">0 Orders</span> | 
+                <span id="stat-due" style="color:var(--orange)">0 Due Today</span> | 
+                <span id="stat-past" style="color:var(--red)">0 Past Due</span>
+            </div>
+        </div>
     </div>
-    <div id="map"></div>
+
+    <div id="map-container" style="flex: 1; position: relative; min-height: 0;">
+        <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
+        <div class="map-overlay-btns">
+            <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()">
+                <i class="fa-solid fa-expand"></i> Reset View
+            </button>
+            <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()">
+                <i class="fa-solid fa-route"></i> Remove selected from route
+            </button>
+            <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()">
+                <i class="fa-solid fa-trash-can"></i> Delete selected
+            </button>
+            
+            <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)">
+                Move to Route 1
+            </button>
+            <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)">
+                Move to Route 2
+            </button>
+            <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)">
+                Move to Route 3
+            </button>
+        </div>
+        <div id="map"></div>
+    </div>
 </div>
 
 <div id="resizer"></div>
@@ -131,19 +147,6 @@
         <button class="route-view-btn" id="view-r2-btn" onclick="setRouteViewFilter(2)">Route 3</button>
     </div>
 
-    <div id="route-summary">
-        <div class="summary-left">
-            <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
-        </div>
-        <div class="summary-right">
-            <div id="order-stats">
-                <span id="stat-total">0 Orders</span> | 
-                <span id="stat-due" style="color:var(--orange)">0 Due Today</span> | 
-                <span id="stat-past" style="color:var(--red)">0 Past Due</span>
-            </div>
-        </div>
-    </div>
-    
     <div id="search-container">
         <input type="text" id="search-input" placeholder="Search address or client..." onkeyup="filterList()">
         <div class="rocker">
