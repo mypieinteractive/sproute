@@ -1,9 +1,8 @@
 // *
-// * Dashboard - V11.1
+// * Dashboard - V11.2
 // * FILE: app.js
 // * Changes: 
-// * 1. Cleaned up `updateHeaderUI()` and `loadData()` to completely remove references to the sidebar logo.
-// * 2. Added touch event listeners to the map container to instantly dismiss the Mapbox two-finger scroll overlay (`.mapboxgl-touch-pan-blocker`) upon `touchend`.
+// * 1. Added `adminId: adminParam` to the payloads of `updateMultipleOrders` and `updateOrder` actions to support back-end route locking validation.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1895,7 +1894,8 @@ async function triggerBulkUnroute() {
         let payload = { 
             action: 'updateMultipleOrders', 
             updatesList: updatesArray, 
-            sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' } 
+            sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' },
+            adminId: adminParam 
         };
         if (!isManagerView) payload.routeId = routeId;
         
@@ -1968,7 +1968,8 @@ async function handleInspectorChange(e, rowId, selectEl) {
                 durationSecs: 0,
                 routeNum: 'X',
                 cluster: 'X'
-            } 
+            },
+            adminId: adminParam
         };
         
         if (!isManagerView) payload.routeId = routeId;
@@ -2554,7 +2555,13 @@ async function toggleComplete(e, id) {
     render(); drawRoute(); updateSummary();
     
     try {
-        let payload = { action: 'updateOrder', rowId: id, driverId: stops[idx].driverId, updates: { status: getStatusCode(newStatus) } };
+        let payload = { 
+            action: 'updateOrder', 
+            rowId: id, 
+            driverId: stops[idx].driverId, 
+            updates: { status: getStatusCode(newStatus) },
+            adminId: adminParam
+        };
         if (!isManagerView) payload.routeId = routeId;
         await fetch(WEB_APP_URL, {
             method: 'POST',
@@ -2831,7 +2838,13 @@ function initSortable() {
                         const overlay = document.getElementById('processing-overlay');
                         if(overlay) overlay.style.display = 'flex';
                         try {
-                            let unroutePayload = { action: 'updateOrder', rowId: stopId, driverId: dId, updates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' } };
+                            let unroutePayload = { 
+                                action: 'updateOrder', 
+                                rowId: stopId, 
+                                driverId: dId, 
+                                updates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' },
+                                adminId: adminParam
+                            };
                             if (!isManagerView) unroutePayload.routeId = routeId;
                             await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(unroutePayload) });
                         } catch (e) { console.error(e); }
