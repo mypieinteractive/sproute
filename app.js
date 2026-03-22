@@ -1,9 +1,11 @@
 // *
-// * Dashboard - V11.6
+// * Dashboard - V11.7
 // * FILE: app.js
 // * Changes: 
-// * 1. Cleaned `updateHeaderUI()` to never override the inspector's name with "Upload a CSV to begin".
-// * 2. Updated the `render()` function to dynamically inject a stylized "Empty State" widget (Upload a CSV...) into the center of the list container whenever there are no active stops.
+// * 1. Added `frontEndApiUsage` tracking globally. Created an `apiFetch()` wrapper to attach incremental geocode and mapLoad counts to every backend POST request and reset them.
+// * 2. Replaced the static empty states in `render()` with an interactive `createDropzone()` component that supports drag-and-drop or click-to-upload.
+// * 3. Built `handleCsvUpload()` to utilize the local `FileReader` API. It parses the CSV text instantly, constructs the payload mapping to `action: 'uploadCsv'`, and dynamically manages the processing overlay text.
+// * 4. Integrated the requested response handling for successful uploads, `size_limit` warnings, and the `confirm_hijack` takeover loop with the `overrideLock` payload property.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -22,6 +24,17 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+
+// Global API Usage Tracker
+let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
+
+// Central Wrapper to inject tracking counts into all backend POST requests
+function apiFetch(payload) {
+    payload.frontEndApiUsage = { geocode: frontEndApiUsage.geocode, mapLoads: frontEndApiUsage.mapLoads };
+    frontEndApiUsage.geocode = 0;
+    frontEndApiUsage.mapLoads = 0;
+    return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+}
 
 const params = new URLSearchParams(window.location.search);
 let routeId = params.get('id');
@@ -135,10 +148,8 @@ function startHeartbeat() {
     clearInterval(heartbeatInterval);
     if (!isManagerView || !adminParam) return;
     heartbeatInterval = setInterval(() => {
-        fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'heartbeat', adminId: adminParam })
-        }).catch(e => console.log('Heartbeat silent error'));
+        apiFetch({ action: 'heartbeat', adminId: adminParam })
+        .catch(e => console.log('Heartbeat silent error'));
     }, 180000);
 }
 // -------------------------
@@ -264,7 +275,7 @@ async function undoLastAction() {
             };
             if (!isManagerView) payload.routeId = routeId;
 
-            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+            await apiFetch(payload);
         } catch (e) {
             console.error("Failed to resurrect orders:", e);
         } finally {
@@ -308,10 +319,7 @@ function silentSaveRouteState() {
     
     if (!isManagerView) payload.routeId = routeId;
 
-    fetch(WEB_APP_URL, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-    }).catch(e => console.log("Silent save error", e));
+    apiFetch(payload).catch(e => console.log("Silent save error", e));
 }
 
 // APPLY CSS CLASS BEFORE RENDER
@@ -329,6 +337,7 @@ const mapConfig = {
     cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile')
 };
 const map = new mapboxgl.Map(mapConfig);
+frontEndApiUsage.mapLoads++; // Log map load
 
 // Force one-finger scroll overlay to disappear immediately on touch end
 map.getContainer().addEventListener('touchend', () => {
@@ -682,15 +691,11 @@ async function loadData() {
             if (overlay) overlay.style.display = 'flex'; 
             
             if (proceed) {
-                await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: 'executeHijack', adminId: adminParam, driverId: data.driverId || currentInspectorFilter })
-                }).catch(e => console.log('Hijack execute failed:', e));
+                apiFetch({ action: 'executeHijack', adminId: adminParam, driverId: data.driverId || currentInspectorFilter })
+                .catch(e => console.log('Hijack execute failed:', e));
             } else {
-                await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: 'cancelHijack', adminId: adminParam, driverId: data.driverId || currentInspectorFilter })
-                }).catch(e => console.log('Hijack cancel failed:', e));
+                apiFetch({ action: 'cancelHijack', adminId: adminParam, driverId: data.driverId || currentInspectorFilter })
+                .catch(e => console.log('Hijack cancel failed:', e));
             }
             
             setTimeout(loadData, 2000); 
@@ -705,10 +710,8 @@ async function loadData() {
             await customAlert(data.message || "Upload cancelled. Another admin is currently modifying this Inspector's route.");
             
             if (adminParam) {
-                fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    body: JSON.stringify({ action: 'clearAlert', adminId: adminParam })
-                }).catch(e => console.log('Clear alert silent error', e));
+                apiFetch({ action: 'clearAlert', adminId: adminParam })
+                .catch(e => console.log('Clear alert silent error', e));
             }
             return;
         }
@@ -908,6 +911,7 @@ async function loadData() {
             if (!hasValidStops && data.companyAddress) {
                 const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.companyAddress)}.json?access_token=${MAPBOX_TOKEN}`;
                 try {
+                    frontEndApiUsage.geocode++; // Tracking Mapbox Geocoding Call
                     const geoRes = await fetch(geoUrl);
                     const geo = await geoRes.json();
                     if (geo.features && geo.features.length > 0) {
@@ -974,6 +978,7 @@ async function handleEndpointInput(e, type) {
     geocodeTimeout = setTimeout(async () => {
         const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&country=us&types=address,poi`;
         try {
+            frontEndApiUsage.geocode++; // Tracking Mapbox Geocoding Call
             const res = await fetch(url);
             const data = await res.json();
             latestSuggestions[type] = data.features.length > 0 ? data.features[0] : null;
@@ -1075,10 +1080,7 @@ async function executeRouteReset(driverId) {
         let payload = { action: 'resetRoute', driverId: driverId };
         if (!isManagerView) payload.routeId = routeId;
 
-        await fetch(WEB_APP_URL, { 
-            method: 'POST', 
-            body: JSON.stringify(payload) 
-        });
+        await apiFetch(payload);
         
         historyStack = []; 
         stops.forEach(s => {
@@ -1116,7 +1118,7 @@ async function saveEndpointToBackend(type, address, lat, lng) {
     }
     
     try {
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const res = await apiFetch(payload);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
     } catch (e) {
@@ -1305,7 +1307,7 @@ function handleOpenEmailModal() {
         if (!isManagerView) payload.routeId = routeId;
 
         try {
-            const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+            const res = await apiFetch(payload);
             const result = await res.json();
             
             if (result.success) {
@@ -1624,7 +1626,7 @@ async function handleGenerateRoute() {
         };
         if (!isManagerView) payload.routeId = routeId;
 
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const res = await apiFetch(payload);
         const data = await res.json();
         
         if (data.updatedStops || (data.stops && Array.isArray(data.stops))) {
@@ -1669,8 +1671,7 @@ async function handleGenerateRoute() {
             let pqPayload = { action: 'processQueue', driverId: insp.id };
             if (!isManagerView) pqPayload.routeId = routeId;
             
-            fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(pqPayload) })
-            .catch(err => console.log("Ignored expected timeout from processQueue", err));
+            apiFetch(pqPayload).catch(err => console.log("Ignored expected timeout from processQueue", err));
             
             isPollingForRoute = true;
             pollRetries = 0;
@@ -1695,10 +1696,7 @@ async function handleRestoreOriginal() {
         let payload = { action: 'restoreOriginalRoute', driverId: inspId };
         if (!isManagerView) payload.routeId = routeId;
 
-        await fetch(WEB_APP_URL, { 
-            method: 'POST', 
-            body: JSON.stringify(payload) 
-        });
+        await apiFetch(payload);
         
         await loadData(); 
     } catch(e) {
@@ -1916,7 +1914,7 @@ async function triggerBulkDelete() {
         let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete };
         if (!isManagerView) payload.routeId = routeId;
         
-        await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        await apiFetch(payload);
         
         stops = stops.filter(s => !selectedIds.has(s.id));
         
@@ -1971,7 +1969,7 @@ async function triggerBulkUnroute() {
         };
         if (!isManagerView) payload.routeId = routeId;
         
-        await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        await apiFetch(payload);
         
         selectedIds.clear(); 
         
@@ -2027,7 +2025,6 @@ async function handleInspectorChange(e, rowId, selectEl) {
             }
         });
 
-        // The back end script now handles the robust unrouting logic via these sharedUpdates
         let payload = { 
             action: 'updateMultipleOrders', 
             updatesList: idsToUpdate.map(id => ({ rowId: id })), 
@@ -2046,7 +2043,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
         
         if (!isManagerView) payload.routeId = routeId;
 
-        await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        await apiFetch(payload);
         
         selectedIds.clear();
         updateInspectorDropdown(); 
@@ -2168,6 +2165,120 @@ function createEndpointRow(type, endpointData) {
         <div class="stop-actions" style="width: 40px;"></div>
     `;
     return el;
+}
+
+async function handleCsvUpload(file, overrideLock = false) {
+    const overlay = document.getElementById('processing-overlay');
+    const loadingText = overlay.querySelector('.loading-text');
+    const subText = overlay.querySelector('.loading-subtext');
+    
+    if (loadingText) loadingText.innerText = "Uploading CSV...";
+    if (subText) subText.innerText = "Processing order data locally";
+    overlay.style.display = 'flex';
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const text = e.target.result;
+        try {
+            if (loadingText) loadingText.innerText = "Syncing...";
+            if (subText) subText.innerText = "Sending data to server";
+            
+            let payload = {
+                action: 'uploadCsv',
+                csvData: text,
+                adminId: adminParam,
+                driverId: isManagerView ? currentInspectorFilter : driverParam,
+                companyId: companyParam || '',
+                csvType: 'routing'
+            };
+            if (!isManagerView) payload.routeId = routeId;
+            if (overrideLock) payload.overrideLock = true;
+            
+            const res = await apiFetch(payload);
+            const data = await res.json();
+            
+            if (data.success) {
+                await loadData(); // Refresh the dashboard completely
+            } else if (data.status === 'size_limit') {
+                overlay.style.display = 'none';
+                await customAlert("The uploaded file is too large. Please reduce the number of rows and try again.");
+            } else if (data.status === 'confirm_hijack') {
+                overlay.style.display = 'none';
+                const proceed = await customConfirm(data.message || "This route is currently locked by another admin. Do you want to take over and overwrite it?");
+                if (proceed) {
+                    handleCsvUpload(file, true); // Re-trigger the exact payload but with overrideLock
+                }
+            } else {
+                throw new Error(data.error || "Upload failed");
+            }
+        } catch (err) {
+            console.error(err);
+            overlay.style.display = 'none';
+            await customAlert("An error occurred during the upload. Please try again.");
+        } finally {
+            // Restore default overlay text for standard polling operations
+            if (loadingText) loadingText.innerText = "Processing...";
+            if (subText) subText.innerText = "Syncing data with the server";
+        }
+    };
+    reader.readAsText(file);
+}
+
+function createDropzone() {
+    const dropzone = document.createElement('div');
+    dropzone.className = 'upload-dropzone';
+    dropzone.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: 8px; margin: 20px; cursor: pointer; transition: all 0.2s; min-height: 250px;';
+    
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.style.display = 'none';
+    
+    dropzone.innerHTML = `
+        <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px; pointer-events: none;">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i>
+        </div>
+        <div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; pointer-events: none;">Ready to Route</div>
+        <div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5; pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
+    `;
+    
+    dropzone.appendChild(input);
+    
+    dropzone.onclick = () => input.click();
+    
+    dropzone.ondragover = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'var(--bg-hover)';
+        dropzone.style.borderColor = 'var(--blue)';
+    };
+    
+    dropzone.ondragleave = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'transparent';
+        dropzone.style.borderColor = 'var(--border-color)';
+    };
+    
+    dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'transparent';
+        dropzone.style.borderColor = 'var(--border-color)';
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            if (file.name.toLowerCase().endsWith('.csv')) {
+                handleCsvUpload(file);
+            } else {
+                customAlert("Please upload a valid CSV file.");
+            }
+        }
+    };
+    
+    input.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleCsvUpload(e.target.files[0]);
+        }
+    };
+    
+    return dropzone;
 }
 
 function render() {
@@ -2368,16 +2479,7 @@ function render() {
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
         if (activeStops.length === 0) {
-            const emptyState = document.createElement('div');
-            emptyState.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center;';
-            emptyState.innerHTML = `
-                <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 50%; margin-bottom: 15px;">
-                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 36px; color: var(--blue);"></i>
-                </div>
-                <div style="font-size: 16px; font-weight: bold; color: var(--text-main); margin-bottom: 6px;">Ready to Route</div>
-                <div style="font-size: 13px; color: var(--text-muted); max-width: 220px; line-height: 1.4;">Upload a CSV to begin assigning and optimizing routes.</div>
-            `;
-            listContainer.appendChild(emptyState);
+            listContainer.appendChild(createDropzone());
         }
 
         if (unroutedStops.length > 0) {
@@ -2420,16 +2522,7 @@ function render() {
         listContainer.appendChild(mainDiv);
         
         if (activeStops.length === 0) {
-            const emptyState = document.createElement('div');
-            emptyState.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center; min-height: 300px;';
-            emptyState.innerHTML = `
-                <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px;">
-                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i>
-                </div>
-                <div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px;">Ready to Route</div>
-                <div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5;">Upload a CSV to begin assigning and optimizing routes.</div>
-            `;
-            mainDiv.appendChild(emptyState);
+            mainDiv.appendChild(createDropzone());
         } else {
             activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
         }
@@ -2598,7 +2691,7 @@ async function handleCalculate() {
         };
         if (!isManagerView) payload.routeId = routeId;
 
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const res = await apiFetch(payload);
         const data = await res.json();
         
         if (data.error) throw new Error(data.error);
@@ -2662,10 +2755,7 @@ async function toggleComplete(e, id) {
             adminId: adminParam
         };
         if (!isManagerView) payload.routeId = routeId;
-        await fetch(WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        });
+        await apiFetch(payload);
     } catch(err) { console.error("Toggle Complete Error", err); }
 }
 
@@ -2945,7 +3035,7 @@ function initSortable() {
                                 adminId: adminParam
                             };
                             if (!isManagerView) unroutePayload.routeId = routeId;
-                            await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(unroutePayload) });
+                            await apiFetch(unroutePayload);
                         } catch (e) { console.error(e); }
                         finally { if(overlay) overlay.style.display = 'none'; }
                     }
