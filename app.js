@@ -1,10 +1,11 @@
 // *
-// * Dashboard - V10.34
+// * Dashboard - V11.0
 // * FILE: app.js
 // * Changes: 
-// * 1. Safely reverted the processing overlay logic directly to the V10.31 baseline (URL-checking).
-// * 2. Modified `getActiveEndpoints()` to enforce a strict silo for the Inspector view, completely bypassing the master roster array and utilizing only `routeStart` and `routeEnd` global variables.
-// * 3. Stripped out all tracking and display logic for the "Unsaved Changes" badge.
+// * 1. Filtered the dropdown options in `updateInspectorDropdown()` and `render()` to strictly display users where `isInspector` evaluates to true.
+// * 2. Revamped `handleInspectorChange()` to remove the race-condition-inducing `await loadData()`. It now relies on Optimistic UI rendering.
+// * 3. Updated `handleInspectorChange()` payload and local memory mapping to force newly reassigned orders to unroute (status 'P', cluster 'X', etc).
+// * 4. Adjusted `updateHeaderUI()` to actively hide the sidebar logo when no orders are present, leaving it visible only for non-company tiers with active stops.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -389,7 +390,7 @@ function minifyStop(s, routeNum) {
         routeNum, 
         s.address || "", 
         s.client ? String(s.client).substring(0, 3) : "", 
-        s.app || "",                                     
+        s.app || "",                                      
         s.dueDate || "", 
         s.type || "", 
         s.eta || "", 
@@ -430,7 +431,7 @@ function updateHeaderUI() {
             sidebarDriverEl.innerText = "Upload a CSV to begin";
             sidebarDriverEl.style.display = 'block';
         }
-        if (sidebarLogo) sidebarLogo.style.display = 'block';
+        if (sidebarLogo) sidebarLogo.style.display = 'none'; // Replaced 'block' to hide when empty
         if (filterSelectWrap) filterSelectWrap.style.display = 'none';
     } else if (isCompanyTier) {
         if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
@@ -438,6 +439,7 @@ function updateHeaderUI() {
         if (filterSelectWrap) filterSelectWrap.style.display = 'block';
     } else {
         if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
+        if (sidebarLogo) sidebarLogo.style.display = 'block';
         if (filterSelectWrap) filterSelectWrap.style.display = 'none';
     }
 }
@@ -462,10 +464,14 @@ function updateInspectorDropdown() {
 
     let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
+    // Only show real inspectors in the dropdown filter
     inspectors.forEach((i, idx) => { 
         if (validInspectorIds.has(String(i.id))) {
-            const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
-            filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: bold;">${i.name}</option>`; 
+            const isInsp = i.isInspector === true || String(i.isInspector).toLowerCase() === 'true';
+            if (isInsp) {
+                const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
+                filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: bold;">${i.name}</option>`; 
+            }
         }
     });
     
@@ -715,7 +721,6 @@ async function loadData() {
         let preUploadSnapshot = sessionStorage.getItem('sproute_snapshot');
 
         // --- Front-End Only Upload Detection ---
-        // If Glide forced a refresh, wait until the incoming data differs from the old snapshot
         if (isFreshGlideRefresh && preUploadSnapshot && (currentSnapshot === preUploadSnapshot || rawStops.length === 0) && pageLoadRetries < MAX_RETRIES) {
             pageLoadRetries++;
             const overlay = document.getElementById('processing-overlay');
@@ -724,11 +729,9 @@ async function loadData() {
             return; 
         }
         
-        // Once data has officially changed, pinpoint WHO was uploaded to auto-switch the view
         if (isFreshGlideRefresh && preUploadSnapshot && currentSnapshot !== preUploadSnapshot) {
             try {
                 const oldStops = JSON.parse(preUploadSnapshot);
-                // Look for a single stop that didn't exist in the old snapshot or has drastically changed
                 let diffStop = rawStops.find(n => {
                     let oldStr = oldStops.find(o => (o.rowId || o.id || o[0]) === (n.rowId || n.id || n[0]));
                     if (!oldStr) return true; 
@@ -745,7 +748,6 @@ async function loadData() {
             } catch(e) { console.error("Snapshot diff error:", e); }
         }
 
-        // Polling loop finished (either data changed, or max retries hit)
         isFreshGlideRefresh = false; 
         
         if (!data.uploadError && !data.confirmHijack) {
@@ -1934,25 +1936,53 @@ async function handleInspectorChange(e, rowId, selectEl) {
     try { 
         idsToUpdate.forEach(id => {
             const s = stops.find(st => String(st.id) === String(id));
-            if (s && isRouteAssigned(s.status)) {
-                markRouteDirty(s.driverId, s.cluster); 
-                markRouteDirty(newDriverId, s.cluster); 
+            if (s) {
+                if (isRouteAssigned(s.status)) {
+                    markRouteDirty(s.driverId, s.cluster); 
+                }
+                
+                // Optimistically reassign and unroute the orders
+                s.driverName = newDriverName; 
+                s.driverId = newDriverId; 
+                s.status = 'Pending';
+                s.routeState = 'Pending';
+                s.cluster = 'X';
+                s.manualCluster = false;
+                s.eta = '';
+                s.dist = 0;
+                s.durationSecs = 0;
+                if (viewMode === 'inspector') s.hiddenInInspector = true;
             }
-            const stopIdx = stops.findIndex(st => String(st.id) === String(id));
-            if (stopIdx > -1) { stops[stopIdx].driverName = newDriverName; stops[stopIdx].driverId = newDriverId; }
         });
 
+        // The back end script now handles the robust unrouting logic via these sharedUpdates
         let payload = { 
             action: 'updateMultipleOrders', 
             updatesList: idsToUpdate.map(id => ({ rowId: id })), 
-            sharedUpdates: { driverName: newDriverName, driverId: newDriverId } 
+            sharedUpdates: { 
+                driverName: newDriverName, 
+                driverId: newDriverId,
+                status: 'P',
+                eta: '',
+                dist: 0,
+                durationSecs: 0,
+                routeNum: 'X',
+                cluster: 'X'
+            } 
         };
+        
         if (!isManagerView) payload.routeId = routeId;
 
         await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
         
+        selectedIds.clear();
         updateInspectorDropdown(); 
-        await loadData();
+        
+        // Optimistic render instead of awaiting slow server refresh
+        render(); 
+        drawRoute(); 
+        updateSummary();
+        silentSaveRouteState();
         
     } catch (err) { 
         if(overlay) overlay.style.display = 'none';
@@ -2067,31 +2097,6 @@ function createEndpointRow(type, endpointData) {
     return el;
 }
 
-function updateHeaderUI() {
-    if (!isManagerView) return;
-    const validActiveStops = stops.filter(s => isActiveStop(s));
-    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
-    const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
-    const sidebarLogo = document.getElementById('brand-logo-sidebar');
-    const isCompanyTier = document.body.classList.contains('tier-company');
-
-    if (validActiveStops.length === 0) {
-        if (sidebarDriverEl) {
-            sidebarDriverEl.innerText = "Upload a CSV to begin";
-            sidebarDriverEl.style.display = 'block';
-        }
-        if (sidebarLogo) sidebarLogo.style.display = 'block';
-        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
-    } else if (isCompanyTier) {
-        if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
-        if (sidebarLogo) sidebarLogo.style.display = 'none'; 
-        if (filterSelectWrap) filterSelectWrap.style.display = 'block';
-    } else {
-        if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
-        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
-    }
-}
-
 function render() {
     updateHeaderUI();
     updateRoutingUI();
@@ -2177,10 +2182,15 @@ function render() {
             let inspectorHtml = `<div class="col-insp" style="display: ${isSingleInspector ? 'none' : 'block'};">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (inspectors.length > 0) {
-                const optionsHtml = inspectors.map((insp, idx) => {
-                    const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
+                // Only show users configured as real inspectors in the row-level dropdown
+                const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
+                
+                const optionsHtml = filteredInspectors.map((insp) => {
+                    const originalIdx = inspectors.indexOf(insp);
+                    const color = MASTER_PALETTE[originalIdx % MASTER_PALETTE.length];
                     return `<option value="${insp.id}" style="color: ${color}; font-weight: bold;" ${String(s.driverId) === String(insp.id) ? 'selected' : ''}>${insp.name}</option>`;
                 }).join('');
+                
                 const defaultPlaceholder = !s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : '';
                 const disableSelectAttr = !PERMISSION_MODIFY ? 'disabled' : '';
 
