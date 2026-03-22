@@ -1,11 +1,13 @@
 // *
-// * Dashboard - V10.33
+// * Dashboard - V10.34
 // * FILE: app.js
 // * Changes: 
-// * 1. Reverted the upload tracking logic to the URL-checking standard from V10.31 per user request.
+// * 1. Safely reverted the processing overlay logic directly to the V10.31 baseline (URL-checking).
 // * 2. Modified `getActiveEndpoints()` to enforce a strict silo for the Inspector view, completely bypassing the master roster array and utilizing only `routeStart` and `routeEnd` global variables.
-// * 3. Stripped out all tracking and logic for the "Unsaved Changes" badge.
-// * function updateShiftCursor(isShiftDown) {
+// * 3. Stripped out all tracking and display logic for the "Unsaved Changes" badge.
+// *
+
+function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
     if (wrap) {
         if (isShiftDown && !wrap.classList.contains('shift-down')) {
@@ -1131,7 +1133,10 @@ async function saveEndpointToBackend(type, address, lat, lng) {
 function getActiveEndpoints() {
     // NEW SILOED LOGIC: Inspector view exclusively uses routeStart/routeEnd, completely bypassing the roster
     if (!isManagerView) {
-        return { start: routeStart, end: routeEnd };
+        return { 
+            start: routeStart ? { address: routeStart.address, lat: routeStart.lat, lng: routeStart.lng } : null, 
+            end: routeEnd ? { address: routeEnd.address, lat: routeEnd.lat, lng: routeEnd.lng } : null 
+        };
     }
     
     // Original logic for Manager views
@@ -1345,7 +1350,6 @@ function handleOpenEmailModal() {
 }
 
 function updateRoutingUI() {
-    const activeStops = stops.filter(s => isActiveStop(s));
     const isDirty = dirtyRoutes.size > 0;
 
     const routingControls = document.getElementById('routing-controls');
@@ -1881,7 +1885,6 @@ async function triggerBulkUnroute() {
                 stops[idx].eta = '';
                 stops[idx].dist = 0;
                 stops[idx].durationSecs = 0;
-                // Safety catch for explicit DB unrouting logic
                 if (viewMode === 'inspector') stops[idx].hiddenInInspector = true; 
             }
             updatesArray.push({ rowId: id, driverId: dId });
