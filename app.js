@@ -1,10 +1,11 @@
 // *
-// * Dashboard - V10.31
+// * Dashboard - V10.33
 // * FILE: app.js
-// * Changes: Updated `isStopVisible()` to strictly hide unrouted orders (Pending) from the Inspector view across the map, list, and summary bar. Added `cooperativeGestures: true` to the Mapbox initialization config for mobile-styled views to require two fingers for panning/zooming, preventing accidental scrolling.
-// *
-
-function updateShiftCursor(isShiftDown) {
+// * Changes: 
+// * 1. Reverted the upload tracking logic to the URL-checking standard from V10.31 per user request.
+// * 2. Modified `getActiveEndpoints()` to enforce a strict silo for the Inspector view, completely bypassing the master roster array and utilizing only `routeStart` and `routeEnd` global variables.
+// * 3. Stripped out all tracking and logic for the "Unsaved Changes" badge.
+// * function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
     if (wrap) {
         if (isShiftDown && !wrap.classList.contains('shift-down')) {
@@ -117,8 +118,6 @@ let isAlteredRoute = false;
 let isPollingForRoute = false;
 let isPollingForUpload = false;
 let pollRetries = 0;
-
-let uploadStaleRetries = 0;
 
 let currentRouteViewFilter = 'all';
 
@@ -324,7 +323,6 @@ const mapConfig = {
     attributionControl: false,
     boxZoom: false,
     preserveDrawingBuffer: true,
-    // Requires two-finger pan on touch devices for mobile-style views
     cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile')
 };
 const map = new mapboxgl.Map(mapConfig);
@@ -1131,6 +1129,12 @@ async function saveEndpointToBackend(type, address, lat, lng) {
 }
 
 function getActiveEndpoints() {
+    // NEW SILOED LOGIC: Inspector view exclusively uses routeStart/routeEnd, completely bypassing the roster
+    if (!isManagerView) {
+        return { start: routeStart, end: routeEnd };
+    }
+    
+    // Original logic for Manager views
     if (isManagerView && currentInspectorFilter === 'all') return { start: null, end: null };
     
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
@@ -1251,7 +1255,7 @@ function handleOpenEmailModal() {
         const ccEmail = document.getElementById('additional-cc-email').value;
 
         const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint', '#badge-changes-made');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint');
         overlaysToHide.forEach(el => el.style.display = 'none');
 
         const bounds = new mapboxgl.LngLatBounds();
@@ -1285,11 +1289,6 @@ function handleOpenEmailModal() {
         }
 
         overlaysToHide.forEach(el => el.style.display = '');
-        
-        if (dirtyRoutes.size > 0) {
-            const b = document.getElementById('badge-changes-made');
-            if (b) b.style.display = 'flex';
-        }
 
         const payload = {
             action: "dispatchRoute",
@@ -1346,6 +1345,7 @@ function handleOpenEmailModal() {
 }
 
 function updateRoutingUI() {
+    const activeStops = stops.filter(s => isActiveStop(s));
     const isDirty = dirtyRoutes.size > 0;
 
     const routingControls = document.getElementById('routing-controls');
@@ -1355,7 +1355,6 @@ function updateRoutingUI() {
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
-    const badgeChanges = document.getElementById('badge-changes-made');
     const btnSend = document.getElementById('btn-header-send-route');
 
     [btnGen, btnRecalc, btnRestore, optInspBtn, btnSend].forEach(btn => {
@@ -1366,7 +1365,6 @@ function updateRoutingUI() {
         if(routingControls) routingControls.style.display = 'none';
         const routeToggles = document.getElementById('route-view-toggles');
         if(routeToggles) routeToggles.style.display = 'none';
-        if (badgeChanges) badgeChanges.style.display = 'none';
         
         let showHint = false;
         const allValidStops = stops.filter(s => {
@@ -1451,10 +1449,6 @@ function updateRoutingUI() {
                 isCurrentViewDirty = true;
             }
         }
-    }
-
-    if (badgeChanges) {
-        badgeChanges.style.display = (isCurrentViewDirty && hasActiveRoutesUI) ? 'flex' : 'none';
     }
 
     if (isManagerView) {
