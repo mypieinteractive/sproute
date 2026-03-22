@@ -1,8 +1,14 @@
 // *
-// * Dashboard - V11.2
+// * Dashboard - V11.3
 // * FILE: app.js
 // * Changes: 
-// * 1. Added `adminId: adminParam` to the payloads of `updateMultipleOrders` and `updateOrder` actions to support back-end route locking validation.
+// * 1. Filtered the dropdown options in `updateInspectorDropdown()` and `render()` to strictly display users where `isInspector` evaluates to true.
+// * 2. Revamped `handleInspectorChange()` to remove the race-condition-inducing `await loadData()`. It now relies on Optimistic UI rendering.
+// * 3. Updated `handleInspectorChange()` payload and local memory mapping to force newly reassigned orders to unroute (status 'P', cluster 'X', etc).
+// * 4. Adjusted `updateHeaderUI()` to actively hide the sidebar logo when no orders are present, leaving it visible only for non-company tiers with active stops.
+// * 5. Added touch event listeners to the map container to instantly dismiss the Mapbox two-finger scroll overlay (`.mapboxgl-touch-pan-blocker`) upon `touchend`.
+// * 6. Added `adminId: adminParam` to the payloads of `updateMultipleOrders` and `updateOrder` actions to support back-end route locking validation.
+// * 7. Updated Glide refresh tracking to explicitly look for "Upload-" in the URL parameters. Manual refreshes ("Refresh-") now process instantly without triggering the 15-second polling hold.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -93,9 +99,11 @@ const currentQuery = window.location.search;
 const lastQuery = sessionStorage.getItem('sproute_last_query');
 let isFreshGlideRefresh = false;
 
-// If the URL parameters have changed, Glide forced a refresh (likely an upload)
+// If the URL parameters have changed, explicitly determine if it is an Upload
 if (lastQuery && currentQuery !== lastQuery) {
-    isFreshGlideRefresh = true;
+    if (currentQuery.includes('Upload-')) {
+        isFreshGlideRefresh = true; // Trigger 15-second protective hold
+    }
 }
 sessionStorage.setItem('sproute_last_query', currentQuery);
 
