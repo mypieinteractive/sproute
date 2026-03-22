@@ -1,14 +1,10 @@
 // *
-// * Dashboard - V11.3
+// * Dashboard - V11.4
 // * FILE: app.js
 // * Changes: 
-// * 1. Filtered the dropdown options in `updateInspectorDropdown()` and `render()` to strictly display users where `isInspector` evaluates to true.
-// * 2. Revamped `handleInspectorChange()` to remove the race-condition-inducing `await loadData()`. It now relies on Optimistic UI rendering.
-// * 3. Updated `handleInspectorChange()` payload and local memory mapping to force newly reassigned orders to unroute (status 'P', cluster 'X', etc).
-// * 4. Adjusted `updateHeaderUI()` to actively hide the sidebar logo when no orders are present, leaving it visible only for non-company tiers with active stops.
-// * 5. Added touch event listeners to the map container to instantly dismiss the Mapbox two-finger scroll overlay (`.mapboxgl-touch-pan-blocker`) upon `touchend`.
-// * 6. Added `adminId: adminParam` to the payloads of `updateMultipleOrders` and `updateOrder` actions to support back-end route locking validation.
-// * 7. Updated Glide refresh tracking to explicitly look for "Upload-" in the URL parameters. Manual refreshes ("Refresh-") now process instantly without triggering the 15-second polling hold.
+// * 1. Rewrote the `liveClusterUpdate()` function to implement a "Route 1 Priority" algorithm. 
+// * 2. The clustering now calculates natural geographic centers, automatically assigns the most urgent center to Route 1, and uses an affinity-based greedy assignment to pull urgent orders into Route 1 based on the slider weight. 
+// * 3. A "Fair Share" capacity limit ensures balanced non-urgent distribution (spillover) when the slider is not maxed out.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1748,52 +1744,116 @@ function liveClusterUpdate() {
 
     if (unroutedStops.length === 0) return;
 
+    let today = new Date(); 
+    today.setHours(0,0,0,0);
+
+    // Pre-calculate urgency
+    unroutedStops.forEach(s => {
+        s._urgency = 0;
+        if (s.dueDate) {
+            let d = new Date(s.dueDate);
+            d.setHours(0,0,0,0);
+            if (d < today) s._urgency = 2;
+            else if (d.getTime() === today.getTime()) s._urgency = 1;
+        }
+    });
+
+    // 1. Natural Geographic K-Means (Ignore Urgency)
     let centroids = [];
     for(let i=0; i<k; i++) {
         let idx = Math.floor(i * unroutedStops.length / k);
         centroids.push({ lat: unroutedStops[idx].lat, lng: unroutedStops[idx].lng });
     }
 
-    let today = new Date(); 
-    today.setHours(0,0,0,0);
-
-    for(let iter=0; iter<10; iter++) {
+    for(let iter=0; iter<5; iter++) {
         unroutedStops.forEach(s => {
-            if (s.manualCluster) return; 
-
-            let bestD = Infinity;
-            let bestC = 0;
-            let dueTime = s.dueDate ? new Date(s.dueDate).getTime() : Infinity;
-            let daysUntilDue = Math.floor((dueTime - today.getTime()) / (1000*3600*24));
-
+            let bestD = Infinity, bestC = 0;
             centroids.forEach((c, cIdx) => {
-                let dLat = s.lat - c.lat;
-                let dLng = s.lng - c.lng;
-                let geoDist = Math.sqrt(dLat*dLat + dLng*dLng);
-
-                let timePenalty = 0;
-                if(w > 0 && s.dueDate) {
-                    if(daysUntilDue < cIdx) {
-                        timePenalty = (cIdx - Math.max(0, daysUntilDue)) * 0.2; 
-                    }
-                }
-
-                let totalDist = geoDist + (timePenalty * w);
-                if(totalDist < bestD) { bestD = totalDist; bestC = cIdx; }
+                let d = Math.sqrt(Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2));
+                if (d < bestD) { bestD = d; bestC = cIdx; }
             });
-            s.cluster = bestC;
+            s._tempCluster = bestC;
         });
-
         for(let i=0; i<k; i++) {
-            let clusterStops = unroutedStops.filter(s => s.cluster === i);
-            if(clusterStops.length > 0) {
-                let sumLat = 0, sumLng = 0;
-                clusterStops.forEach(s => { sumLat+=s.lat; sumLng+=s.lng; });
-                centroids[i].lat = sumLat / clusterStops.length;
-                centroids[i].lng = sumLng / clusterStops.length;
+            let cStops = unroutedStops.filter(s => s._tempCluster === i);
+            if(cStops.length > 0) {
+                centroids[i].lat = cStops.reduce((sum, s) => sum + s.lat, 0) / cStops.length;
+                centroids[i].lng = cStops.reduce((sum, s) => sum + s.lng, 0) / cStops.length;
             }
         }
     }
+
+    // 2. Route 1 Designation (Highest Urgency Concentration)
+    let clusterUrgency = new Array(k).fill(0);
+    unroutedStops.forEach(s => { clusterUrgency[s._tempCluster] += s._urgency; });
+    let bestClusterIdx = 0, maxUrg = -1;
+    for(let i=0; i<k; i++) {
+        if (clusterUrgency[i] > maxUrg) { maxUrg = clusterUrgency[i]; bestClusterIdx = i; }
+    }
+    let temp = centroids[0];
+    centroids[0] = centroids[bestClusterIdx];
+    centroids[bestClusterIdx] = temp;
+
+    // 3. Gravity and Spillover (Load Balancing)
+    let capacity = Math.ceil(unroutedStops.length / k);
+    const MAX_PULL = 1000; // Arbitrary massive distance to guarantee override at w=1
+
+    unroutedStops.forEach(s => {
+        if (s.manualCluster) return;
+
+        let dist0 = Math.sqrt(Math.pow(s.lat - centroids[0].lat, 2) + Math.pow(s.lng - centroids[0].lng, 2));
+        let bestAltDist = Infinity;
+        let bestAltIdx = 0;
+
+        for(let i=1; i<k; i++) {
+            let d = Math.sqrt(Math.pow(s.lat - centroids[i].lat, 2) + Math.pow(s.lng - centroids[i].lng, 2));
+            if (d < bestAltDist) { bestAltDist = d; bestAltIdx = i; }
+        }
+
+        let effectiveDist0 = dist0 - (s._urgency * w * MAX_PULL);
+        s._dist0 = dist0;
+        s._bestAltDist = bestAltDist;
+        s._bestAltIdx = bestAltIdx;
+        s._effectiveDist0 = effectiveDist0;
+        s._affinity0 = bestAltDist - effectiveDist0;
+    });
+
+    // Sort stops by their pull towards Route 1
+    let sortedStops = [...unroutedStops].filter(s => !s.manualCluster).sort((a, b) => b._affinity0 - a._affinity0);
+
+    let route0Count = 0;
+    let altCounts = new Array(k).fill(0);
+
+    sortedStops.forEach(s => {
+        let wants0 = s._affinity0 > 0;
+        if (wants0) {
+            if (route0Count < capacity) {
+                s.cluster = 0;
+                route0Count++;
+            } else if (s._effectiveDist0 < 0) {
+                // Force overflow if gravity is absolutely overwhelming (w is high, urgency is high)
+                s.cluster = 0;
+                route0Count++;
+            } else {
+                s.cluster = s._bestAltIdx;
+                altCounts[s._bestAltIdx]++;
+            }
+        } else {
+            s.cluster = s._bestAltIdx;
+            altCounts[s._bestAltIdx]++;
+        }
+    });
+
+    // Cleanup temporary properties
+    unroutedStops.forEach(s => {
+        delete s._urgency;
+        delete s._tempCluster;
+        delete s._dist0;
+        delete s._bestAltDist;
+        delete s._bestAltIdx;
+        delete s._effectiveDist0;
+        delete s._affinity0;
+    });
     
     updateMarkerColors();
     updateRouteTimes();
