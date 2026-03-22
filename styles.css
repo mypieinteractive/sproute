@@ -1,9 +1,7 @@
 /* * */
-/* * Dashboard - V11.0 */
+/* * Dashboard - V11.1 */
 /* * FILE: styles.css */
-/* * Changes: */
-/* * 1. Offset `#map` height and `top` property by 61px to seamlessly accommodate the new absolute-positioned `#map-header`. */
-/* * 2. Shifted the `.map-overlay-btns` and `#map-hint` down by an equivalent margin so they are not obscured by the new header. */
+/* * Changes: None required for this version iteration (all changes handled via JS classes and inline HTML styles). */
 /* * */
 
 :root { 
