@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V10.2 */
+/* * Dashboard - V10.3 */
 /* * FILE: styles.css */
-/* * Changes: Added styling classes for the new `.route-view-btn` toggle buttons. */
+/* * Changes: Added `.mapboxgl-touch-pan-blocker` class at the bottom to make the "Use two fingers..." scroll-lock text transparent while keeping the screen-dimming effect. */
 /* * */
 
 :root { 
@@ -159,25 +159,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 #map-wrapper { position: relative; background-color: var(--bg-base); }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
-
-/* Unsaved Changes Badge overlay */
-#badge-changes-made {
-    position: absolute;
-    bottom: 25px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 2000;
-    background-color: var(--red);
-    color: yellow;
-    padding: 6px 16px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: bold;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    pointer-events: none;
-    border: 2px solid #b91c1c;
-    letter-spacing: 0.5px;
-}
 
 #map-hint { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.25); backdrop-filter: blur(4px); color: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; z-index: 200; pointer-events: none; border: 1px solid rgba(255,255,255,0.15); transition: opacity 0.2s; }
 
@@ -429,3 +410,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
 }
+
+/* Hide text on Mapbox's two-finger scroll warning, keep the dimming overlay */
+.mapboxgl-touch-pan-blocker { color: transparent !important; }
