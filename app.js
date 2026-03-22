@@ -1,11 +1,9 @@
 // *
-// * Dashboard - V11.0
+// * Dashboard - V11.1
 // * FILE: app.js
 // * Changes: 
-// * 1. Filtered the dropdown options in `updateInspectorDropdown()` and `render()` to strictly display users where `isInspector` evaluates to true.
-// * 2. Revamped `handleInspectorChange()` to remove the race-condition-inducing `await loadData()`. It now relies on Optimistic UI rendering.
-// * 3. Updated `handleInspectorChange()` payload and local memory mapping to force newly reassigned orders to unroute (status 'P', cluster 'X', etc).
-// * 4. Adjusted `updateHeaderUI()` to actively hide the sidebar logo when no orders are present, leaving it visible only for non-company tiers with active stops.
+// * 1. Cleaned up `updateHeaderUI()` and `loadData()` to completely remove references to the sidebar logo.
+// * 2. Added touch event listeners to the map container to instantly dismiss the Mapbox two-finger scroll overlay (`.mapboxgl-touch-pan-blocker`) upon `touchend`.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -330,6 +328,15 @@ const mapConfig = {
 };
 const map = new mapboxgl.Map(mapConfig);
 
+// Force one-finger scroll overlay to disappear immediately on touch end
+map.getContainer().addEventListener('touchend', () => {
+    const blocker = document.querySelector('.mapboxgl-touch-pan-blocker');
+    if (blocker) {
+        blocker.style.transition = 'none';
+        blocker.style.opacity = '0';
+    }
+}, { passive: true });
+
 let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
 let currentSort = { col: null, asc: true };
 
@@ -423,7 +430,6 @@ function updateHeaderUI() {
     const validActiveStops = stops.filter(s => isActiveStop(s));
     const sidebarDriverEl = document.getElementById('sidebar-driver-name');
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
-    const sidebarLogo = document.getElementById('brand-logo-sidebar');
     const isCompanyTier = document.body.classList.contains('tier-company');
 
     if (validActiveStops.length === 0) {
@@ -431,15 +437,12 @@ function updateHeaderUI() {
             sidebarDriverEl.innerText = "Upload a CSV to begin";
             sidebarDriverEl.style.display = 'block';
         }
-        if (sidebarLogo) sidebarLogo.style.display = 'none'; // Replaced 'block' to hide when empty
         if (filterSelectWrap) filterSelectWrap.style.display = 'none';
     } else if (isCompanyTier) {
         if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
-        if (sidebarLogo) sidebarLogo.style.display = 'none'; 
         if (filterSelectWrap) filterSelectWrap.style.display = 'block';
     } else {
         if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
-        if (sidebarLogo) sidebarLogo.style.display = 'block';
         if (filterSelectWrap) filterSelectWrap.style.display = 'none';
     }
 }
@@ -886,15 +889,12 @@ async function loadData() {
             document.body.classList.add('tier-' + (data.tier ? data.tier.toLowerCase() : 'individual'));
 
             const mapLogo = document.getElementById('brand-logo-map');
-            const sidebarLogo = document.getElementById('brand-logo-sidebar');
 
             if (data.tier && data.companyLogo && (data.tier.toLowerCase() === 'company')) {
                 if (mapLogo) mapLogo.src = data.companyLogo;
-                if (sidebarLogo) sidebarLogo.src = data.companyLogo;
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
                 if (mapLogo) mapLogo.src = sprouteLogoUrl;
-                if (sidebarLogo) sidebarLogo.src = sprouteLogoUrl;
             }
             
             let displayName = data.displayName || 'Sproute'; 
