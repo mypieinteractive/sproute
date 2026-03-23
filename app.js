@@ -1,8 +1,10 @@
 // *
-// * Dashboard - V11.10
+// * Dashboard - V11.11
 // * FILE: app.js
 // * Changes: 
-// * 1. Reverted references of `tier-business` to `tier-company` and the data mapping to explicitly map `data.accountType` to "company".
+// * 1. Attached event listeners to the new `#compact-upload-zone` element for click and drag-and-drop actions.
+// * 2. Added logic to toggle the display of the compact dropzone in `render()` so it only appears when `activeStops.length > 0`.
+// * 3. Added a detailed `console.log()` payload trace inside `performUpload()` to assist in debugging specific inspector upload failures.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -2312,6 +2314,8 @@ async function performUpload(file, inspectorId, csvType, overrideLock = false) {
             if (!isManagerView) payload.routeId = routeId;
             if (overrideLock) payload.overrideLock = true;
             
+            console.log("🚀 SENDING UPLOAD PAYLOAD TO BACKEND:", payload);
+            
             const res = await apiFetch(payload);
             const data = await res.json();
             
@@ -2424,6 +2428,16 @@ function render() {
     // Master visibility filter
     const activeStops = stops.filter(s => isStopVisible(s, true));
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
+    
+    // Toggle Compact Dropzone Visibility
+    const compactDropzone = document.getElementById('compact-upload-zone');
+    if (compactDropzone) {
+        if (activeStops.length === 0) {
+            compactDropzone.style.display = 'none';
+        } else {
+            compactDropzone.style.display = 'flex';
+        }
+    }
 
     if (isManagerView) {
         const header = document.createElement('div');
@@ -3223,6 +3237,34 @@ function initSortable() {
             sortableInstances.push(inst);
         });
     }
+}
+
+// Setup Compact Dropzone Listeners
+const compactDropzone = document.getElementById('compact-upload-zone');
+const compactInput = document.getElementById('compact-file-input');
+if (compactDropzone && compactInput) {
+    compactDropzone.onclick = () => compactInput.click();
+    compactDropzone.ondragover = (e) => {
+        e.preventDefault();
+        compactDropzone.classList.add('drag-active');
+    };
+    compactDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        compactDropzone.classList.remove('drag-active');
+    };
+    compactDropzone.ondrop = (e) => {
+        e.preventDefault();
+        compactDropzone.classList.remove('drag-active');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
+    compactInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+            compactInput.value = ''; // Reset input
+        }
+    };
 }
 
 loadData();
