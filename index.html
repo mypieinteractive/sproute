@@ -28,10 +28,15 @@
         <img id="brand-logo-map" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
         <span id="map-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
         
-        <div id="header-csv-upload" class="header-dropzone">
-            <i class="fa-solid fa-cloud-arrow-up"></i> 
-            <span class="hide-mobile-text">Drop CSV or Click to Upload</span>
-            <input type="file" id="header-file-input" accept=".csv" style="display: none;">
+        <div id="header-actions-wrapper" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+            <div id="header-csv-upload" class="header-dropzone">
+                <i class="fa-solid fa-cloud-arrow-up"></i> 
+                <span class="hide-mobile-text">Upload CSV</span>
+                <input type="file" id="header-file-input" accept=".csv" style="display: none;">
+            </div>
+            <button id="btn-add-order" class="header-action-btn add-order-btn" onclick="showAddOrderModal()">
+                <i class="fa-solid fa-plus"></i>
+            </button>
         </div>
     </div>
     
