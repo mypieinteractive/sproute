@@ -1,9 +1,8 @@
 /* * */
-/* * Dashboard - V11.16 */
+/* * Dashboard - V11.17 */
 /* * FILE: styles.css */
 /* * Changes: */
-/* * 1. Added `.header-dropzone` logic to style the map header CSV button as a proper dropzone. */
-/* * 2. Added visibility toggles to hide `#map-driver-name` on mobile views and expand `.header-dropzone`. */
+/* * 1. Added `.add-order-btn` and general form input styling `.form-group`, `.form-control`, `.grid-2-col` to support the Add Order modal. */
 /* * */
 
 :root { 
@@ -168,7 +167,7 @@ body.tier-individual .col-insp { display: none !important; }
 
 body.manager-all-inspectors #routing-controls { display: none !important; }
 
-/* HEADER DROPZONE STYLES */
+/* HEADER DROPZONE & ADD ORDER BUTTON STYLES */
 .header-dropzone {
     display: flex;
     align-items: center;
@@ -181,7 +180,6 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     color: var(--blue);
     cursor: pointer;
     transition: all 0.2s;
-    margin-left: auto;
     height: 38px;
     font-size: 14px;
     font-weight: bold;
@@ -190,6 +188,15 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     background: rgba(37, 99, 235, 0.15);
     border-style: solid;
 }
+.add-order-btn {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--green);
+    border: 1px solid var(--green);
+    padding: 0 12px;
+    height: 38px;
+    font-size: 16px;
+}
+.add-order-btn:hover { background: rgba(16, 185, 129, 0.25); }
 
 /* Mobile Overrides for Header Dropzone */
 body.view-managermobile #map-driver-name,
@@ -447,6 +454,13 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .pill-btn { padding: 8px 16px; border: 1px solid #4a4a4c; border-radius: 20px; cursor: pointer; color: #ccc; font-size: 14px; background: transparent; transition: all 0.2s ease; }
 .pill-btn.active { background: rgba(59, 130, 246, 0.15); color: var(--blue); border-color: var(--blue); font-weight: bold; }
 .pill-btn:hover:not(.active) { background: rgba(255,255,255,0.05); }
+
+/* Modal Form Inputs */
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; font-weight: bold; }
+.form-control { width: 100%; padding: 10px 12px; background: #2a2b2d; border: 1px solid #333; color: white; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+.form-control:focus { outline: none; border-color: var(--blue); }
+.grid-2-col { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 
 /* --- PROCESSING OVERLAY --- */
 #processing-overlay {
