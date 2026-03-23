@@ -1,11 +1,8 @@
 // *
-// * Dashboard - V11.7
+// * Dashboard - V11.10
 // * FILE: app.js
 // * Changes: 
-// * 1. Added `frontEndApiUsage` tracking globally. Created an `apiFetch()` wrapper to attach incremental geocode and mapLoad counts to every backend POST request and reset them.
-// * 2. Replaced the static empty states in `render()` with an interactive `createDropzone()` component that supports drag-and-drop or click-to-upload.
-// * 3. Built `handleCsvUpload()` to utilize the local `FileReader` API. It parses the CSV text instantly, constructs the payload mapping to `action: 'uploadCsv'`, and dynamically manages the processing overlay text.
-// * 4. Integrated the requested response handling for successful uploads, `size_limit` warnings, and the `confirm_hijack` takeover loop with the `overrideLock` payload property.
+// * 1. Reverted references of `tier-business` to `tier-company` and the data mapping to explicitly map `data.accountType` to "company".
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -98,6 +95,8 @@ let PERMISSION_REOPTIMIZE = true;
 let sortableInstances = [];
 let sortableUnrouted = null;
 let currentRouteCount = 1; 
+
+let availableCsvTypes = [];
 
 // Retrieve the last active inspector view, default to 'all'
 let currentInspectorFilter = sessionStorage.getItem('sproute_inspector_filter') || 'all';
@@ -774,6 +773,10 @@ async function loadData() {
         let globalDriverId = data.driverId || (isManagerView && currentInspectorFilter !== 'all' ? currentInspectorFilter : driverParam);
 
         if (data.adminEmail) adminEmail = data.adminEmail;
+        
+        if (data.csvTypes && Array.isArray(data.csvTypes)) {
+            availableCsvTypes = data.csvTypes;
+        }
 
         if (isPollingForRoute) {
             let fetchedMap = new Map();
@@ -867,6 +870,10 @@ async function loadData() {
         
         historyStack = [];
 
+        document.body.classList.remove('tier-individual', 'tier-company');
+        let acctType = data.accountType ? data.accountType.toLowerCase() : (data.tier ? data.tier.toLowerCase() : 'company');
+        document.body.classList.add('tier-' + acctType);
+
         document.body.classList.toggle('manager-all-inspectors', currentInspectorFilter === 'all');
         document.body.classList.toggle('manager-single-inspector', currentInspectorFilter !== 'all');
 
@@ -883,12 +890,12 @@ async function loadData() {
                 if (typeof data.permissions.modify !== 'undefined') PERMISSION_MODIFY = data.permissions.modify;
                 if (typeof data.permissions.reoptimize !== 'undefined') PERMISSION_REOPTIMIZE = data.permissions.reoptimize;
             }
-            
-            document.body.classList.add('tier-' + (data.tier ? data.tier.toLowerCase() : 'individual'));
 
             const mapLogo = document.getElementById('brand-logo-map');
 
-            if (data.tier && data.companyLogo && (data.tier.toLowerCase() === 'company')) {
+            const isCompanyTier = document.body.classList.contains('tier-company');
+
+            if (isCompanyTier && data.companyLogo) {
                 if (mapLogo) mapLogo.src = data.companyLogo;
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
@@ -900,7 +907,7 @@ async function loadData() {
             if (mapDriverEl) mapDriverEl.innerText = displayName;
             
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
-            if (sidebarDriverEl && (!data.tier || data.tier.toLowerCase() !== 'company')) {
+            if (sidebarDriverEl && !isCompanyTier) {
                 sidebarDriverEl.innerText = displayName;
             }
 
@@ -2167,7 +2174,118 @@ function createEndpointRow(type, endpointData) {
     return el;
 }
 
-async function handleCsvUpload(file, overrideLock = false) {
+function showUploadModal(file) {
+    const m = document.getElementById('modal-overlay');
+    const mc = document.getElementById('modal-content');
+
+    mc.style.padding = '0';
+    mc.style.background = 'transparent';
+    mc.style.border = 'none';
+
+    let isIndividual = document.body.classList.contains('tier-individual');
+    let selectedInspector = null;
+
+    if (isIndividual) {
+        selectedInspector = adminParam || driverParam;
+    } else if (isManagerView && currentInspectorFilter !== 'all') {
+        selectedInspector = currentInspectorFilter;
+    } else if (!isManagerView) {
+        selectedInspector = driverParam;
+    }
+
+    let selectedCsvType = null;
+
+    let inspectorHtml = '';
+    if (isManagerView && currentInspectorFilter === 'all' && !isIndividual) {
+        const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
+        let inspBtns = filteredInspectors.map(insp => `<div class="pill-btn insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
+        inspectorHtml = `
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">Inspector <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">
+                    ${inspBtns}
+                </div>
+            </div>
+        `;
+    }
+
+    let appBtns = availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
+
+    const modalHtml = `
+        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: bold;">Process CSV File</h3>
+                <i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="upload-close-icon"></i>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">File <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div>
+                <div style="background: #2a2b2d; border: 1px solid #333; padding: 12px 16px; border-radius: 6px; color: #ccc; display: flex; align-items: center; gap: 10px; font-size: 14px;">
+                    <i class="fa-solid fa-file-csv" style="font-size: 18px;"></i> ${file.name}
+                </div>
+            </div>
+
+            ${inspectorHtml}
+
+            <div style="margin-bottom: 30px;">
+                <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">App <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">
+                    ${appBtns}
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-start;">
+                <button id="btn-submit-upload" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; opacity: 0.5;" disabled>Submit</button>
+                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    mc.innerHTML = modalHtml;
+    m.style.display = 'flex';
+
+    const checkValidity = () => {
+        const submitBtn = document.getElementById('btn-submit-upload');
+        if (selectedInspector && selectedCsvType) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.background = 'var(--blue)';
+        } else {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.background = '#35475b';
+        }
+    };
+
+    document.querySelectorAll('.insp-pill').forEach(el => {
+        el.onclick = () => {
+            document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active'));
+            el.classList.add('active');
+            selectedInspector = el.getAttribute('data-val');
+            checkValidity();
+        };
+    });
+
+    document.querySelectorAll('.app-pill').forEach(el => {
+        el.onclick = () => {
+            document.querySelectorAll('.app-pill').forEach(e => e.classList.remove('active'));
+            el.classList.add('active');
+            selectedCsvType = el.getAttribute('data-val');
+            checkValidity();
+        };
+    });
+
+    const closeModal = () => { m.style.display = 'none'; };
+    document.getElementById('upload-close-icon').onclick = closeModal;
+    document.getElementById('btn-cancel-upload').onclick = closeModal;
+
+    document.getElementById('btn-submit-upload').onclick = () => {
+        closeModal();
+        performUpload(file, selectedInspector, selectedCsvType);
+    };
+}
+
+async function performUpload(file, inspectorId, csvType, overrideLock = false) {
     const overlay = document.getElementById('processing-overlay');
     const loadingText = overlay.querySelector('.loading-text');
     const subText = overlay.querySelector('.loading-subtext');
@@ -2187,9 +2305,9 @@ async function handleCsvUpload(file, overrideLock = false) {
                 action: 'uploadCsv',
                 csvData: text,
                 adminId: adminParam,
-                driverId: isManagerView ? currentInspectorFilter : driverParam,
+                driverId: inspectorId,
                 companyId: companyParam || '',
-                csvType: 'routing'
+                csvType: csvType
             };
             if (!isManagerView) payload.routeId = routeId;
             if (overrideLock) payload.overrideLock = true;
@@ -2198,7 +2316,7 @@ async function handleCsvUpload(file, overrideLock = false) {
             const data = await res.json();
             
             if (data.success) {
-                await loadData(); // Refresh the dashboard completely
+                await loadData(); 
             } else if (data.status === 'size_limit') {
                 overlay.style.display = 'none';
                 await customAlert("The uploaded file is too large. Please reduce the number of rows and try again.");
@@ -2206,7 +2324,7 @@ async function handleCsvUpload(file, overrideLock = false) {
                 overlay.style.display = 'none';
                 const proceed = await customConfirm(data.message || "This route is currently locked by another admin. Do you want to take over and overwrite it?");
                 if (proceed) {
-                    handleCsvUpload(file, true); // Re-trigger the exact payload but with overrideLock
+                    performUpload(file, inspectorId, csvType, true); 
                 }
             } else {
                 throw new Error(data.error || "Upload failed");
@@ -2216,12 +2334,23 @@ async function handleCsvUpload(file, overrideLock = false) {
             overlay.style.display = 'none';
             await customAlert("An error occurred during the upload. Please try again.");
         } finally {
-            // Restore default overlay text for standard polling operations
             if (loadingText) loadingText.innerText = "Processing...";
             if (subText) subText.innerText = "Syncing data with the server";
         }
     };
     reader.readAsText(file);
+}
+
+function handleFileSelection(file) {
+    if (inspectors.length === 0 || availableCsvTypes.length === 0) {
+        customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings.");
+        return;
+    }
+    if (file.name.toLowerCase().endsWith('.csv')) {
+        showUploadModal(file);
+    } else {
+        customAlert("Please upload a valid CSV file.");
+    }
 }
 
 function createDropzone() {
@@ -2263,18 +2392,13 @@ function createDropzone() {
         dropzone.style.backgroundColor = 'transparent';
         dropzone.style.borderColor = 'var(--border-color)';
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            const file = e.dataTransfer.files[0];
-            if (file.name.toLowerCase().endsWith('.csv')) {
-                handleCsvUpload(file);
-            } else {
-                customAlert("Please upload a valid CSV file.");
-            }
+            handleFileSelection(e.dataTransfer.files[0]);
         }
     };
     
     input.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
-            handleCsvUpload(e.target.files[0]);
+            handleFileSelection(e.target.files[0]);
         }
     };
     
