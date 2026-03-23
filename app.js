@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V11.16
+// * Dashboard - V11.17
 // * FILE: app.js
 // * Changes: 
-// * 1. Restored createDropzone() logic to append a large drag-and-drop area to empty lists.
-// * 2. Added comprehensive drag-and-drop event listeners to the new header dropzone element.
+// * 1. Added showAddOrderModal() to generate the single-order form and validate inputs.
+// * 2. Implemented logic to construct a fake CSV Blob inside showAddOrderModal() to perfectly mimic standard CSV uploads.
+// * 3. Updated render() to toggle the entire `#header-actions-wrapper` rather than just the dropzone.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -2170,6 +2171,172 @@ function createEndpointRow(type, endpointData) {
     return el;
 }
 
+function showAddOrderModal() {
+    const m = document.getElementById('modal-overlay');
+    const mc = document.getElementById('modal-content');
+    mc.style.padding = '0';
+    mc.style.background = 'transparent';
+    mc.style.border = 'none';
+
+    let isIndividual = document.body.classList.contains('tier-individual');
+    let selectedInspector = null;
+    let selectedApp = null;
+
+    if (isIndividual) {
+        selectedInspector = adminParam || driverParam;
+    } else if (isManagerView && currentInspectorFilter !== 'all') {
+        selectedInspector = currentInspectorFilter;
+    } else if (!isManagerView) {
+        selectedInspector = driverParam;
+    }
+
+    let inspectorHtml = '';
+    if (isManagerView && currentInspectorFilter === 'all' && !isIndividual) {
+        const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
+        let inspBtns = filteredInspectors.map(insp => `<div class="pill-btn add-insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
+        inspectorHtml = `
+            <div class="form-group">
+                <label>Inspector <span style="float:right; font-weight:normal;">Required</span></label>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">
+                    ${inspBtns}
+                </div>
+            </div>
+        `;
+    }
+
+    let appBtns = availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
+    let appHtml = `
+        <div class="form-group">
+            <label>App <span style="float:right; font-weight:normal;">Optional</span></label>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">
+                ${appBtns}
+            </div>
+        </div>
+    `;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const modalHtml = `
+        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: bold;">Add Order</h3>
+                <i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="add-close-icon"></i>
+            </div>
+
+            ${inspectorHtml}
+            ${appHtml}
+
+            <div class="form-group">
+                <label>Address <span style="float:right; font-weight:normal;">Required</span></label>
+                <input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345">
+            </div>
+
+            <div class="grid-2-col">
+                <div class="form-group">
+                    <label>Latitude <span style="float:right; font-weight:normal;">Optional</span></label>
+                    <input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776">
+                </div>
+                <div class="form-group">
+                    <label>Longitude <span style="float:right; font-weight:normal;">Optional</span></label>
+                    <input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Due Date <span style="float:right; font-weight:normal;">Required</span></label>
+                <input type="date" id="add-due" class="form-control" value="${todayStr}">
+            </div>
+
+            <div class="grid-2-col">
+                <div class="form-group">
+                    <label>Client <span style="float:right; font-weight:normal;">Optional</span></label>
+                    <input type="text" id="add-client" class="form-control" placeholder="Client Name">
+                </div>
+                <div class="form-group">
+                    <label>Order Type <span style="float:right; font-weight:normal;">Optional</span></label>
+                    <input type="text" id="add-type" class="form-control" placeholder="e.g. Install">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-start; margin-top: 10px;">
+                <button id="btn-submit-add" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; opacity: 0.5;" disabled>Add Order</button>
+                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    mc.innerHTML = modalHtml;
+    m.style.display = 'flex';
+
+    const checkValidity = () => {
+        const submitBtn = document.getElementById('btn-submit-add');
+        const addr = document.getElementById('add-address').value.trim();
+        const due = document.getElementById('add-due').value;
+
+        if (selectedInspector && addr && due) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.background = 'var(--green)';
+        } else {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.background = '#35475b';
+        }
+    };
+
+    document.querySelectorAll('.add-insp-pill').forEach(el => {
+        el.onclick = () => {
+            document.querySelectorAll('.add-insp-pill').forEach(e => e.classList.remove('active'));
+            el.classList.add('active');
+            selectedInspector = el.getAttribute('data-val');
+            checkValidity();
+        };
+    });
+
+    document.querySelectorAll('.add-app-pill').forEach(el => {
+        el.onclick = () => {
+            if (el.classList.contains('active')) {
+                el.classList.remove('active');
+                selectedApp = null;
+            } else {
+                document.querySelectorAll('.add-app-pill').forEach(e => e.classList.remove('active'));
+                el.classList.add('active');
+                selectedApp = el.getAttribute('data-val');
+            }
+            checkValidity();
+        };
+    });
+
+    document.getElementById('add-address').addEventListener('input', checkValidity);
+    document.getElementById('add-due').addEventListener('input', checkValidity);
+
+    const closeModal = () => { m.style.display = 'none'; };
+    document.getElementById('add-close-icon').onclick = closeModal;
+    document.getElementById('btn-cancel-add').onclick = closeModal;
+
+    document.getElementById('btn-submit-add').onclick = () => {
+        closeModal();
+        
+        const addr = document.getElementById('add-address').value.trim();
+        const lat = document.getElementById('add-lat').value;
+        const lng = document.getElementById('add-lng').value;
+        const due = document.getElementById('add-due').value;
+        const client = document.getElementById('add-client').value.trim();
+        const type = document.getElementById('add-type').value.trim();
+
+        const escapeCsv = (val) => '"' + String(val || '').replace(/"/g, '""') + '"';
+        
+        const headers = ['Address', 'Latitude', 'Longitude', 'Due Date', 'Client', 'Order Type'];
+        const values = [addr, lat, lng, due, client, type];
+        const csvContent = headers.join(',') + '\n' + values.map(escapeCsv).join(',');
+        
+        const file = new File([csvContent], "manual_order.csv", { type: "text/csv" });
+        performUpload(file, selectedInspector, selectedApp || '');
+    };
+
+    checkValidity();
+}
+
 function showUploadModal(file) {
     const m = document.getElementById('modal-overlay');
     const mc = document.getElementById('modal-content');
@@ -2351,7 +2518,6 @@ function handleFileSelection(file) {
     }
 }
 
-// Function restored to handle appending the large drag-and-drop zone to empty lists
 function createDropzone() {
     const dropzone = document.createElement('div');
     dropzone.className = 'upload-dropzone';
@@ -2423,9 +2589,9 @@ function render() {
     const activeStops = stops.filter(s => isStopVisible(s, true));
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
     
-    const headerUpload = document.getElementById('header-csv-upload');
-    if (headerUpload) {
-        headerUpload.style.display = viewMode === 'inspector' ? 'none' : 'flex';
+    const headerActions = document.getElementById('header-actions-wrapper');
+    if (headerActions) {
+        headerActions.style.display = viewMode === 'inspector' ? 'none' : 'flex';
     }
 
     const searchContainer = document.getElementById('search-container');
