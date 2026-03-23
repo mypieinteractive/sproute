@@ -1,11 +1,10 @@
 // *
-// * Dashboard - V11.14
+// * Dashboard - V11.15
 // * FILE: app.js
 // * Changes: 
-// * 1. Manager/managermobile views: Hide search bar when no orders are present.
-// * 2. Inspectors view: Hide the sidebar header (#sidebar-brand) when no action buttons are present.
-// * 3. Inspectors view: Hide the CSV Upload module (both the compact and main dropzone areas).
-// * 4. Email generation: Crop out the map header and summary bar when creating map snapshot by temporarily hiding them.
+// * 1. Replaced the large body dropzones with a map-header CSV upload button.
+// * 2. Added initialization, visibility logic, and toggle functions for the new 'managermobilesplit' view.
+// * 3. Cleaned out obsolete compact-dropzone bindings.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -43,7 +42,8 @@ const companyParam = params.get('company');
 const adminParam = params.get('admin');
 
 const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
-const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile'); 
+// Include managermobilesplit in manager views
+const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile' || viewMode === 'managermobilesplit'); 
 
 // Global Keyboard Listeners
 document.addEventListener('keydown', (e) => { 
@@ -146,20 +146,16 @@ let latestSuggestions = { start: null, end: null };
 
 // --- CORE VISIBILITY FILTER ---
 function isStopVisible(s, applyRouteFilter = true) {
-    // 1. Is it mathematically an active order?
     if (!isActiveStop(s)) return false;
     
-    // 2. Is it assigned to the currently viewed Inspector? (Manager View Only)
     if (isManagerView && currentInspectorFilter !== 'all') {
         if (String(s.driverId) !== String(currentInspectorFilter)) return false;
     }
 
-    // 3. Hide unrouted orders entirely in the Inspector View
     if (!isManagerView && !isRouteAssigned(s.status)) {
         return false;
     }
 
-    // 4. Is it part of the currently toggled Route tab?
     if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
         if (s.cluster !== currentRouteViewFilter) return false;
     }
@@ -189,6 +185,20 @@ window.setRouteViewFilter = function(val) {
     render();
     drawRoute();
     updateSummary();
+};
+
+window.setMobileSplitView = function(viewType) {
+    document.getElementById('toggle-map').classList.toggle('active', viewType === 'map');
+    document.getElementById('toggle-list').classList.toggle('active', viewType === 'list');
+    
+    if (viewType === 'map') {
+        document.body.classList.add('split-show-map');
+        document.body.classList.remove('split-show-list');
+        setTimeout(() => { if(map) map.resize(); }, 100);
+    } else {
+        document.body.classList.add('split-show-list');
+        document.body.classList.remove('split-show-map');
+    }
 };
 
 function customAlert(msg) {
@@ -314,6 +324,9 @@ function silentSaveRouteState() {
 
 // APPLY CSS CLASS BEFORE RENDER
 document.body.className = `view-${viewMode} manager-all-inspectors`;
+if (viewMode === 'managermobilesplit') {
+    document.body.classList.add('split-show-map');
+}
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 const mapConfig = { 
@@ -324,7 +337,7 @@ const mapConfig = {
     attributionControl: false,
     boxZoom: false,
     preserveDrawingBuffer: true,
-    cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile')
+    cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile' || viewMode === 'managermobilesplit')
 };
 const map = new mapboxgl.Map(mapConfig);
 frontEndApiUsage.mapLoads++; // Log map load
@@ -461,7 +474,6 @@ function updateInspectorDropdown() {
 
     let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
-    // Only show real inspectors in the dropdown filter
     inspectors.forEach((i, idx) => { 
         if (validInspectorIds.has(String(i.id))) {
             const isInsp = i.isInspector === true || String(i.isInspector).toLowerCase() === 'true';
@@ -706,12 +718,10 @@ async function loadData() {
             return;
         }
 
-        // Extract raw array for snapshotting
         let rawStops = Array.isArray(data) ? data : (data.stops || []);
         let currentSnapshot = JSON.stringify(rawStops);
         let preUploadSnapshot = sessionStorage.getItem('sproute_snapshot');
 
-        // --- Front-End Only Upload Detection ---
         if (isFreshGlideRefresh && preUploadSnapshot && (currentSnapshot === preUploadSnapshot || rawStops.length === 0) && pageLoadRetries < MAX_RETRIES) {
             pageLoadRetries++;
             const overlay = document.getElementById('processing-overlay');
@@ -744,7 +754,6 @@ async function loadData() {
         if (!data.uploadError && !data.confirmHijack) {
             sessionStorage.setItem('sproute_snapshot', currentSnapshot);
         }
-        // ------------------------------------------
 
         if (data.routeId) {
             routeId = data.routeId;
@@ -910,7 +919,7 @@ async function loadData() {
             if (!hasValidStops && data.companyAddress) {
                 const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(data.companyAddress)}.json?access_token=${MAPBOX_TOKEN}`;
                 try {
-                    frontEndApiUsage.geocode++; // Tracking Mapbox Geocoding Call
+                    frontEndApiUsage.geocode++;
                     const geoRes = await fetch(geoUrl);
                     const geo = await geoRes.json();
                     if (geo.features && geo.features.length > 0) {
@@ -926,10 +935,9 @@ async function loadData() {
         
     } catch (e) { 
         console.error("Error loading data:", e); 
-        isFreshGlideRefresh = false; // Safety release on error
+        isFreshGlideRefresh = false;
     } finally {
         const overlay = document.getElementById('processing-overlay');
-        // Prevent the finally block from dropping the overlay if we are actively looping/polling
         if (overlay && !isPollingForRoute && !isFreshGlideRefresh) {
             overlay.style.display = 'none';
         }
@@ -975,7 +983,7 @@ async function handleEndpointInput(e, type) {
     geocodeTimeout = setTimeout(async () => {
         const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&country=us&types=address,poi`;
         try {
-            frontEndApiUsage.geocode++; // Tracking Mapbox Geocoding Call
+            frontEndApiUsage.geocode++;
             const res = await fetch(url);
             const data = await res.json();
             latestSuggestions[type] = data.features.length > 0 ? data.features[0] : null;
@@ -1127,7 +1135,6 @@ async function saveEndpointToBackend(type, address, lat, lng) {
 }
 
 function getActiveEndpoints() {
-    // NEW SILOED LOGIC: Inspector view exclusively uses routeStart/routeEnd, completely bypassing the roster
     if (!isManagerView) {
         return { 
             start: routeStart ? { address: routeStart.address, lat: routeStart.lat, lng: routeStart.lng } : null, 
@@ -1135,7 +1142,6 @@ function getActiveEndpoints() {
         };
     }
     
-    // Original logic for Manager views
     if (isManagerView && currentInspectorFilter === 'all') return { start: null, end: null };
     
     const inspId = isManagerView ? currentInspectorFilter : driverParam;
@@ -1256,9 +1262,8 @@ function handleOpenEmailModal() {
         
         const ccEmail = document.getElementById('additional-cc-email').value;
 
-        // CHANGE 4: Crop map snapshot by hiding header and summary elements during canvas generation
         const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-view-toggle');
         
         const originalDisplays = [];
         overlaysToHide.forEach((el, index) => {
@@ -1387,7 +1392,7 @@ function updateRoutingUI() {
                 break;
             }
         }
-        if (hintEl) hintEl.style.display = (showHint && viewMode !== 'managermobile') ? 'block' : 'none';
+        if (hintEl) hintEl.style.display = (showHint && viewMode !== 'managermobile' && viewMode !== 'managermobilesplit') ? 'block' : 'none';
         return;
     }
 
@@ -1509,7 +1514,6 @@ function updateRoutingUI() {
             if(routingControls) routingControls.style.display = 'none';
         }
 
-        // CHANGE 2: Hide sidebar header when no buttons are present in Inspector view
         const sidebarBrand = document.getElementById('sidebar-brand');
         if (sidebarBrand) {
             sidebarBrand.style.display = (showRecalc || showOpt || showRestore) ? 'flex' : 'none';
@@ -1751,7 +1755,6 @@ function liveClusterUpdate() {
     let today = new Date(); 
     today.setHours(0,0,0,0);
 
-    // Pre-calculate urgency
     unroutedStops.forEach(s => {
         s._urgency = 0;
         if (s.dueDate) {
@@ -1762,7 +1765,6 @@ function liveClusterUpdate() {
         }
     });
 
-    // 1. Natural Geographic K-Means (Ignore Urgency)
     let centroids = [];
     for(let i=0; i<k; i++) {
         let idx = Math.floor(i * unroutedStops.length / k);
@@ -1787,7 +1789,6 @@ function liveClusterUpdate() {
         }
     }
 
-    // 2. Route 1 Designation (Highest Urgency Concentration)
     let clusterUrgency = new Array(k).fill(0);
     unroutedStops.forEach(s => { clusterUrgency[s._tempCluster] += s._urgency; });
     let bestClusterIdx = 0, maxUrg = -1;
@@ -1798,11 +1799,9 @@ function liveClusterUpdate() {
     centroids[0] = centroids[bestClusterIdx];
     centroids[bestClusterIdx] = temp;
 
-    // 3. Gravity and Spillover (Load Balancing)
     let capacity = Math.ceil(unroutedStops.length / k);
     
-    // Calculate maximum geographic spread on the map to normalize the slider's pull
-    let maxGeoDist = 0.0001; // absolute minimum fallback
+    let maxGeoDist = 0.0001;
     unroutedStops.forEach(s => {
         centroids.forEach(c => {
             let d = Math.sqrt(Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2));
@@ -1810,7 +1809,6 @@ function liveClusterUpdate() {
         });
     });
 
-    // Multiplier guarantees that at 100% (w=1), even urgency=1 overrides the max map distance
     const pullMultiplier = maxGeoDist * 2.5; 
 
     unroutedStops.forEach(s => {
@@ -1825,7 +1823,6 @@ function liveClusterUpdate() {
             if (d < bestAltDist) { bestAltDist = d; bestAltIdx = i; }
         }
 
-        // Scale urgency 1 or 2 down to 0.5 or 1.0, then apply slider weight and map scale
         let effectiveDist0 = dist0 - ((s._urgency / 2) * w * pullMultiplier);
         s._dist0 = dist0;
         s._bestAltDist = bestAltDist;
@@ -1834,7 +1831,6 @@ function liveClusterUpdate() {
         s._affinity0 = bestAltDist - effectiveDist0;
     });
 
-    // Sort stops by their pull towards Route 1
     let sortedStops = [...unroutedStops].filter(s => !s.manualCluster).sort((a, b) => b._affinity0 - a._affinity0);
 
     let route0Count = 0;
@@ -1847,7 +1843,6 @@ function liveClusterUpdate() {
                 s.cluster = 0;
                 route0Count++;
             } else if (s._effectiveDist0 < 0) {
-                // Force overflow if gravity is absolutely overwhelming (w is high, urgency is high)
                 s.cluster = 0;
                 route0Count++;
             } else {
@@ -1860,7 +1855,6 @@ function liveClusterUpdate() {
         }
     });
 
-    // Cleanup temporary properties
     unroutedStops.forEach(s => {
         delete s._urgency;
         delete s._tempCluster;
@@ -2025,7 +2019,6 @@ async function handleInspectorChange(e, rowId, selectEl) {
                     markRouteDirty(s.driverId, s.cluster); 
                 }
                 
-                // Optimistically reassign and unroute the orders
                 s.driverName = newDriverName; 
                 s.driverId = newDriverId; 
                 s.status = 'Pending';
@@ -2062,7 +2055,6 @@ async function handleInspectorChange(e, rowId, selectEl) {
         selectedIds.clear();
         updateInspectorDropdown(); 
         
-        // Optimistic render instead of awaiting slow server refresh
         render(); 
         drawRoute(); 
         updateSummary();
@@ -2105,7 +2097,6 @@ function setDisplayMode(mode) {
     document.getElementById('btn-detailed').classList.toggle('active', mode === 'detailed');
     document.getElementById('btn-compact').classList.toggle('active', mode === 'compact');
     
-    // Fast DOM update instead of full render()
     document.querySelectorAll('.stop-item, .glide-row').forEach(el => {
         if (mode === 'compact') {
             el.classList.add('compact');
@@ -2362,58 +2353,6 @@ function handleFileSelection(file) {
     }
 }
 
-function createDropzone() {
-    const dropzone = document.createElement('div');
-    dropzone.className = 'upload-dropzone';
-    dropzone.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: 8px; margin: 20px; cursor: pointer; transition: all 0.2s; min-height: 250px;';
-    
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv';
-    input.style.display = 'none';
-    
-    dropzone.innerHTML = `
-        <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px; pointer-events: none;">
-            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i>
-        </div>
-        <div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; pointer-events: none;">Ready to Route</div>
-        <div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5; pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
-    `;
-    
-    dropzone.appendChild(input);
-    
-    dropzone.onclick = () => input.click();
-    
-    dropzone.ondragover = (e) => {
-        e.preventDefault();
-        dropzone.style.backgroundColor = 'var(--bg-hover)';
-        dropzone.style.borderColor = 'var(--blue)';
-    };
-    
-    dropzone.ondragleave = (e) => {
-        e.preventDefault();
-        dropzone.style.backgroundColor = 'transparent';
-        dropzone.style.borderColor = 'var(--border-color)';
-    };
-    
-    dropzone.ondrop = (e) => {
-        e.preventDefault();
-        dropzone.style.backgroundColor = 'transparent';
-        dropzone.style.borderColor = 'var(--border-color)';
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
-    };
-    
-    input.onchange = (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-            handleFileSelection(e.target.files[0]);
-        }
-    };
-    
-    return dropzone;
-}
-
 function render() {
     updateHeaderUI();
     updateRoutingUI();
@@ -2430,22 +2369,15 @@ function render() {
     const isSingleInspector = isManagerView && currentInspectorFilter !== 'all';
     const isAllInspectors = isManagerView && currentInspectorFilter === 'all';
     
-    // Master visibility filter
     const activeStops = stops.filter(s => isStopVisible(s, true));
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
     
-    // Toggle Compact Dropzone Visibility
-    const compactDropzone = document.getElementById('compact-upload-zone');
-    if (compactDropzone) {
-        // CHANGE 3: Hide CSV upload module in Inspector view
-        if (activeStops.length === 0 || !isManagerView) {
-            compactDropzone.style.display = 'none';
-        } else {
-            compactDropzone.style.display = 'flex';
-        }
+    // Toggle CSV Upload button visibility in header based on view mode
+    const headerUpload = document.getElementById('header-csv-upload');
+    if (headerUpload) {
+        headerUpload.style.display = viewMode === 'inspector' ? 'none' : 'flex';
     }
 
-    // CHANGE 1: Manager/managermobile views: Hide search bar when no orders present
     const searchContainer = document.getElementById('search-container');
     if (searchContainer) {
         if (isManagerView && activeStops.length === 0) {
@@ -2453,6 +2385,12 @@ function render() {
         } else {
             searchContainer.style.display = 'flex';
         }
+    }
+
+    // Toggle segment controller specifically for managermobilesplit
+    const mobileToggle = document.getElementById('mobile-view-toggle');
+    if (mobileToggle) {
+        mobileToggle.style.display = viewMode === 'managermobilesplit' ? 'flex' : 'none';
     }
 
     if (isManagerView) {
@@ -2520,7 +2458,6 @@ function render() {
             let inspectorHtml = `<div class="col-insp" style="display: ${isSingleInspector ? 'none' : 'block'};">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (inspectors.length > 0) {
-                // Only show users configured as real inspectors in the row-level dropdown
                 const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
                 
                 const optionsHtml = filteredInspectors.map((insp) => {
@@ -2552,7 +2489,7 @@ function render() {
             const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}" style="visibility:${showHandle ? 'visible' : 'hidden'};">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             let metaHtml = '';
-            if (viewMode === 'managermobile') {
+            if (viewMode === 'managermobile' || viewMode === 'managermobilesplit') {
                 metaHtml = `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>`;
             }
 
@@ -2632,13 +2569,6 @@ function render() {
         let eps = getActiveEndpoints();
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
-        if (activeStops.length === 0) {
-            // CHANGE 3: Hide CSV upload module in Inspector view
-            if (isManagerView) {
-                listContainer.appendChild(createDropzone());
-            }
-        }
-
         if (unroutedStops.length > 0) {
             const unroutedDiv = document.createElement('div');
             unroutedDiv.id = 'unrouted-list';
@@ -2678,14 +2608,7 @@ function render() {
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
         
-        if (activeStops.length === 0) {
-            // CHANGE 3: Hide CSV upload module in Inspector view
-            if (isManagerView) {
-                mainDiv.appendChild(createDropzone());
-            }
-        } else {
-            activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
-        }
+        activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
     }
 
     let endpointsToDraw = [];
@@ -3004,7 +2927,6 @@ function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padd
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
 
 function drawRoute() { 
-    // Clear out old layers
     const layerIds = [
         'route-line-0-clean', 'route-line-0-dirty',
         'route-line-1-out-clean', 'route-line-1-in-clean', 'route-line-1-out-dirty', 'route-line-1-in-dirty',
@@ -3024,7 +2946,6 @@ function drawRoute() {
     
     if (routedStops.length === 0) return; 
 
-    // Visual sorting only. Does not alter DOM array order.
     let visualStops = [...routedStops].sort(sortByEta);
 
     const features = [];
@@ -3072,17 +2993,14 @@ function drawRoute() {
 
     map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
     
-    // Cluster 0 (Route 1) - Solid color
     map.addLayer({ "id": "route-line-0-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-0-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
 
-    // Cluster 1 (Route 2) - Inspector outline, Black center
     map.addLayer({ "id": "route-line-1-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-1-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1 } }); 
     map.addLayer({ "id": "route-line-1-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
     map.addLayer({ "id": "route-line-1-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
 
-    // Cluster 2 (Route 3) - Inspector outline, White center
     map.addLayer({ "id": "route-line-2-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-2-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1 } }); 
     map.addLayer({ "id": "route-line-2-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
@@ -3261,30 +3179,13 @@ function initSortable() {
     }
 }
 
-// Setup Compact Dropzone Listeners
-const compactDropzone = document.getElementById('compact-upload-zone');
-const compactInput = document.getElementById('compact-file-input');
-if (compactDropzone && compactInput) {
-    compactDropzone.onclick = () => compactInput.click();
-    compactDropzone.ondragover = (e) => {
-        e.preventDefault();
-        compactDropzone.classList.add('drag-active');
-    };
-    compactDropzone.ondragleave = (e) => {
-        e.preventDefault();
-        compactDropzone.classList.remove('drag-active');
-    };
-    compactDropzone.ondrop = (e) => {
-        e.preventDefault();
-        compactDropzone.classList.remove('drag-active');
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
-    };
-    compactInput.onchange = (e) => {
+// Bind header CSV Upload Listener
+const headerInput = document.getElementById('header-file-input');
+if (headerInput) {
+    headerInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
-            compactInput.value = ''; // Reset input
+            headerInput.value = '';
         }
     };
 }
