@@ -1,10 +1,9 @@
 // *
-// * Dashboard - V11.11
+// * Dashboard - V11.12
 // * FILE: app.js
 // * Changes: 
-// * 1. Attached event listeners to the new `#compact-upload-zone` element for click and drag-and-drop actions.
-// * 2. Added logic to toggle the display of the compact dropzone in `render()` so it only appears when `activeStops.length > 0`.
-// * 3. Added a detailed `console.log()` payload trace inside `performUpload()` to assist in debugging specific inspector upload failures.
+// * 1. Completely removed the `heartbeatInterval` and `startHeartbeat()` polling logic.
+// * 2. The front end now relies entirely on strict ID matching and the "Take Over" modal for lock management, reducing unnecessary network traffic.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -141,19 +140,6 @@ let currentRouteViewFilter = 'all';
 let isFirstMapRender = true;
 
 let latestSuggestions = { start: null, end: null };
-
-// --- LOCKING VARIABLES ---
-let heartbeatInterval = null;
-
-function startHeartbeat() {
-    clearInterval(heartbeatInterval);
-    if (!isManagerView || !adminParam) return;
-    heartbeatInterval = setInterval(() => {
-        apiFetch({ action: 'heartbeat', adminId: adminParam })
-        .catch(e => console.log('Heartbeat silent error'));
-    }, 180000);
-}
-// -------------------------
 
 // --- CORE VISIBILITY FILTER ---
 function isStopVisible(s, applyRouteFilter = true) {
@@ -934,8 +920,6 @@ async function loadData() {
 
         render(); drawRoute(); updateSummary(); initSortable();
         
-        startHeartbeat();
-
     } catch (e) { 
         console.error("Error loading data:", e); 
         isFreshGlideRefresh = false; // Safety release on error
