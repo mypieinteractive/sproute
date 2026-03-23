@@ -1,10 +1,9 @@
 // *
-// * Dashboard - V11.15
+// * Dashboard - V11.16
 // * FILE: app.js
 // * Changes: 
-// * 1. Replaced the large body dropzones with a map-header CSV upload button.
-// * 2. Added initialization, visibility logic, and toggle functions for the new 'managermobilesplit' view.
-// * 3. Cleaned out obsolete compact-dropzone bindings.
+// * 1. Restored createDropzone() logic to append a large drag-and-drop area to empty lists.
+// * 2. Added comprehensive drag-and-drop event listeners to the new header dropzone element.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -109,16 +108,15 @@ const currentQuery = window.location.search;
 const lastQuery = sessionStorage.getItem('sproute_last_query');
 let isFreshGlideRefresh = false;
 
-// If the URL parameters have changed, explicitly determine if it is an Upload
 if (lastQuery && currentQuery !== lastQuery) {
     if (currentQuery.includes('Upload-')) {
-        isFreshGlideRefresh = true; // Trigger 15-second protective hold
+        isFreshGlideRefresh = true;
     }
 }
 sessionStorage.setItem('sproute_last_query', currentQuery);
 
 let pageLoadRetries = 0;
-const MAX_RETRIES = 5; // 15 seconds max polling to prevent infinite loops
+const MAX_RETRIES = 5;
 // -----------------------------------------------------------
 
 let defaultEmailMessage = "";
@@ -2353,6 +2351,59 @@ function handleFileSelection(file) {
     }
 }
 
+// Function restored to handle appending the large drag-and-drop zone to empty lists
+function createDropzone() {
+    const dropzone = document.createElement('div');
+    dropzone.className = 'upload-dropzone';
+    dropzone.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: 8px; margin: 20px; cursor: pointer; transition: all 0.2s; min-height: 250px;';
+    
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.style.display = 'none';
+    
+    dropzone.innerHTML = `
+        <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px; pointer-events: none;">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i>
+        </div>
+        <div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; pointer-events: none;">Ready to Route</div>
+        <div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5; pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
+    `;
+    
+    dropzone.appendChild(input);
+    
+    dropzone.onclick = () => input.click();
+    
+    dropzone.ondragover = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'var(--bg-hover)';
+        dropzone.style.borderColor = 'var(--blue)';
+    };
+    
+    dropzone.ondragleave = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'transparent';
+        dropzone.style.borderColor = 'var(--border-color)';
+    };
+    
+    dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'transparent';
+        dropzone.style.borderColor = 'var(--border-color)';
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
+    
+    input.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+        }
+    };
+    
+    return dropzone;
+}
+
 function render() {
     updateHeaderUI();
     updateRoutingUI();
@@ -2372,7 +2423,6 @@ function render() {
     const activeStops = stops.filter(s => isStopVisible(s, true));
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
     
-    // Toggle CSV Upload button visibility in header based on view mode
     const headerUpload = document.getElementById('header-csv-upload');
     if (headerUpload) {
         headerUpload.style.display = viewMode === 'inspector' ? 'none' : 'flex';
@@ -2387,7 +2437,6 @@ function render() {
         }
     }
 
-    // Toggle segment controller specifically for managermobilesplit
     const mobileToggle = document.getElementById('mobile-view-toggle');
     if (mobileToggle) {
         mobileToggle.style.display = viewMode === 'managermobilesplit' ? 'flex' : 'none';
@@ -2569,6 +2618,12 @@ function render() {
         let eps = getActiveEndpoints();
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
+        if (activeStops.length === 0) {
+            if (isManagerView) {
+                listContainer.appendChild(createDropzone());
+            }
+        }
+
         if (unroutedStops.length > 0) {
             const unroutedDiv = document.createElement('div');
             unroutedDiv.id = 'unrouted-list';
@@ -2608,7 +2663,13 @@ function render() {
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
         
-        activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+        if (activeStops.length === 0) {
+            if (isManagerView) {
+                mainDiv.appendChild(createDropzone());
+            }
+        } else {
+            activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+        }
     }
 
     let endpointsToDraw = [];
@@ -3179,13 +3240,30 @@ function initSortable() {
     }
 }
 
-// Bind header CSV Upload Listener
+// Setup Header Dropzone Listeners
+const headerDropzone = document.getElementById('header-csv-upload');
 const headerInput = document.getElementById('header-file-input');
-if (headerInput) {
+if (headerDropzone && headerInput) {
+    headerDropzone.onclick = () => headerInput.click();
+    headerDropzone.ondragover = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.add('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+    };
+    headerDropzone.ondrop = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
     headerInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
-            headerInput.value = '';
+            headerInput.value = ''; // Reset input
         }
     };
 }
