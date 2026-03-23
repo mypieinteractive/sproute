@@ -1,9 +1,10 @@
 // *
-// * Dashboard - V11.12
+// * Dashboard - V11.13
 // * FILE: app.js
 // * Changes: 
-// * 1. Completely removed the `heartbeatInterval` and `startHeartbeat()` polling logic.
-// * 2. The front end now relies entirely on strict ID matching and the "Take Over" modal for lock management, reducing unnecessary network traffic.
+// * 1. Added `ccCompanyDefault` global variable to store the company CC preference.
+// * 2. Updated `loadData()` to parse and store `data.ccCompanyDefault` from the backend payload.
+// * 3. Updated `handleOpenEmailModal()` to dynamically apply the `checked` attribute to the `#cc-company-checkbox` based on the backend preference.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -123,6 +124,7 @@ let defaultEmailMessage = "";
 let companyEmail = "";
 let managerEmail = "";
 let adminEmail = ""; 
+let ccCompanyDefault = true;
 
 let routeStart = null;
 let routeEnd = null;
@@ -869,6 +871,7 @@ async function loadData() {
             if (data.defaultEmailMessage) defaultEmailMessage = data.defaultEmailMessage;
             if (data.companyEmail) companyEmail = data.companyEmail;
             if (data.managerEmail) managerEmail = data.managerEmail;
+            if (typeof data.ccCompanyDefault !== 'undefined') ccCompanyDefault = !!data.ccCompanyDefault;
 
             inspectors = data.inspectors || []; 
             inspectors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -1179,6 +1182,7 @@ function handleOpenEmailModal() {
     
     const displayCompanyEmail = companyEmail ? companyEmail : 'Company Email Not Found';
     const displayAdminEmail = adminEmail ? adminEmail : '[Email not provided]';
+    const ccCheckedAttr = ccCompanyDefault ? 'checked' : '';
 
     const modalHtml = `
         <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
@@ -1187,7 +1191,7 @@ function handleOpenEmailModal() {
             <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px 16px 28px 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; overflow: hidden; resize: none;">${defaultEmailMessage}</textarea>
             
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
-                <input type="checkbox" id="cc-company-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
+                <input type="checkbox" id="cc-company-checkbox" ${ccCheckedAttr} style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
                 <label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">
                     CC the Company Email<br>
                     <span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${displayCompanyEmail}</span>
