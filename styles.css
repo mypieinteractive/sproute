@@ -1,10 +1,9 @@
 /* * */
-/* * Dashboard - V11.15 */
+/* * Dashboard - V11.16 */
 /* * FILE: styles.css */
 /* * Changes: */
-/* * 1. Added rules for `.view-managermobilesplit` using `display: contents` to flatten the DOM structure and easily rearrange elements securely via flex `order`. */
-/* * 2. Added `.hide-mobile-text` utility query to compress header buttons on smaller screens. */
-/* * 3. Removed obsolete standalone dropzone and compact dropzone styles. */
+/* * 1. Added `.header-dropzone` logic to style the map header CSV button as a proper dropzone. */
+/* * 2. Added visibility toggles to hide `#map-driver-name` on mobile views and expand `.header-dropzone`. */
 /* * */
 
 :root { 
@@ -74,9 +73,8 @@ body.view-managermobilesplit {
 }
 body.view-managermobilesplit #map-wrapper,
 body.view-managermobilesplit #sidebar {
-    display: contents; /* Unwraps parents allowing immediate children to flow in body flex */
+    display: contents;
 }
-/* Static ordering and visibility */
 body.view-managermobilesplit #map-header { order: 1; }
 body.view-managermobilesplit #sidebar-brand { order: 2; border-bottom: 1px solid #111; }
 body.view-managermobilesplit #route-summary { order: 3; }
@@ -169,6 +167,40 @@ body.view-managermobilesplit .header-action-btn {
 body.tier-individual .col-insp { display: none !important; }
 
 body.manager-all-inspectors #routing-controls { display: none !important; }
+
+/* HEADER DROPZONE STYLES */
+.header-dropzone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border: 1.5px dashed var(--blue);
+    border-radius: 6px;
+    background: rgba(37, 99, 235, 0.05);
+    color: var(--blue);
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: auto;
+    height: 38px;
+    font-size: 14px;
+    font-weight: bold;
+}
+.header-dropzone:hover, .header-dropzone.drag-active {
+    background: rgba(37, 99, 235, 0.15);
+    border-style: solid;
+}
+
+/* Mobile Overrides for Header Dropzone */
+body.view-managermobile #map-driver-name,
+body.view-managermobilesplit #map-driver-name {
+    display: none !important;
+}
+body.view-managermobile .header-dropzone,
+body.view-managermobilesplit .header-dropzone {
+    flex: 1;
+    margin-left: 10px;
+}
 
 .list-subheading {
     padding: 6px 12px; background: var(--bg-header); color: #ffffff;
