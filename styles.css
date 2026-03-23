@@ -1,8 +1,8 @@
 /* * */
-/* * Dashboard - V11.10 */
+/* * Dashboard - V11.11 */
 /* * FILE: styles.css */
 /* * Changes: */
-/* * 1. Reverted the `tier-business` comment and logic expectations back to `tier-company` to match the exact back-end data string. */
+/* * 1. Added `.compact-dropzone` and `.drop-icon` styles for the new inline uploader. */
 /* * */
 
 :root { 
@@ -202,6 +202,34 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 @container sidebar (max-width: 600px) { .col-client { display: none !important; } }
 @container sidebar (max-width: 500px) { .col-app { display: none !important; } }
+
+/* Compact Dropzone */
+.compact-dropzone {
+    display: none; /* Managed by JS */
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 15px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid var(--border-color);
+    border-top: 1px dashed transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.compact-dropzone:hover, .compact-dropzone.drag-active {
+    background: rgba(37, 99, 235, 0.05);
+    border-bottom: 1px dashed var(--blue);
+    border-top: 1px dashed var(--blue);
+    color: var(--blue);
+}
+.compact-dropzone.drag-active {
+    background: rgba(37, 99, 235, 0.15);
+}
+.drop-icon {
+    font-size: 15px;
+}
 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
