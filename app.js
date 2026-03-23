@@ -1,10 +1,11 @@
 // *
-// * Dashboard - V11.13
+// * Dashboard - V11.14
 // * FILE: app.js
 // * Changes: 
-// * 1. Added `ccCompanyDefault` global variable to store the company CC preference.
-// * 2. Updated `loadData()` to parse and store `data.ccCompanyDefault` from the backend payload.
-// * 3. Updated `handleOpenEmailModal()` to dynamically apply the `checked` attribute to the `#cc-company-checkbox` based on the backend preference.
+// * 1. Manager/managermobile views: Hide search bar when no orders are present.
+// * 2. Inspectors view: Hide the sidebar header (#sidebar-brand) when no action buttons are present.
+// * 3. Inspectors view: Hide the CSV Upload module (both the compact and main dropzone areas).
+// * 4. Email generation: Crop out the map header and summary bar when creating map snapshot by temporarily hiding them.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -1255,9 +1256,15 @@ function handleOpenEmailModal() {
         
         const ccEmail = document.getElementById('additional-cc-email').value;
 
+        // CHANGE 4: Crop map snapshot by hiding header and summary elements during canvas generation
         const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint');
-        overlaysToHide.forEach(el => el.style.display = 'none');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary');
+        
+        const originalDisplays = [];
+        overlaysToHide.forEach((el, index) => {
+            originalDisplays[index] = el.style.display;
+            el.style.display = 'none';
+        });
 
         const bounds = new mapboxgl.LngLatBounds();
         const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
@@ -1289,7 +1296,9 @@ function handleOpenEmailModal() {
             console.error("Screenshot error:", e);
         }
 
-        overlaysToHide.forEach(el => el.style.display = '');
+        overlaysToHide.forEach((el, index) => {
+            el.style.display = originalDisplays[index];
+        });
 
         const payload = {
             action: "dispatchRoute",
@@ -1483,19 +1492,27 @@ function updateRoutingUI() {
         
         let showRecalc = false;
         let showOpt = false;
+        let showRestore = false;
 
         if (isDirty) {
             showRecalc = true;
             if (dirtyRoutes.has('endpoints_0') || PERMISSION_REOPTIMIZE) showOpt = true;
         } else if (isAlteredRoute) {
             if(btnRestore) btnRestore.style.display = 'flex'; 
+            showRestore = true;
         }
         
         if(btnRecalc) btnRecalc.style.display = showRecalc ? 'flex' : 'none';
         if(optInspBtn) optInspBtn.style.display = showOpt ? 'flex' : 'none';
 
-        if (!showRecalc && !showOpt && !isAlteredRoute) {
+        if (!showRecalc && !showOpt && !showRestore) {
             if(routingControls) routingControls.style.display = 'none';
+        }
+
+        // CHANGE 2: Hide sidebar header when no buttons are present in Inspector view
+        const sidebarBrand = document.getElementById('sidebar-brand');
+        if (sidebarBrand) {
+            sidebarBrand.style.display = (showRecalc || showOpt || showRestore) ? 'flex' : 'none';
         }
     }
 }
@@ -2420,10 +2437,21 @@ function render() {
     // Toggle Compact Dropzone Visibility
     const compactDropzone = document.getElementById('compact-upload-zone');
     if (compactDropzone) {
-        if (activeStops.length === 0) {
+        // CHANGE 3: Hide CSV upload module in Inspector view
+        if (activeStops.length === 0 || !isManagerView) {
             compactDropzone.style.display = 'none';
         } else {
             compactDropzone.style.display = 'flex';
+        }
+    }
+
+    // CHANGE 1: Manager/managermobile views: Hide search bar when no orders present
+    const searchContainer = document.getElementById('search-container');
+    if (searchContainer) {
+        if (isManagerView && activeStops.length === 0) {
+            searchContainer.style.display = 'none';
+        } else {
+            searchContainer.style.display = 'flex';
         }
     }
 
@@ -2605,7 +2633,10 @@ function render() {
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
         if (activeStops.length === 0) {
-            listContainer.appendChild(createDropzone());
+            // CHANGE 3: Hide CSV upload module in Inspector view
+            if (isManagerView) {
+                listContainer.appendChild(createDropzone());
+            }
         }
 
         if (unroutedStops.length > 0) {
@@ -2648,7 +2679,10 @@ function render() {
         listContainer.appendChild(mainDiv);
         
         if (activeStops.length === 0) {
-            mainDiv.appendChild(createDropzone());
+            // CHANGE 3: Hide CSV upload module in Inspector view
+            if (isManagerView) {
+                mainDiv.appendChild(createDropzone());
+            }
         } else {
             activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
         }
