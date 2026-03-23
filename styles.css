@@ -1,9 +1,8 @@
 /* * */
-/* * Dashboard - V11.6 */
+/* * Dashboard - V11.10 */
 /* * FILE: styles.css */
 /* * Changes: */
-/* * 1. Converted `#map-wrapper` to a flexbox container so `#map-header`, `#route-summary`, and `#map-container` stack naturally without hardcoded pixel top offsets. */
-/* * 2. Nested `#map`, `#map-hint`, and `.map-overlay-btns` inside the relative `#map-container` to maintain UI stability regardless of whether the summary bar is hidden or displayed. */
+/* * 1. Reverted the `tier-business` comment and logic expectations back to `tier-company` to match the exact back-end data string. */
 /* * */
 
 :root { 
@@ -347,6 +346,11 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .static-endpoint.compact { background: var(--bg-panel); min-height: 45px; }
 .static-endpoint.compact .endpoint-input { background: transparent; border: 1px dashed var(--border-color); padding: 6px; }
 .static-endpoint.compact .endpoint-input:focus { background: var(--bg-base); border-style: solid; }
+
+/* Modal Pill Buttons */
+.pill-btn { padding: 8px 16px; border: 1px solid #4a4a4c; border-radius: 20px; cursor: pointer; color: #ccc; font-size: 14px; background: transparent; transition: all 0.2s ease; }
+.pill-btn.active { background: rgba(59, 130, 246, 0.15); color: var(--blue); border-color: var(--blue); font-weight: bold; }
+.pill-btn:hover:not(.active) { background: rgba(255,255,255,0.05); }
 
 /* --- PROCESSING OVERLAY --- */
 #processing-overlay {
