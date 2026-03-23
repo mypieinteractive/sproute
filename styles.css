@@ -1,8 +1,10 @@
 /* * */
-/* * Dashboard - V11.11 */
+/* * Dashboard - V11.15 */
 /* * FILE: styles.css */
 /* * Changes: */
-/* * 1. Added `.compact-dropzone` and `.drop-icon` styles for the new inline uploader. */
+/* * 1. Added rules for `.view-managermobilesplit` using `display: contents` to flatten the DOM structure and easily rearrange elements securely via flex `order`. */
+/* * 2. Added `.hide-mobile-text` utility query to compress header buttons on smaller screens. */
+/* * 3. Removed obsolete standalone dropzone and compact dropzone styles. */
 /* * */
 
 :root { 
@@ -41,7 +43,8 @@ body.view-inspector #route-summary { display: none !important; }
 
 /* Move map buttons to bottom right for Inspector and ManagerMobile */
 body.view-inspector .map-overlay-btns, 
-body.view-managermobile .map-overlay-btns {
+body.view-managermobile .map-overlay-btns,
+body.view-managermobilesplit .map-overlay-btns {
     top: auto !important;
     bottom: 20px !important;
     right: 20px !important;
@@ -62,31 +65,90 @@ body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; 
 body.view-managermobile #stop-list { overflow-y: auto; overflow-x: hidden; height: 100%; }
 body.view-managermobile #summary-metrics { display: none !important; } 
 
+/* MANAGER MOBILE SPLIT VIEW */
+body.view-managermobilesplit {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100vh;
+}
+body.view-managermobilesplit #map-wrapper,
+body.view-managermobilesplit #sidebar {
+    display: contents; /* Unwraps parents allowing immediate children to flow in body flex */
+}
+/* Static ordering and visibility */
+body.view-managermobilesplit #map-header { order: 1; }
+body.view-managermobilesplit #sidebar-brand { order: 2; border-bottom: 1px solid #111; }
+body.view-managermobilesplit #route-summary { order: 3; }
+body.view-managermobilesplit #mobile-view-toggle { order: 4; display: flex !important; }
+body.view-managermobilesplit #routing-controls { order: 5; }
+body.view-managermobilesplit #route-view-toggles { order: 6; }
+body.view-managermobilesplit #search-container { order: 7; }
+body.view-managermobilesplit #stop-list { order: 8; overflow-y: auto; flex: 1; min-height: 0; }
+body.view-managermobilesplit #map-container { order: 9; flex: 1; min-height: 0; position: relative; }
+body.view-managermobilesplit #resizer { display: none; }
+
+/* Toggling logic */
+body.view-managermobilesplit.split-show-map #stop-list,
+body.view-managermobilesplit.split-show-map #search-container,
+body.view-managermobilesplit.split-show-map #routing-controls,
+body.view-managermobilesplit.split-show-map #route-view-toggles {
+    display: none !important;
+}
+body.view-managermobilesplit.split-show-map #map-container {
+    display: flex !important; 
+    flex-direction: column;
+}
+
+body.view-managermobilesplit.split-show-list #map-container {
+    display: none !important;
+}
+body.view-managermobilesplit.split-show-list #stop-list {
+    display: block !important;
+}
+
 /* Hide Map Hint */
 body.view-managermobile #map-hint,
+body.view-managermobilesplit #map-hint,
 body.view-inspector #map-hint { display: none !important; }
 
 /* Mobile Column Fitting */
-body.view-managermobile .col-eta { width: 55px; font-size: 12px; }
-body.view-managermobile .col-due { width: 45px; font-size: 12px; }
-body.view-managermobile .col-insp { width: 85px; font-size: 12px; padding-right: 2px; }
-body.view-managermobile .insp-select { font-size: 12px; padding: 4px 14px 4px 4px; background-size: 8px auto; background-position: right 4px center; }
-body.view-managermobile .addr-text { font-size: 13px; }
-body.view-managermobile .glide-row { padding: 8px 2px; }
-body.view-managermobile .col-num { margin-left: 2px; width: 26px; }
-body.view-managermobile .num-badge { width: 22px; height: 22px; font-size: 11px; }
-body.view-managermobile .endpoint-controls-wrapper { padding-left: 4px; }
-body.view-managermobile .endpoint-label-text { display: none !important; } /* Hidden on mobile to fit button */
+body.view-managermobile .col-eta,
+body.view-managermobilesplit .col-eta { width: 55px; font-size: 12px; }
+body.view-managermobile .col-due,
+body.view-managermobilesplit .col-due { width: 45px; font-size: 12px; }
+body.view-managermobile .col-insp,
+body.view-managermobilesplit .col-insp { width: 85px; font-size: 12px; padding-right: 2px; }
+body.view-managermobile .insp-select,
+body.view-managermobilesplit .insp-select { font-size: 12px; padding: 4px 14px 4px 4px; background-size: 8px auto; background-position: right 4px center; }
+body.view-managermobile .addr-text,
+body.view-managermobilesplit .addr-text { font-size: 13px; }
+body.view-managermobile .glide-row,
+body.view-managermobilesplit .glide-row { padding: 8px 2px; }
+body.view-managermobile .col-num,
+body.view-managermobilesplit .col-num { margin-left: 2px; width: 26px; }
+body.view-managermobile .num-badge,
+body.view-managermobilesplit .num-badge { width: 22px; height: 22px; font-size: 11px; }
+body.view-managermobile .endpoint-controls-wrapper,
+body.view-managermobilesplit .endpoint-controls-wrapper { padding-left: 4px; }
+body.view-managermobile .endpoint-label-text,
+body.view-managermobilesplit .endpoint-label-text { display: none !important; }
+
+@media (max-width: 450px) {
+    .hide-mobile-text { display: none !important; }
+}
 
 /* Header buttons formatting for mobile */
-body.view-managermobile .header-action-btn {
+body.view-managermobile .header-action-btn,
+body.view-managermobilesplit .header-action-btn {
     padding: 6px 10px;
     font-size: 12px;
     height: 32px;
     gap: 6px;
 }
 @media (max-width: 380px) {
-    body.view-managermobile .header-action-btn span {
+    body.view-managermobile .header-action-btn span,
+    body.view-managermobilesplit .header-action-btn span {
         display: inline-block;
         white-space: nowrap;
         overflow: hidden;
@@ -94,13 +156,14 @@ body.view-managermobile .header-action-btn {
         max-width: 55px;
         vertical-align: middle;
     }
-    body.view-managermobile .header-action-btn {
+    body.view-managermobile .header-action-btn,
+    body.view-managermobilesplit .header-action-btn {
         padding: 6px 8px;
     }
 }
 
 @container sidebar (max-width: 500px) {
-    .endpoint-label-text { display: none !important; } /* Hidden on tight desktop to fit button */
+    .endpoint-label-text { display: none !important; }
 }
 
 body.tier-individual .col-insp { display: none !important; }
@@ -115,8 +178,9 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
 body.view-manager .list-subheading,
-body.view-managermobile .list-subheading {
-    top: 37px; /* 38px rigid header height - 1px tight overlap */
+body.view-managermobile .list-subheading,
+body.view-managermobilesplit .list-subheading {
+    top: 37px; 
 }
 
 .route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: var(--text-main); }
@@ -184,7 +248,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 #btn-undo-incremental:hover:not(:disabled) { color: var(--blue); }
 #btn-undo-incremental:disabled { color: var(--text-muted); opacity: 0.3; cursor: not-allowed; }
 
-.rocker { display: flex; background: #222; border-radius: 6px; padding: 2px; }
+.rocker { display: flex; background: #222; border-radius: 6px; padding: 2px; cursor: pointer; }
 .rocker div { padding: 4px 10px; cursor: pointer; border-radius: 4px; transition: 0.2s; color: var(--text-muted); font-weight: normal; font-size: 15px; }
 .rocker div.active { background: #2C3D4F; color: white; }
 
@@ -202,34 +266,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 @container sidebar (max-width: 600px) { .col-client { display: none !important; } }
 @container sidebar (max-width: 500px) { .col-app { display: none !important; } }
-
-/* Compact Dropzone */
-.compact-dropzone {
-    display: none; /* Managed by JS */
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 8px 15px;
-    background: rgba(255,255,255,0.02);
-    border-bottom: 1px solid var(--border-color);
-    border-top: 1px dashed transparent;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-size: 13px;
-    color: var(--text-muted);
-}
-.compact-dropzone:hover, .compact-dropzone.drag-active {
-    background: rgba(37, 99, 235, 0.05);
-    border-bottom: 1px dashed var(--blue);
-    border-top: 1px dashed var(--blue);
-    color: var(--blue);
-}
-.compact-dropzone.drag-active {
-    background: rgba(37, 99, 235, 0.15);
-}
-.drop-icon {
-    font-size: 15px;
-}
 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
@@ -387,14 +423,14 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(15, 23, 42, 0.75); /* Dark slate with opacity */
-    backdrop-filter: blur(6px); /* Modern frosted glass effect */
+    background: rgba(15, 23, 42, 0.75); 
+    backdrop-filter: blur(6px); 
     -webkit-backdrop-filter: blur(6px);
-    display: none; /* Handled by app.js (flex) */
+    display: none; 
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    z-index: 99999; /* Ensures it sits above everything, including Mapbox */
+    z-index: 99999; 
 }
 
 .spinner-container {
@@ -408,13 +444,12 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
     border: 1px solid var(--border-color, #334155);
 }
 
-/* Smooth Dual-Ring Spinner */
 .loader {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    border: 4px solid rgba(59, 130, 246, 0.1); /* Faint blue track */
-    border-top-color: var(--blue, #3B82F6); /* Vibrant blue spinner */
+    border: 4px solid rgba(59, 130, 246, 0.1); 
+    border-top-color: var(--blue, #3B82F6); 
     border-bottom-color: var(--blue, #3B82F6);
     animation: spin 1.2s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
     margin-bottom: 24px;
