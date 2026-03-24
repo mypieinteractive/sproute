@@ -1,7 +1,10 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.6 - test2
+ * VERSION: V1.7
  * * CHANGES:
+ * V1.7 - Resolved Cloud Run 8080 timeout. Added functions-framework wrapper 
+ * (ff.http) and a 'start' script to package.json to keep the container alive 
+ * and actively listening.
  * V1.6 - Architecture Migration. Stripped out the Firebase CLI wrappers 
  * (functions.runWith) to support native 2nd Gen Google Cloud Console deployment. 
  * Exported a standard Node.js HTTP handler (exports.api) to resolve Cloud Run 
@@ -12,6 +15,7 @@
  */
 
 const admin = require('firebase-admin');
+const ff = require('@google-cloud/functions-framework');
 const { parse } = require('csv-parse/sync');
 
 // Use native fetch if available in Node 18+, otherwise require 'node-fetch'
@@ -40,8 +44,8 @@ function colIdx(c) {
     return idx - 1;
 }
 
-// Native Node.js HTTP Export for 2nd Gen Cloud Functions
-exports.api = async (req, res) => {
+// Native Node.js HTTP Export for 2nd Gen Cloud Functions via Functions Framework
+ff.http('api', async (req, res) => {
     // Standard CORS Headers for Dashboard communication
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -244,4 +248,4 @@ exports.api = async (req, res) => {
         console.error(`[API ERROR] ${error.message}`, error);
         return res.status(500).json({ error: error.message });
     }
-};
+});
