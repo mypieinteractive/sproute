@@ -1,6 +1,6 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.6 - test
+ * VERSION: V1.6 - test2
  * * CHANGES:
  * V1.6 - Architecture Migration. Stripped out the Firebase CLI wrappers 
  * (functions.runWith) to support native 2nd Gen Google Cloud Console deployment. 
