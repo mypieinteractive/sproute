@@ -6,7 +6,7 @@ steps:
       - 'build'
       - '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA'
       - '--builder'
-      - 'gcr.io/buildpacks/builder:v1'
+      - 'gcr.io/buildpacks/builder:google-22'
       - '--network'
       - 'cloudbuild'
 
