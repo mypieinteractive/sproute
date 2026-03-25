@@ -1,8 +1,9 @@
 // *
-// * Dashboard - V12.2
+// * Dashboard - V12.4
 // * FILE: app.js
 // * Changes: 
-// * 1. Updated `logToVisualConsole()` to route API requests to separate columns (`#console-sheet` vs `#console-firestore`) based on the active toggled backend.
+// * 1. Modified `logToVisualConsole()` to use `prepend()` for reverse-chronological logging.
+// * 2. Removed `scrollTop` auto-scrolling behavior from the console output.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -68,8 +69,7 @@ function logToVisualConsole(type, endpoint, data) {
     }
     
     entry.innerHTML = `<strong>[${time}] ${type} - ${endpoint}</strong><br>${dataStr}`;
-    consoleEl.appendChild(entry);
-    consoleEl.scrollTop = consoleEl.scrollHeight;
+    consoleEl.prepend(entry);
 }
 
 // Global API Usage Tracker
