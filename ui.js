@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V12.5 */
+/* * Dashboard - V12.7 */
 /* * FILE: ui.js */
-/* * Changes: Extracted DOM manipulation, Testing UI logic, and single initialization point. */
+/* * Changes: Re-integrated Testing UI panel building and window logic. */
 /* * */
 
 document.body.className = `view-${viewMode} manager-all-inspectors`;
@@ -145,7 +145,7 @@ function updateInspectorDropdown() {
     }
 }
 
-function handleInspectorFilterChange(val) {
+window.handleInspectorFilterChange = function(val) {
     currentInspectorFilter = val;
     sessionStorage.setItem('sproute_inspector_filter', val);
     document.body.classList.toggle('manager-all-inspectors', val === 'all');
@@ -158,10 +158,13 @@ function handleInspectorFilterChange(val) {
     document.getElementById('view-r2-btn').classList.remove('active');
     
     updateInspectorDropdown();
-    if (val !== 'all') liveClusterUpdate();
+    if (val !== 'all' && typeof liveClusterUpdate === 'function') liveClusterUpdate();
     updateRouteButtonColors();
-    render(); drawRoute(); updateSummary(); initSortable();
-}
+    render(); 
+    if (typeof drawRoute === 'function') drawRoute(); 
+    if (typeof updateSummary === 'function') updateSummary(); 
+    initSortable();
+};
 
 function updateRouteButtonColors() {
     if (!isManagerView) return;
@@ -347,7 +350,7 @@ function updateSummary() {
     if(statPastEl) statPastEl.innerText = `${pastDue} Past Due`;
 }
 
-function setRouteViewFilter(val) {
+window.setRouteViewFilter = function(val) {
     currentRouteViewFilter = val;
     document.getElementById('view-rall-btn').classList.toggle('active', val === 'all');
     document.getElementById('view-r0-btn').classList.toggle('active', val === 0);
@@ -362,27 +365,27 @@ function setRouteViewFilter(val) {
         });
         hiddenIds.forEach(id => selectedIds.delete(id));
     }
-    render(); drawRoute(); updateSummary();
-}
+    render(); if (typeof drawRoute === 'function') drawRoute(); updateSummary();
+};
 
-function setMobileSplitView(viewType) {
+window.setMobileSplitView = function(viewType) {
     document.getElementById('toggle-map').classList.toggle('active', viewType === 'map');
     document.getElementById('toggle-list').classList.toggle('active', viewType === 'list');
     if (viewType === 'map') {
         document.body.classList.add('split-show-map'); document.body.classList.remove('split-show-list');
-        setTimeout(() => { if(map) map.resize(); }, 100);
+        setTimeout(() => { if(typeof map !== 'undefined') map.resize(); }, 100);
     } else {
         document.body.classList.add('split-show-list'); document.body.classList.remove('split-show-map');
     }
-}
+};
 
-function toggleSelectAll(cb) {
+window.toggleSelectAll = function(cb) {
     selectedIds.clear();
     if (cb.checked) stops.filter(s => isStopVisible(s, true)).forEach(s => selectedIds.add(s.id));
-    updateSelectionUI();
-}
+    if (typeof updateSelectionUI === 'function') updateSelectionUI();
+};
 
-function updateSelectionUI() { 
+window.updateSelectionUI = function() { 
     document.querySelectorAll('.stop-item, .glide-row').forEach(el=>el.classList.remove('selected')); 
     markers.forEach(m=>{ 
         if(m._stopId) {
@@ -420,11 +423,11 @@ function updateSelectionUI() {
             } else btn.style.display = 'none';
         }
     }
-}
+};
 
-async function triggerBulkDelete() { 
+window.triggerBulkDelete = async function() { 
     if(!(await customConfirm("Delete selected orders?"))) return;
-    pushToHistory(); 
+    if (typeof pushToHistory === 'function') pushToHistory(); 
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
@@ -432,7 +435,7 @@ async function triggerBulkDelete() {
         let idsToDelete = Array.from(selectedIds);
         idsToDelete.forEach(id => {
             const s = stops.find(st => String(st.id) === String(id));
-            if (s && isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster);
+            if (s && isRouteAssigned(s.status)) { if (typeof markRouteDirty === 'function') markRouteDirty(s.driverId, s.cluster); }
         });
 
         let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete };
@@ -442,16 +445,19 @@ async function triggerBulkDelete() {
         stops = stops.filter(s => !selectedIds.has(s.id));
         selectedIds.clear(); updateInspectorDropdown(); 
         
-        reorderStopsFromDOM(); render(); drawRoute(); updateSummary(); updateRouteTimes(); silentSaveRouteState();
+        if (typeof reorderStopsFromDOM === 'function') reorderStopsFromDOM();
+        render(); if (typeof drawRoute === 'function') drawRoute(); updateSummary(); 
+        if (typeof updateRouteTimes === 'function') updateRouteTimes();
+        if (typeof silentSaveRouteState === 'function') silentSaveRouteState();
     } catch (err) {
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error deleting orders. Please try again.");
     } finally { if(overlay) overlay.style.display = 'none'; }
-}
+};
 
-async function triggerBulkUnroute() { 
+window.triggerBulkUnroute = async function() { 
     if(!(await customConfirm("Remove selected orders from route?"))) return;
-    pushToHistory();
+    if (typeof pushToHistory === 'function') pushToHistory();
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
 
@@ -462,7 +468,7 @@ async function triggerBulkUnroute() {
             let dId = null;
             if (idx > -1) {
                 dId = stops[idx].driverId;
-                if (isRouteAssigned(stops[idx].status)) markRouteDirty(stops[idx].driverId, stops[idx].cluster);
+                if (isRouteAssigned(stops[idx].status)) { if (typeof markRouteDirty === 'function') markRouteDirty(stops[idx].driverId, stops[idx].cluster); }
                 stops[idx].status = 'Pending'; stops[idx].cluster = 'X'; stops[idx].manualCluster = false; stops[idx].eta = ''; stops[idx].dist = 0; stops[idx].durationSecs = 0;
                 if (viewMode === 'inspector') stops[idx].hiddenInInspector = true; 
             }
@@ -474,14 +480,17 @@ async function triggerBulkUnroute() {
         await apiFetch(payload);
         
         selectedIds.clear(); 
-        reorderStopsFromDOM(); render(); drawRoute(); updateSummary(); updateRouteTimes(); silentSaveRouteState();
+        if (typeof reorderStopsFromDOM === 'function') reorderStopsFromDOM();
+        render(); if (typeof drawRoute === 'function') drawRoute(); updateSummary(); 
+        if (typeof updateRouteTimes === 'function') updateRouteTimes();
+        if (typeof silentSaveRouteState === 'function') silentSaveRouteState();
     } catch (err) {
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error removing orders from the route. Please try again.");
     } finally { if(overlay) overlay.style.display = 'none'; }
-}
+};
 
-async function handleInspectorChange(e, rowId, selectEl) {
+window.handleInspectorChange = async function(e, rowId, selectEl) {
     e.stopPropagation(); 
     const newDriverId = selectEl.value;
     const newDriverName = selectEl.options[selectEl.selectedIndex].text;
@@ -492,7 +501,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
         else { render(); return; }
     }
     
-    pushToHistory();
+    if (typeof pushToHistory === 'function') pushToHistory();
     const overlay = document.getElementById('processing-overlay');
     if(overlay) overlay.style.display = 'flex';
     
@@ -500,7 +509,7 @@ async function handleInspectorChange(e, rowId, selectEl) {
         idsToUpdate.forEach(id => {
             const s = stops.find(st => String(st.id) === String(id));
             if (s) {
-                if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
+                if (isRouteAssigned(s.status)) { if (typeof markRouteDirty === 'function') markRouteDirty(s.driverId, s.cluster); }
                 s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
                 if (viewMode === 'inspector') s.hiddenInInspector = true;
             }
@@ -511,14 +520,15 @@ async function handleInspectorChange(e, rowId, selectEl) {
         await apiFetch(payload);
         
         selectedIds.clear(); updateInspectorDropdown(); 
-        render(); drawRoute(); updateSummary(); silentSaveRouteState();
+        render(); if (typeof drawRoute === 'function') drawRoute(); updateSummary();
+        if (typeof silentSaveRouteState === 'function') silentSaveRouteState();
     } catch (err) { 
         if(overlay) overlay.style.display = 'none';
         await customAlert("Error reassigning orders. Please try again."); 
     } finally { if(overlay) overlay.style.display = 'none'; }
-}
+};
 
-function sortTable(col) {
+window.sortTable = function(col) {
     if (currentSort.col === col) currentSort.asc = !currentSort.asc;
     else { currentSort.col = col; currentSort.asc = true; }
 
@@ -535,14 +545,14 @@ function sortTable(col) {
         return 0;
     });
     render(); 
-}
+};
 
 function getSortIcon(col) {
     if (currentSort.col !== col) return '<i class="fa-solid fa-sort" style="opacity:0.3; margin-left:4px;"></i>';
     return currentSort.asc ? '<i class="fa-solid fa-sort-up" style="margin-left:4px; color:var(--blue);"></i>' : '<i class="fa-solid fa-sort-down" style="margin-left:4px; color:var(--blue);"></i>';
 }
 
-function setDisplayMode(mode) {
+window.setDisplayMode = function(mode) {
     currentDisplayMode = mode;
     document.getElementById('btn-detailed').classList.toggle('active', mode === 'detailed');
     document.getElementById('btn-compact').classList.toggle('active', mode === 'compact');
@@ -550,381 +560,30 @@ function setDisplayMode(mode) {
         if (mode === 'compact') { el.classList.add('compact'); el.classList.remove('detailed'); } 
         else { el.classList.add('detailed'); el.classList.remove('compact'); }
     });
+};
+
+window.focusTile = function(id) { document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+window.filterList = function() { 
+    const q = document.getElementById('search-input').value.toLowerCase(); 
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); 
+};
+
+window.openNav = function(e, la, ln, addr) { 
+    e.stopPropagation(); let p = localStorage.getItem('navPref'); 
+    if (!p) { showNavChoice(la, ln, addr); } else { launchMaps(p, la, ln, addr); } 
+};
+function showNavChoice(la, ln, addr) { 
+    const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; 
+    document.getElementById('modal-content').innerHTML = `<h3>Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:none; border-radius:6px; background:#444; color:#fff" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div>`; 
+}
+window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; launchMaps(p, la, ln, addr); };
+function launchMaps(p, la, ln, addr) { 
+    let safeAddr = encodeURIComponent(addr || "Destination");
+    if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; 
+    else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; 
 }
 
-function createRouteSubheading(clusterNum, clusterStops) {
-    let totalMi = 0; let dueToday = 0; let pastDue = 0; let totalSecs = 0;
-    const today = new Date(); today.setHours(0,0,0,0);
-
-    clusterStops.forEach(s => {
-        const distVal = parseFloat(s.dist || 0);
-        if (!isNaN(distVal)) totalMi += distVal;
-        totalSecs += parseFloat(s.durationSecs || 0);
-        if(s.dueDate) {
-            const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
-            if(dueTime < today) pastDue++; else if(dueTime.getTime() === today.getTime()) dueToday++;
-        }
-    });
-
-    let hrs = clusterStops.length > 0 ? ((totalSecs + (clusterStops.length * COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : 0;
-    let dueText = pastDue > 0 ? `<span style="color:var(--red)">${pastDue} Past Due</span>` : (dueToday > 0 ? `<span style="color:var(--orange)">${dueToday} Due Today</span>` : `0 Due`);
-    
-    const el = document.createElement('div');
-    el.className = 'list-subheading';
-    el.innerHTML = `<span>ROUTE ${clusterNum + 1}</span><span class="route-summary-text">${totalMi.toFixed(1)} mi | ${hrs} hrs | ${clusterStops.length} stops | ${dueText}</span>`;
-    return el;
-}
-
-function checkEndpointModified() {
-    const sVal = document.getElementById('input-endpoint-start')?.value || '';
-    const eVal = document.getElementById('input-endpoint-end')?.value || '';
-    const eps = getActiveEndpoints();
-    const sOrig = eps.start?.address || '';
-    const eOrig = eps.end?.address || '';
-    const modified = (sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim());
-    if (modified) markRouteDirty('endpoints', 0);
-    updateRoutingUI();
-}
-
-function handleEndpointKeyDown(e, type) { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }
-
-async function handleEndpointInput(e, type) {
-    checkEndpointModified();
-    clearTimeout(geocodeTimeout);
-    const val = e.target.value;
-    const dropdownId = `autocomplete-${type}`;
-    let dropdown = document.getElementById(dropdownId);
-    
-    if (!val.trim()) { 
-        if (dropdown) dropdown.innerHTML = ''; 
-        latestSuggestions[type] = null;
-        return; 
-    }
-    
-    geocodeTimeout = setTimeout(async () => {
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${MAPBOX_TOKEN}&country=us&types=address,poi`;
-        try {
-            frontEndApiUsage.geocode++;
-            const res = await fetch(url);
-            const data = await res.json();
-            latestSuggestions[type] = data.features.length > 0 ? data.features[0] : null;
-            renderAutocomplete(data.features, e.target, type);
-        } catch (err) { console.error("Autocomplete Error:", err); }
-    }, 300);
-}
-
-function renderAutocomplete(features, inputEl, type) {
-    let dropdown = document.getElementById(`autocomplete-${type}`);
-    if (!dropdown) {
-        dropdown = document.createElement('div'); dropdown.id = `autocomplete-${type}`; dropdown.className = 'autocomplete-dropdown'; dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel, #1E293B)'; dropdown.style.border = '1px solid var(--border-color, #334155)'; dropdown.style.zIndex = '1000'; dropdown.style.width = '100%'; dropdown.style.maxHeight = '200px'; dropdown.style.overflowY = 'auto'; dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)'; inputEl.parentNode.appendChild(dropdown);
-    }
-    dropdown.innerHTML = '';
-    if (features.length === 0) return;
-    
-    features.forEach(f => {
-        const item = document.createElement('div');
-        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color, #334155)'; item.style.color = 'var(--text-main, #F8FAFC)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
-        item.onmouseenter = () => item.style.background = 'var(--blue, #3B82F6)';
-        item.onmouseleave = () => item.style.background = 'transparent';
-        item.onmousedown = (e) => {
-            e.preventDefault(); latestSuggestions[type] = f; inputEl.value = f.place_name; dropdown.innerHTML = ''; selectEndpoint(type, f.place_name, f.center[1], f.center[0], inputEl);
-        };
-        dropdown.appendChild(item);
-    });
-}
-
-function handleEndpointBlur(type, inputEl) { setTimeout(() => { commitTopSuggestion(type, inputEl); const dropdown = document.getElementById(`autocomplete-${type}`); if (dropdown) dropdown.innerHTML = ''; }, 200); }
-
-async function selectEndpoint(type, address, lat, lng, inputEl) {
-    const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    const insp = inspectors.find(i => String(i.id) === String(inspId));
-    const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
-
-    if (isManagerView && hasRouted) {
-        const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
-        if (!proceed) {
-            const eps = getActiveEndpoints();
-            if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
-            return;
-        }
-    }
-    
-    let epObj = { address, lat, lng };
-    if (type === 'start') routeStart = epObj;
-    if (type === 'end') routeEnd = epObj;
-
-    if (insp) {
-        if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
-        if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
-    }
-    
-    if (isManagerView && hasRouted) { await executeRouteReset(insp.id); } 
-    else { markRouteDirty('endpoints', 0); render(); drawRoute(); updateSummary(); saveEndpointToBackend(type, address, lat, lng); }
-}
-
-function createEndpointRow(type, endpointData) {
-    const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
-    const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
-    const inputId = `input-endpoint-${type}`;
-    const rowIcon = type === 'start' ? '🏠' : '🏁';
-    
-    const el = document.createElement('div');
-    el.className = 'stop-item static-endpoint compact';
-    el.innerHTML = `
-        <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${rowIcon}</div>
-        <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
-            <div style="position:relative; width:100%; flex:1;">
-                <input type="text" id="${inputId}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
-            </div>
-        </div>
-        <div class="stop-actions" style="width: 40px;"></div>
-    `;
-    return el;
-}
-
-function showAddOrderModal() {
-    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content'); mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
-    let isIndividual = document.body.classList.contains('tier-individual'); let selectedInspector = null; let selectedApp = null;
-    if (isIndividual) selectedInspector = adminParam || driverParam; else if (isManagerView && currentInspectorFilter !== 'all') selectedInspector = currentInspectorFilter; else if (!isManagerView) selectedInspector = driverParam;
-
-    let inspectorHtml = '';
-    if (isManagerView && currentInspectorFilter === 'all' && !isIndividual) {
-        const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
-        let inspBtns = filteredInspectors.map(insp => `<div class="pill-btn add-insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
-        inspectorHtml = `<div class="form-group"><label>Inspector <span style="float:right; font-weight:normal;">Required</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">${inspBtns}</div></div>`;
-    }
-
-    let appBtns = availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
-    let appHtml = `<div class="form-group"><label>App <span style="float:right; font-weight:normal;">Optional</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    const modalHtml = `
-        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: bold;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="add-close-icon"></i></div>
-            ${inspectorHtml} ${appHtml}
-            <div class="form-group"><label>Address <span style="float:right; font-weight:normal;">Required</span></label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
-            <div class="grid-2-col"><div class="form-group"><label>Latitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div><div class="form-group"><label>Longitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div></div>
-            <div class="form-group"><label>Due Date <span style="float:right; font-weight:normal;">Required</span></label><input type="date" id="add-due" class="form-control" value="${todayStr}"></div>
-            <div class="grid-2-col"><div class="form-group"><label>Client <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div><div class="form-group"><label>Order Type <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div></div>
-            <div style="display: flex; gap: 12px; justify-content: flex-start; margin-top: 10px;"><button id="btn-submit-add" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; opacity: 0.5;" disabled>Add Order</button><button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;">Cancel</button></div>
-        </div>
-    `;
-
-    mc.innerHTML = modalHtml; m.style.display = 'flex';
-
-    const checkValidity = () => {
-        const submitBtn = document.getElementById('btn-submit-add');
-        const addr = document.getElementById('add-address').value.trim(); const due = document.getElementById('add-due').value;
-        if (selectedInspector && addr && due) { submitBtn.disabled = false; submitBtn.style.opacity = '1'; submitBtn.style.background = 'var(--green)'; } 
-        else { submitBtn.disabled = true; submitBtn.style.opacity = '0.5'; submitBtn.style.background = '#35475b'; }
-    };
-
-    document.querySelectorAll('.add-insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.add-insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
-    document.querySelectorAll('.add-app-pill').forEach(el => { el.onclick = () => { if (el.classList.contains('active')) { el.classList.remove('active'); selectedApp = null; } else { document.querySelectorAll('.add-app-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedApp = el.getAttribute('data-val'); } checkValidity(); }; });
-
-    document.getElementById('add-address').addEventListener('input', checkValidity); document.getElementById('add-due').addEventListener('input', checkValidity);
-    const closeModal = () => { m.style.display = 'none'; }; document.getElementById('add-close-icon').onclick = closeModal; document.getElementById('btn-cancel-add').onclick = closeModal;
-
-    document.getElementById('btn-submit-add').onclick = () => {
-        closeModal();
-        const addr = document.getElementById('add-address').value.trim(); const lat = document.getElementById('add-lat').value; const lng = document.getElementById('add-lng').value; const due = document.getElementById('add-due').value; const client = document.getElementById('add-client').value.trim(); const type = document.getElementById('add-type').value.trim();
-        const escapeCsv = (val) => '"' + String(val || '').replace(/"/g, '""') + '"';
-        const headers = ['Address', 'Latitude', 'Longitude', 'Due Date', 'Client', 'Order Type'];
-        const values = [addr, lat, lng, due, client, type];
-        const csvContent = headers.join(',') + '\n' + values.map(escapeCsv).join(',');
-        const file = new File([csvContent], "manual_order.csv", { type: "text/csv" });
-        performUpload(file, selectedInspector, selectedApp || '');
-    };
-    checkValidity();
-}
-
-function showUploadModal(file) {
-    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content'); mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
-    let isIndividual = document.body.classList.contains('tier-individual'); let selectedInspector = null;
-    if (isIndividual) selectedInspector = adminParam || driverParam; else if (isManagerView && currentInspectorFilter !== 'all') selectedInspector = currentInspectorFilter; else if (!isManagerView) selectedInspector = driverParam;
-
-    let selectedCsvType = null;
-    let inspectorHtml = '';
-    if (isManagerView && currentInspectorFilter === 'all' && !isIndividual) {
-        const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
-        let inspBtns = filteredInspectors.map(insp => `<div class="pill-btn insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
-        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">Inspector <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
-    }
-
-    let appBtns = availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
-
-    const modalHtml = `
-        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: bold;">Process CSV File</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="upload-close-icon"></i></div>
-            <div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">File <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="background: #2a2b2d; border: 1px solid #333; padding: 12px 16px; border-radius: 6px; color: #ccc; display: flex; align-items: center; gap: 10px; font-size: 14px;"><i class="fa-solid fa-file-csv" style="font-size: 18px;"></i> ${file.name}</div></div>
-            ${inspectorHtml}
-            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">App <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
-            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-upload" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; opacity: 0.5;" disabled>Submit</button><button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;">Cancel</button></div>
-        </div>
-    `;
-
-    mc.innerHTML = modalHtml; m.style.display = 'flex';
-
-    const checkValidity = () => {
-        const submitBtn = document.getElementById('btn-submit-upload');
-        if (selectedInspector && selectedCsvType) { submitBtn.disabled = false; submitBtn.style.opacity = '1'; submitBtn.style.background = 'var(--blue)'; } 
-        else { submitBtn.disabled = true; submitBtn.style.opacity = '0.5'; submitBtn.style.background = '#35475b'; }
-    };
-
-    document.querySelectorAll('.insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
-    document.querySelectorAll('.app-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.app-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedCsvType = el.getAttribute('data-val'); checkValidity(); }; });
-
-    const closeModal = () => { m.style.display = 'none'; }; document.getElementById('upload-close-icon').onclick = closeModal; document.getElementById('btn-cancel-upload').onclick = closeModal;
-    document.getElementById('btn-submit-upload').onclick = () => { closeModal(); performUpload(file, selectedInspector, selectedCsvType); };
-}
-
-function handleFileSelection(file) {
-    if (inspectors.length === 0 || availableCsvTypes.length === 0) { customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings."); return; }
-    if (file.name.toLowerCase().endsWith('.csv')) { showUploadModal(file); } else { customAlert("Please upload a valid CSV file."); }
-}
-
-function createDropzone() {
-    const dropzone = document.createElement('div');
-    dropzone.className = 'upload-dropzone';
-    dropzone.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: 8px; margin: 20px; cursor: pointer; transition: all 0.2s; min-height: 250px;';
-    const input = document.createElement('input'); input.type = 'file'; input.accept = '.csv'; input.style.display = 'none';
-    
-    dropzone.innerHTML = `<div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px; pointer-events: none;"><i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i></div><div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; pointer-events: none;">Ready to Route</div><div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5; pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>`;
-    dropzone.appendChild(input);
-    dropzone.onclick = () => input.click();
-    dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.backgroundColor = 'var(--bg-hover)'; dropzone.style.borderColor = 'var(--blue)'; };
-    dropzone.ondragleave = (e) => { e.preventDefault(); dropzone.style.backgroundColor = 'transparent'; dropzone.style.borderColor = 'var(--border-color)'; };
-    dropzone.ondrop = (e) => { e.preventDefault(); dropzone.style.backgroundColor = 'transparent'; dropzone.style.borderColor = 'var(--border-color)'; if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]); };
-    input.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); headerInput.value = ''; } };
-    return dropzone;
-}
-
-function handleOpenEmailModal() {
-    if (currentRouteViewFilter !== 'all') setRouteViewFilter('all');
-    const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
-    if (!insp) return;
-    const activeInspStops = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter));
-    if(activeInspStops.length === 0) return;
-
-    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
-    mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
-    
-    const displayCompanyEmail = companyEmail ? companyEmail : 'Company Email Not Found';
-    const displayAdminEmail = adminEmail ? adminEmail : '[Email not provided]';
-    const ccCheckedAttr = ccCompanyDefault ? 'checked' : '';
-
-    const modalHtml = `
-        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: bold;">Customize Email Message</h3>
-            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px 16px 28px 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; overflow: hidden; resize: none;">${defaultEmailMessage}</textarea>
-            
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
-                <input type="checkbox" id="cc-company-checkbox" ${ccCheckedAttr} style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
-                <label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">CC the Company Email<br><span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${displayCompanyEmail}</span></label>
-            </div>
-
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;">
-                <input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; accent-color: #7b93b8; transform: scale(1.2);">
-                <label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5; font-weight: 500;">CC Me<br><span style="font-size: 14px; color: #9a9a9a; font-weight: normal;">${displayAdminEmail}</span></label>
-            </div>
-
-            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;">
-                <label for="additional-cc-email" style="font-size: 16px; color: #e5e5e5; font-weight: 500;">Additional CC</label>
-                <div id="additional-cc-wrapper" style="padding-left: 0;">
-                    <input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;">
-                </div>
-            </div>
-
-            <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">
-                A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.
-            </div>
-
-            <div style="display: flex; gap: 12px; justify-content: flex-start;">
-                <button id="btn-submit-dispatch" style="padding: 12px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Submit</button>
-                <button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Cancel</button>
-            </div>
-        </div>
-    `;
-
-    mc.innerHTML = modalHtml;
-
-    setTimeout(() => {
-        const ta = document.getElementById('email-body-text');
-        if (ta) {
-            ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px';
-            ta.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = this.scrollHeight + 'px'; });
-        }
-    }, 10);
-
-    document.getElementById('btn-cancel-dispatch').onclick = () => { m.style.display = 'none'; };
-
-    document.getElementById('btn-submit-dispatch').onclick = async () => {
-        const btn = document.getElementById('btn-submit-dispatch');
-        btn.innerText = 'Dispatching...'; btn.disabled = true;
-
-        const customBody = document.getElementById('email-body-text').value;
-        const ccCompany = document.getElementById('cc-company-checkbox').checked;
-        const ccMeChecked = document.getElementById('cc-me-checkbox').checked;
-        const addCcValue = ccMeChecked ? adminEmail : '';
-        const ccEmail = document.getElementById('additional-cc-email').value;
-
-        const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-view-toggle');
-        const originalDisplays = [];
-        overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
-
-        const bounds = new mapboxgl.LngLatBounds();
-        const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
-        routedStopsForInsp.forEach(s => { if (s.lng && s.lat) bounds.extend([s.lng, s.lat]); });
-        
-        let eps = getActiveEndpoints();
-        if (eps.start && eps.start.lng && eps.start.lat) bounds.extend([parseFloat(eps.start.lng), parseFloat(eps.start.lat)]);
-        if (eps.end && eps.end.lng && eps.end.lat) bounds.extend([parseFloat(eps.end.lng), parseFloat(eps.end.lat)]);
-
-        if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false });
-        map.resize();
-        await new Promise(resolve => { map.once('idle', resolve); setTimeout(resolve, 1000); });
-
-        let mapBase64 = '';
-        try {
-            const canvasSnapshot = await html2canvas(mapWrapper, { useCORS: true, backgroundColor: '#121212' });
-            mapBase64 = canvasSnapshot.toDataURL('image/png', 0.9);
-        } catch(e) { console.error("Screenshot error:", e); }
-
-        overlaysToHide.forEach((el, index) => { el.style.display = originalDisplays[index]; });
-
-        const payload = { action: "dispatchRoute", driverId: currentInspectorFilter, companyId: companyParam || '', customBody: customBody, ccCompany: ccCompany, addCc: addCcValue, ccEmail: ccEmail, mapBase64: mapBase64 };
-        if (!isManagerView) payload.routeId = routeId;
-
-        try {
-            const res = await apiFetch(payload);
-            const result = await res.json();
-            if (result.success) {
-                m.style.display = 'none';
-                stops.forEach(s => {
-                    if (String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status)) { s.routeState = 'Dispatched'; s.status = 'Dispatched'; }
-                });
-                
-                if (isManagerView) {
-                    const filterEl = document.getElementById('inspector-filter');
-                    if (filterEl) filterEl.value = 'all';
-                    handleInspectorFilterChange('all');
-                } else { render(); drawRoute(); updateSummary(); }
-                
-                const toast = document.createElement('div');
-                toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
-                document.body.appendChild(toast);
-                setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
-            } else throw new Error("Dispatch failed");
-        } catch (e) {
-            btn.innerText = 'Submit'; btn.disabled = false;
-            await customAlert("Failed to dispatch route. Please try again.");
-        }
-    };
-}
-
-function initSortable() {
+window.initSortable = function() {
     sortableInstances.forEach(inst => inst.destroy());
     sortableInstances = [];
     if (sortableUnrouted) { sortableUnrouted.destroy(); sortableUnrouted = null; }
@@ -936,27 +595,23 @@ function initSortable() {
 
         document.querySelectorAll('.routed-group-container').forEach(routedEl => {
             const inst = Sortable.create(routedEl, {
-                group: 'manager-routes',
-                handle: '.handle',
-                filter: '.static-endpoint, .list-subheading',
-                animation: 150,
-                onStart: () => pushToHistory(),
+                group: 'manager-routes', handle: '.handle', filter: '.static-endpoint, .list-subheading', animation: 150,
+                onStart: () => { if (typeof pushToHistory === 'function') pushToHistory(); },
                 onEnd: async (evt) => {
                     let isMovedToUnrouted = false;
                     const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
-                    
                     const stopId = evt.item.id.replace('item-', '');
                     const stop = stops.find(s => String(s.id) === String(stopId));
                     
                     if (stop) {
                         const dId = stop.driverId;
                         let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
-                        if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
+                        if (matchOld && typeof markRouteDirty === 'function') markRouteDirty(dId, parseInt(matchOld[2]));
                         
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
                         if (matchNew) {
                             stop.cluster = parseInt(matchNew[2]); stop.manualCluster = true;
-                            if (hasActiveRoutes) { stop.status = 'Routed'; stop.routeState = 'Staging'; markRouteDirty(dId, stop.cluster); }
+                            if (hasActiveRoutes) { stop.status = 'Routed'; stop.routeState = 'Staging'; if (typeof markRouteDirty === 'function') markRouteDirty(dId, stop.cluster); }
                         }
                     }
 
@@ -978,20 +633,22 @@ function initSortable() {
                         } catch (e) { console.error(e); } finally { if(overlay) overlay.style.display = 'none'; }
                     }
                     
-                    reorderStopsFromDOM(); render(); silentSaveRouteState();
-                    if (isMovedToUnrouted) { drawRoute(); updateSummary(); updateRouteTimes(); }
+                    if (typeof reorderStopsFromDOM === 'function') reorderStopsFromDOM();
+                    render(); if (typeof silentSaveRouteState === 'function') silentSaveRouteState();
+                    if (isMovedToUnrouted) { if (typeof drawRoute === 'function') drawRoute(); updateSummary(); if (typeof updateRouteTimes === 'function') updateRouteTimes(); }
                 }
             });
             sortableInstances.push(inst);
         });
         
         if (unroutedEl) {
-            sortableUnrouted = Sortable.create(unroutedEl, { group: 'manager-routes', sort: false, handle: '.handle', filter: '.list-subheading', animation: 150, onStart: () => pushToHistory() });
+            sortableUnrouted = Sortable.create(unroutedEl, { group: 'manager-routes', sort: false, handle: '.handle', filter: '.list-subheading', animation: 150, onStart: () => { if (typeof pushToHistory === 'function') pushToHistory(); } });
         }
     } else if (!isManagerView) {
         document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
             const inst = Sortable.create(el, {
-                delay: 200, delayOnTouchOnly: true, filter: '.static-endpoint, .list-subheading', animation: 150, onStart: () => pushToHistory(),
+                delay: 200, delayOnTouchOnly: true, filter: '.static-endpoint, .list-subheading', animation: 150,
+                onStart: () => { if (typeof pushToHistory === 'function') pushToHistory(); },
                 onEnd: (evt) => {
                     const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
                     const stopId = evt.item.id.replace('item-', '');
@@ -999,20 +656,21 @@ function initSortable() {
                     if (stop) {
                         const dId = stop.driverId;
                         let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
-                        if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
+                        if (matchOld && typeof markRouteDirty === 'function') markRouteDirty(dId, parseInt(matchOld[2]));
                         
                         let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
-                        if (matchNew) { stop.cluster = parseInt(matchNew[2]); stop.manualCluster = true; if (hasActiveRoutes) { stop.status = 'Routed'; stop.routeState = 'Staging'; markRouteDirty(dId, stop.cluster); } }
+                        if (matchNew) { stop.cluster = parseInt(matchNew[2]); stop.manualCluster = true; if (hasActiveRoutes) { stop.status = 'Routed'; stop.routeState = 'Staging'; if (typeof markRouteDirty === 'function') markRouteDirty(dId, stop.cluster); } }
                     }
-                    reorderStopsFromDOM(); render(); silentSaveRouteState();
+                    if (typeof reorderStopsFromDOM === 'function') reorderStopsFromDOM();
+                    render(); if (typeof silentSaveRouteState === 'function') silentSaveRouteState();
                 }
             });
             sortableInstances.push(inst);
         });
     }
-}
+};
 
-function render() {
+window.render = function() {
     updateHeaderUI();
     updateRoutingUI();
     
@@ -1145,7 +803,8 @@ function render() {
         item.onclick = (e) => {
             if (!e.shiftKey) selectedIds.clear();
             selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
-            updateSelectionUI(); focusPin(s.id);
+            if (typeof updateSelectionUI === 'function') updateSelectionUI(); 
+            if (typeof focusPin === 'function') focusPin(s.id);
         };
 
         if(s.lng && s.lat) {
@@ -1164,7 +823,8 @@ function render() {
                 e.stopPropagation();
                 if (!e.shiftKey) selectedIds.clear();
                 selectedIds.has(s.id) ? selectedIds.delete(s.id) : selectedIds.add(s.id);
-                updateSelectionUI(); focusTile(s.id);
+                if (typeof updateSelectionUI === 'function') updateSelectionUI(); 
+                if (typeof focusTile === 'function') focusTile(s.id);
             });
             
             const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lng, s.lat]).addTo(map);
@@ -1176,8 +836,9 @@ function render() {
     if (isSingleInspector || !isManagerView) {
         const unroutedStops = activeStops.filter(s => !isRouteAssigned(s.status));
         const routedStops = activeStops.filter(s => isRouteAssigned(s.status));
-        let eps = getActiveEndpoints();
-        listContainer.appendChild(createEndpointRow('start', eps.start));
+        let eps = null;
+        if (typeof getActiveEndpoints === 'function') eps = getActiveEndpoints();
+        if (eps && eps.start) listContainer.appendChild(createEndpointRow('start', eps.start));
 
         if (activeStops.length === 0 && isManagerView) listContainer.appendChild(createDropzone());
 
@@ -1202,7 +863,7 @@ function render() {
                 }
             });
         }
-        listContainer.appendChild(createEndpointRow('end', eps.end));
+        if (eps && eps.end) listContainer.appendChild(createEndpointRow('end', eps.end));
         
     } else {
         const mainDiv = document.createElement('div'); mainDiv.id = 'main-list-container'; listContainer.appendChild(mainDiv);
@@ -1231,11 +892,12 @@ function render() {
             }
         });
     } else {
-        let eps = getActiveEndpoints();
+        let eps = null;
+        if (typeof getActiveEndpoints === 'function') eps = getActiveEndpoints();
         let cInsp = inspectors.find(i => String(i.id) === String(isManagerView ? currentInspectorFilter : driverParam));
         let dId = cInsp ? cInsp.id : null;
-        if (eps.start && eps.start.lng && eps.start.lat) pushEndpoint(parseFloat(eps.start.lng), parseFloat(eps.start.lat), dId, 'start');
-        if (eps.end && eps.end.lng && eps.end.lat) pushEndpoint(parseFloat(eps.end.lng), parseFloat(eps.end.lat), dId, 'end');
+        if (eps && eps.start && eps.start.lng && eps.start.lat) pushEndpoint(parseFloat(eps.start.lng), parseFloat(eps.start.lat), dId, 'start');
+        if (eps && eps.end && eps.end.lng && eps.end.lat) pushEndpoint(parseFloat(eps.end.lng), parseFloat(eps.end.lat), dId, 'end');
     }
 
     endpointsToDraw.forEach(ep => {
@@ -1264,12 +926,31 @@ function render() {
         if (isFirstMapRender) isFirstMapRender = false;
     }
     
-    updateSelectionUI(); initSortable(); 
-    setTimeout(() => { if (map) map.resize(); }, 150);
-}
+    if (typeof updateSelectionUI === 'function') updateSelectionUI(); 
+    if (typeof initSortable === 'function') initSortable(); 
+    setTimeout(() => { if (typeof map !== 'undefined') map.resize(); }, 150);
+};
 
-// --- V12.5: Logging & Testing UI Injection ---
-function logToTestConsole(title, data) {
+window.toggleComplete = async function(e, id) {
+    e.stopPropagation();
+    if (typeof pushToHistory === 'function') pushToHistory();
+    const idx = stops.findIndex(s => String(s.id) === String(id));
+    const isCurrentlyCompleted = stops[idx].status.toLowerCase() === 'completed';
+    const newStatus = isCurrentlyCompleted ? (stops[idx].routeState === 'Dispatched' ? 'Dispatched' : 'Routed') : 'Completed';
+    stops[idx].status = newStatus;
+    render(); 
+    if (typeof drawRoute === 'function') drawRoute(); 
+    if (typeof updateSummary === 'function') updateSummary();
+    
+    try {
+        let payload = { action: 'updateOrder', rowId: id, driverId: stops[idx].driverId, updates: { status: getStatusCode(newStatus) }, adminId: adminParam };
+        if (!isManagerView) payload.routeId = routeId;
+        await apiFetch(payload);
+    } catch(err) { console.error("Toggle Complete Error", err); }
+};
+
+// --- V12.7: Testing UI Injection ---
+window.logToTestConsole = function(title, data) {
     if (!isTestingMode) return;
     const container = document.getElementById('test-log-container');
     if (!container) return;
@@ -1283,7 +964,7 @@ function logToTestConsole(title, data) {
 
     entry.innerHTML = `<div style="color: #79c0ff; font-weight: bold; margin-bottom: 6px; border-bottom: 1px dashed #30363d; padding-bottom: 4px;">[${time}] ${title}</div><pre style="margin:0; color:#e6edf3;">${dataStr}</pre>`;
     container.prepend(entry);
-}
+};
 
 function initTestingModeUI() {
     document.body.style.flexDirection = 'row'; 
@@ -1345,4 +1026,4 @@ if (headerDropzone && headerInput) {
 
 // INITIALIZATION
 if (isTestingMode) initTestingModeUI();
-loadData();
+if (typeof loadData === 'function') loadData();
