@@ -1,8 +1,8 @@
-// *
-// * Dashboard - V12.4
-// * FILE: map.js
-// * Changes: Extracted Mapbox GL initialization, drawing features, and shift-select logic.
-// *
+/* * */
+/* * Dashboard - V12.5 */
+/* * FILE: map.js */
+/* * Changes: Extracted map logic, rendering layers, and geometry calculations. */
+/* * */
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
 const mapConfig = { 
@@ -16,73 +16,29 @@ const mapConfig = {
     cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile' || viewMode === 'managermobilesplit')
 };
 const map = new mapboxgl.Map(mapConfig);
-frontEndApiUsage.mapLoads++; // Log map load
+frontEndApiUsage.mapLoads++; 
 
-// Force one-finger scroll overlay to disappear immediately on touch end
 map.getContainer().addEventListener('touchend', () => {
     const blocker = document.querySelector('.mapboxgl-touch-pan-blocker');
-    if (blocker) {
-        blocker.style.transition = 'none';
-        blocker.style.opacity = '0';
-    }
+    if (blocker) { blocker.style.transition = 'none'; blocker.style.opacity = '0'; }
 }, { passive: true });
 
-function resetMapView() { 
-    if (initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); 
-}
-
-function focusPin(id) { 
-    const tgt = stops.find(s => String(s.id) === String(id)); 
-    if (tgt && tgt.lng && tgt.lat) map.flyTo({ center: [tgt.lng, tgt.lat] }); 
-}
-
-function updateMarkerColors() {
-    markers.forEach(m => {
-        const stopData = stops.find(st => String(st.id) === String(m._stopId));
-        if (stopData) {
-            const visualStyle = getVisualStyle(stopData);
-            const pin = m.getElement().querySelector('.pin-visual');
-            if(pin) {
-                pin.style.backgroundColor = visualStyle.bg;
-                pin.style.border = `3px solid ${visualStyle.border}`;
-                pin.style.color = visualStyle.text;
-            }
-            
-            const row = document.getElementById(`item-${stopData.id}`);
-            if (row) {
-                const badge = row.querySelector('.num-badge');
-                if (badge) {
-                    badge.style.backgroundColor = visualStyle.bg;
-                    badge.style.border = `3px solid ${visualStyle.border}`;
-                    badge.style.color = visualStyle.text;
-                }
-            }
-        }
-    });
-}
+function focusPin(id) { const tgt = stops.find(s=>String(s.id)===String(id)); if(tgt && tgt.lng && tgt.lat) map.flyTo({ center: [tgt.lng, tgt.lat] }); }
+function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 
 function drawRoute() { 
     const layerIds = [
-        'route-line-0-clean', 'route-line-0-dirty',
-        'route-line-1-out-clean', 'route-line-1-in-clean', 'route-line-1-out-dirty', 'route-line-1-in-dirty',
+        'route-line-0-clean', 'route-line-0-dirty', 'route-line-1-out-clean', 'route-line-1-in-clean', 'route-line-1-out-dirty', 'route-line-1-in-dirty',
         'route-line-2-out-clean', 'route-line-2-in-clean', 'route-line-2-out-dirty', 'route-line-2-in-dirty'
     ];
     layerIds.forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
     if (map.getSource('route')) map.removeSource('route');
 
     const activeStops = stops.filter(s => isStopVisible(s, true) && s.lng && s.lat);
-
-    let routedStops = [];
-    if (isManagerView) {
-        routedStops = activeStops.filter(s => isRouteAssigned(s.status));
-    } else {
-        routedStops = activeStops;
-    }
-    
+    let routedStops = isManagerView ? activeStops.filter(s => isRouteAssigned(s.status)) : activeStops;
     if (routedStops.length === 0) return; 
 
     let visualStops = [...routedStops].sort(sortByEta);
-
     const features = [];
     const routesMap = new Map();
 
@@ -127,31 +83,44 @@ function drawRoute() {
     });
 
     map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
-    
     map.addLayer({ "id": "route-line-0-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-0-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
-
     map.addLayer({ "id": "route-line-1-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-1-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1 } }); 
     map.addLayer({ "id": "route-line-1-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
     map.addLayer({ "id": "route-line-1-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
-
     map.addLayer({ "id": "route-line-2-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-2-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1 } }); 
     map.addLayer({ "id": "route-line-2-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
     map.addLayer({ "id": "route-line-2-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
 }
 
-// Map Shift-Click Bounding Box Selection
-let start_pos, box_el;
-map.on('click', (e) => { 
-    if (e.originalEvent.target.classList.contains('mapboxgl-canvas')) { 
-        selectedIds.clear(); 
-        if (typeof updateSelectionUI === 'function') updateSelectionUI(); 
-    } 
-});
-const canvas = map.getCanvasContainer();
+function updateMarkerColors() {
+    markers.forEach(m => {
+        const stopData = stops.find(st => String(st.id) === String(m._stopId));
+        if (stopData) {
+            const visualStyle = getVisualStyle(stopData);
+            const pin = m.getElement().querySelector('.pin-visual');
+            if(pin) {
+                pin.style.backgroundColor = visualStyle.bg;
+                pin.style.border = `3px solid ${visualStyle.border}`;
+                pin.style.color = visualStyle.text;
+            }
+            const row = document.getElementById(`item-${stopData.id}`);
+            if (row) {
+                const badge = row.querySelector('.num-badge');
+                if (badge) {
+                    badge.style.backgroundColor = visualStyle.bg;
+                    badge.style.border = `3px solid ${visualStyle.border}`;
+                    badge.style.color = visualStyle.text;
+                }
+            }
+        }
+    });
+}
 
+map.on('click', (e) => { if (e.originalEvent.target.classList.contains('mapboxgl-canvas')) { selectedIds.clear(); updateSelectionUI(); } });
+const canvas = map.getCanvasContainer();
 canvas.addEventListener('mousedown', (e) => { 
     if (e.target.closest('.mapboxgl-marker')) return; 
     if(e.shiftKey) { 
@@ -159,21 +128,13 @@ canvas.addEventListener('mousedown', (e) => {
         document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp); 
     } 
 }, true);
-
-function mousePos(e) { 
-    const r = canvas.getBoundingClientRect(); 
-    return new mapboxgl.Point(e.clientX-r.left, e.clientY-r.top); 
-}
-
+function mousePos(e) { const r = canvas.getBoundingClientRect(); return new mapboxgl.Point(e.clientX-r.left, e.clientY-r.top); }
 function onMouseMove(e) { 
     const curr = mousePos(e); 
-    if(!box_el) { 
-        box_el=document.createElement('div'); box_el.className='boxdraw'; canvas.appendChild(box_el); 
-    } 
+    if(!box_el) { box_el=document.createElement('div'); box_el.className='boxdraw'; canvas.appendChild(box_el); } 
     const minX=Math.min(start_pos.x,curr.x), maxX=Math.max(start_pos.x,curr.x), minY=Math.min(start_pos.y,curr.y), maxY=Math.max(start_pos.y,curr.y); 
     box_el.style.left=minX+'px'; box_el.style.top=minY+'px'; box_el.style.width=(maxX-minX)+'px'; box_el.style.height=(maxY-minY)+'px'; 
 }
-
 function onMouseUp(e) { 
     document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); 
     if(box_el) { 
@@ -181,9 +142,8 @@ function onMouseUp(e) {
         markers.filter(m => { 
             const pt=map.project(m.getLngLat()); 
             return pt.x>=Math.min(b[0].x,b[1].x) && pt.x<=Math.max(b[0].x,b[1].x) && pt.y>=Math.min(b[0].y,b[1].y) && pt.y<=Math.max(b[0].y,b[1].y); 
-        }).forEach(m => selectedIds.add(m._stopId)); 
-        box_el.remove(); box_el=null; 
-        if (typeof updateSelectionUI === 'function') updateSelectionUI(); 
+        }).forEach(m=>selectedIds.add(m._stopId)); 
+        box_el.remove(); box_el=null; updateSelectionUI(); 
     } 
     map.dragPan.enable(); start_pos=null; 
 }
