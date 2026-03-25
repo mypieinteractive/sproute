@@ -1,18 +1,17 @@
 steps:
-  # Step 1: Build the container using Buildpacks
-  - name: 'gcr.io/k8s-skaffold/pack'
-    entrypoint: 'pack'
+  # Step 1: Build the container natively using Docker
+  - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '-t'
       - '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA'
-      - '--builder'
-      - 'gcr.io/buildpacks/builder:google-22'
-      - '--network'
-      - 'cloudbuild'
+      - '.'
 
   # Step 2: Push the image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA']
+    args: 
+      - 'push'
+      - '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA'
 
   # Step 3: Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -20,11 +19,11 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'glidewebhooksync' # Make sure this matches your service name
+      - 'glidewebhooksync'
       - '--image'
       - '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA'
       - '--region'
-      - 'us-south1' # Replace with your actual region if different
+      - 'us-south1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -33,4 +32,4 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 substitutions:
-  _AR_HOSTNAME: us-south1-docker.pkg.dev # Match your Artifact Registry region
+  _AR_HOSTNAME: us-south1-docker.pkg.dev
