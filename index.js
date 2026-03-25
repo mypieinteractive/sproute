@@ -1,21 +1,18 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.7
+ * VERSION: V1.8
  * * CHANGES:
- * V1.7 - Resolved Cloud Run 8080 timeout. Added functions-framework wrapper 
- * (ff.http) and a 'start' script to package.json to keep the container alive 
- * and actively listening.
- * V1.6 - Architecture Migration. Stripped out the Firebase CLI wrappers 
- * (functions.runWith) to support native 2nd Gen Google Cloud Console deployment. 
- * Exported a standard Node.js HTTP handler (exports.api) to resolve Cloud Run 
- * port 8080 binding timeouts.
- * V1.5 - Data Ingestion Engine. Added 'uploadCsv', Firestore GeocodeCache, 
- * and arrayUnion tuple merging.
+ * V1.8 - Architecture Upgrade. Replaced functions-framework with a native Express.js 
+ * server and Docker containerization to bypass Google Cloud Buildpack OS mismatches. 
+ * Explicitly bound the server to listen on 0.0.0.0:$PORT.
+ * V1.7 - Resolved Cloud Run 8080 timeout. Added functions-framework wrapper.
+ * V1.6 - Architecture Migration. Stripped out the Firebase CLI wrappers.
+ * V1.5 - Data Ingestion Engine. Added 'uploadCsv', Firestore GeocodeCache.
  * V1.4 - Routing Engine. Added the 'calculate' action block.
  */
 
+const express = require('express');
 const admin = require('firebase-admin');
-const ff = require('@google-cloud/functions-framework');
 const { parse } = require('csv-parse/sync');
 
 // Use native fetch if available in Node 18+, otherwise require 'node-fetch'
@@ -23,6 +20,23 @@ const fetch = globalThis.fetch || require('node-fetch');
 
 admin.initializeApp();
 const db = admin.firestore();
+
+// Initialize Native Express App
+const app = express();
+
+// Middleware to parse incoming JSON payloads (Crucial for Express)
+app.use(express.json());
+
+// CORS Middleware to allow Dashboard communication
+app.use((req, res, next) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+        return res.status(204).send('');
+    }
+    next();
+});
 
 // Math Helper for Fallback Routing (Migrated from Core_System)
 function getDistMi(lat1, lon1, lat2, lon2) {
@@ -44,21 +58,8 @@ function colIdx(c) {
     return idx - 1;
 }
 
-// Native Node.js HTTP Export for 2nd Gen Cloud Functions via Functions Framework
-ff.http('api', async (req, res) => {
-    // Standard CORS Headers for Dashboard communication
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(204).send('');
-    }
-
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method Not Allowed' });
-    }
-
+// Core Webhook Endpoint
+app.post('/', async (req, res) => {
     try {
         const payload = req.body;
         const action = payload.action;
@@ -236,8 +237,6 @@ ff.http('api', async (req, res) => {
         if (action === 'calculate') {
             console.log(`[API] Executing calculate logic.`);
             // ... (The full calculate block ported from Feature_Routing_TODO.gs resides here)
-            // It natively fetches from Maps API, decides standard vs enterprise based on 
-            // array length, processes serviceDelay, and updates Firestore.
             
             return res.status(200).json({ success: true, status: "calculated_placeholder" });
         }
@@ -248,4 +247,15 @@ ff.http('api', async (req, res) => {
         console.error(`[API ERROR] ${error.message}`, error);
         return res.status(500).json({ error: error.message });
     }
+});
+
+// Handle any unsupported methods on the root path
+app.all('/', (req, res) => {
+    res.status(405).json({ error: 'Method Not Allowed' });
+});
+
+// EXPLICIT PORT BINDING - The absolute fix for the 8080 timeout
+const port = process.env.PORT || 8080;
+app.listen(port, '0.0.0.0', () => {
+    console.log(`[SERVER BOOT] Sproute Backend (V1.8) actively listening on port ${port}`);
 });
