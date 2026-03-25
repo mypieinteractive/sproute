@@ -1,8 +1,9 @@
 /* * */
-/* * Dashboard - V12.0 */
+/* * Dashboard - V12.1 */
 /* * FILE: styles.css */
 /* * Changes: */
-/* * 1. Added `.add-order-btn` and general form input styling `.form-group`, `.form-control`, `.grid-2-col` to support the Add Order modal. */
+/* * 1. Added `#testing-sidebar` styling to support the A/B testing mode UI. */
+/* * 2. Handled structural changes for when `body.testing-mode` is activated. */
 /* * */
 
 :root { 
@@ -33,8 +34,74 @@ body[data-route-count="1"] #priority-container {
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
+/* --- A/B TESTING SIDEBAR --- */
+#testing-sidebar {
+    display: none;
+    width: 300px;
+    flex-direction: column;
+    background: #0f172a; 
+    border-right: 2px solid var(--blue);
+    height: 100vh;
+    flex: none;
+    z-index: 50;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+}
+body.testing-mode #testing-sidebar {
+    display: flex;
+}
+.test-header {
+    padding: 15px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #38bdf8;
+    background: #1e293b;
+    border-bottom: 1px solid var(--border-color);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.test-rocker div {
+    text-align: center;
+    flex: 1;
+}
+#visual-console {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    background: #000;
+    font-family: monospace;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.log-entry {
+    background: rgba(255,255,255,0.05);
+    padding: 8px;
+    border-radius: 4px;
+    border-left: 3px solid #38bdf8;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+.log-entry.log-req { border-left-color: #f59e0b; color: #fcd34d; }
+.log-entry.log-res { border-left-color: #10b981; color: #a7f3d0; }
+.log-entry.log-err { border-left-color: #ef4444; color: #fca5a5; }
+.log-entry.log-info { border-left-color: #3b82f6; color: #bfdbfe; }
+
 /* VIEW MODES */
 body.view-inspector { flex-direction: column; }
+body.testing-mode.view-inspector { flex-direction: row; }
+body.testing-mode.view-inspector #map-wrapper, 
+body.testing-mode.view-inspector #sidebar { 
+    width: calc(100vw - 300px); 
+}
+body.testing-mode.view-inspector #map-wrapper { flex: none; }
+body.testing-mode.view-inspector #sidebar { flex: 1; }
+/* Standard flex adjustments to accommodate row insertion of testing sidebar */
+.testing-mode > #map-wrapper, .testing-mode > #sidebar {
+    flex-shrink: 1;
+}
+
 body.view-inspector #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
 body.view-inspector #sidebar { height: 65vh; min-height: 65vh; width: 100%; }
 body.view-inspector #route-summary { display: none !important; }
