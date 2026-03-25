@@ -1,17 +1,16 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.13
+ * VERSION: V1.14
  * * CHANGES:
+ * V1.14 - GET / Initialization Overhaul. Implemented dynamic Company ID resolution 
+ * via unified Users collection (adminId/driverId fallback). Added Manager 
+ * aggregation logic to loop through all company users, extract stagingBays, and 
+ * wrap tuples with explicit `driverId` and `routeState` markers for the front-end.
  * V1.13 - Phase 1 CRUD Migration. Added POST handlers for `updateOrder`, 
- * `updateMultipleOrders`, and `deleteMultipleOrders` to support front-end 
- * pre-route staging actions (status toggling, reassignment, bulk unrouting, deletion).
- * V1.12 - Database Targeting Fix. Replaced the default admin.firestore() call 
- * with the modular getFirestore(app, 'sproute') to explicitly target the named 
- * 'sproute' database and resolve the 5 NOT_FOUND gRPC error.
+ * `updateMultipleOrders`, and `deleteMultipleOrders`.
+ * V1.12 - Database Targeting Fix. Explicitly target 'sproute' firestore database.
  * V1.11 - Dashboard GET Fix. Added explicit Project ID fallback.
  * V1.10 - Core Engine Port. GET endpoint, generateRoute, calculate blocks.
- * V1.9 - Ingestion Engine Finalization.
- * V1.8 - Architecture Upgrade. Express.js + Docker.
  */
 
 const express = require('express');
@@ -19,8 +18,6 @@ const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 const { parse } = require('csv-parse/sync');
 const { GoogleAuth } = require('google-auth-library');
-
-const fetch = globalThis.fetch || require('node-fetch'); 
 
 // Explicitly bind to the Project ID from the environment
 const firebaseApp = admin.initializeApp({
@@ -133,62 +130,114 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
 // ==========================================
 app.get('/', async (req, res) => {
     try {
-        let companyId = req.query.companyId || req.query.company;
+        // 1. Extract Parameters
+        let explicitCompanyId = req.query.companyId || req.query.company;
         const driverId = req.query.driverId || req.query.driver;
-        const routeId = req.query.id; 
+        const adminId = req.query.adminId || req.query.admin;
+        const isManager = req.query.isManager === 'true';
+        
+        let resolvedCompanyId = explicitCompanyId;
         let activeStops = [];
 
-        if (routeId && !companyId) {
-            const routeDoc = await db.collection('Users').doc(String(routeId)).get();
-            if (!routeDoc.exists) {
-                return res.status(404).json({ error: "Route not found.", id: routeId });
+        // 2. Resolve Company ID via Users collection if missing
+        if (!resolvedCompanyId) {
+            let lookupId = adminId || driverId; 
+            if (lookupId) {
+                const userDoc = await db.collection('Users').doc(String(lookupId)).get();
+                if (userDoc.exists) {
+                    resolvedCompanyId = userDoc.data().companyId;
+                }
             }
-            companyId = routeDoc.data().companyId;
-            activeStops = routeDoc.data().stagingBay || [];
         }
 
-        if (!companyId) return res.status(400).json({ error: "Missing company or route ID parameter." });
+        if (!resolvedCompanyId) {
+            return res.status(400).json({ error: "Could not resolve Company ID from provided parameters." });
+        }
 
-        const compRef = db.collection('Companies').doc(String(companyId));
+        // 3. Fetch Company Meta-Data
+        const compRef = db.collection('Companies').doc(String(resolvedCompanyId));
         const compDoc = await compRef.get();
         
         let accountType = "individual";
         let displayName = "Dashboard";
         let permissions = { modify: true, reoptimize: true };
+        let companyData = {};
 
         if (compDoc.exists) {
-            const cData = compDoc.data();
-            if (cData.accountType) accountType = String(cData.accountType).trim();
-            if (cData.name) displayName = String(cData.name).trim();
+            companyData = compDoc.data();
+            if (companyData.accountType) accountType = String(companyData.accountType).trim();
+            if (companyData.name) displayName = String(companyData.name).trim();
+            if (companyData.permissions) permissions = companyData.permissions;
         }
 
-        const usersSnap = await db.collection('Users').where('companyId', '==', String(companyId)).get();
+        // 4. Fetch Users and Aggregate Data
+        const usersSnap = await db.collection('Users').where('companyId', '==', String(resolvedCompanyId)).get();
         const inspectors = [];
         
         usersSnap.forEach(doc => {
             const uData = doc.data();
-            if (uData.isInspector === true || String(uData.isInspector).toLowerCase() === 'true') {
-                inspectors.push({ id: doc.id, name: uData.name || "Inspector", isInspector: true });
+            const isInsp = uData.isInspector === true || String(uData.isInspector).toLowerCase() === 'true';
+            
+            if (isInsp) {
+                inspectors.push({ 
+                    id: doc.id, 
+                    name: uData.name || "Inspector", 
+                    email: uData.email || "", 
+                    isInspector: true 
+                });
             }
-            if (driverId && doc.id === String(driverId)) {
-                activeStops = uData.stagingBay || [];
+
+            // Aggregation Logic
+            if (isManager) {
+                // Wrap tuples in an object so front-end app.js knows who owns the order
+                const bay = uData.stagingBay || [];
+                bay.forEach(stopTuple => {
+                    activeStops.push({
+                        data: stopTuple,
+                        driverId: doc.id,
+                        routeState: uData.routeState || 'Pending'
+                    });
+                });
+            } else {
+                // If not manager, only return the requested driver's raw bay
+                if (driverId && doc.id === String(driverId)) {
+                    activeStops = uData.stagingBay || [];
+                }
             }
         });
 
-        const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).get();
+        // 5. Fetch CSV Settings for the Company
+        const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
             if (doc.data().type) csvTypes.push(doc.data().type);
         });
 
-        return res.status(200).json({
+        // 6. Construct Final Response
+        const responseObj = {
             stops: activeStops,
             inspectors: inspectors,
             csvTypes: csvTypes,
             accountType: accountType,
             displayName: displayName,
-            permissions: permissions
-        });
+            permissions: permissions,
+            companyEmail: companyData.companyEmail || "",
+            defaultEmailMessage: companyData.defaultEmailMessage || "",
+            serviceDelay: parseInt(companyData.serviceDelay || 0),
+            companyAddress: companyData.companyAddress || "",
+            companyLogo: companyData.companyLogo || "",
+            ccCompanyDefault: companyData.ccCompanyDefault !== false // Default true unless explicitly false
+        };
+
+        // Inject Admin Email if requested for the dispatch modal
+        if (adminId) {
+            const adminDoc = await db.collection('Users').doc(String(adminId)).get();
+            if (adminDoc.exists && adminDoc.data().email) {
+                responseObj.adminEmail = adminDoc.data().email;
+            }
+        }
+
+        return res.status(200).json(responseObj);
 
     } catch (error) {
         console.error(`[GET INIT ERROR] ${error.message}`);
@@ -614,5 +663,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.13) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.14) listening on port ${port}`);
 });
