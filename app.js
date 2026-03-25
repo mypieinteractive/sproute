@@ -22,7 +22,28 @@ document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCu
 document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+
+const params = new URLSearchParams(window.location.search);
+let routeId = params.get('id');
+const driverParam = params.get('driver');
+const companyParam = params.get('company');
+const adminParam = params.get('admin');
+const backendParam = params.get('backend'); 
+
+// --- A/B Testing Mode Configuration ---
+let WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+let isTestingMode = (backendParam === 'testing');
+let activeTestingBackend = sessionStorage.getItem('sproute_testing_backend') || 'appscript';
+
+if (isTestingMode) {
+    if (activeTestingBackend === 'firestore') {
+        WEB_APP_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
+        console.log("🔥 Testing Mode: API requests routed to Firestore (Cloud Run).");
+    } else {
+        console.log("🟢 Testing Mode: API requests routed to Apps Script.");
+    }
+}
+// --------------------------------------
 
 // Global API Usage Tracker
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
