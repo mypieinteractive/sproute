@@ -1,27 +1,31 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.11
+ * VERSION: V1.12
  * * CHANGES:
- * V1.11 - Dashboard GET Fix. Added explicit Project ID fallback for Firebase Admin 
- * to resolve '5 NOT_FOUND' gRPC errors. Added routing logic to handle the 
- * Immutable Inspector View (when '?id=' is passed instead of '?companyId=').
+ * V1.12 - Database Targeting Fix. Replaced the default admin.firestore() call 
+ * with the modular getFirestore(app, 'sproute') to explicitly target the named 
+ * 'sproute' database and resolve the 5 NOT_FOUND gRPC error.
+ * V1.11 - Dashboard GET Fix. Added explicit Project ID fallback.
  * V1.10 - Core Engine Port. GET endpoint, generateRoute, calculate blocks.
- * V1.9 - Ingestion Engine Finalization. Real-time Admin Lock Verification.
+ * V1.9 - Ingestion Engine Finalization.
  * V1.8 - Architecture Upgrade. Express.js + Docker.
  */
 
 const express = require('express');
 const admin = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
 const { parse } = require('csv-parse/sync');
 const { GoogleAuth } = require('google-auth-library');
 
 const fetch = globalThis.fetch || require('node-fetch'); 
 
-// Explicitly bind to the Project ID from the environment to prevent 5 NOT_FOUND errors
-admin.initializeApp({
+// Explicitly bind to the Project ID from the environment
+const firebaseApp = admin.initializeApp({
     projectId: process.env.GOOGLE_CLOUD_PROJECT
 });
-const db = admin.firestore();
+
+// Explicitly target the named database
+const db = getFirestore(firebaseApp, 'sproute');
 
 const app = express();
 app.use(express.json());
@@ -480,5 +484,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.11) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.12) listening on port ${port}`);
 });
