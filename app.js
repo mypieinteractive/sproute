@@ -1,5 +1,5 @@
 // *
-// * Dashboard - V11.17
+// * Dashboard - V12.0
 // * FILE: app.js
 // * Changes: 
 // * 1. Added showAddOrderModal() to generate the single-order form and validate inputs.
