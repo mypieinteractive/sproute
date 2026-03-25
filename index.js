@@ -1,7 +1,10 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.12
+ * VERSION: V1.13
  * * CHANGES:
+ * V1.13 - Phase 1 CRUD Migration. Added POST handlers for `updateOrder`, 
+ * `updateMultipleOrders`, and `deleteMultipleOrders` to support front-end 
+ * pre-route staging actions (status toggling, reassignment, bulk unrouting, deletion).
  * V1.12 - Database Targeting Fix. Replaced the default admin.firestore() call 
  * with the modular getFirestore(app, 'sproute') to explicitly target the named 
  * 'sproute' database and resolve the 5 NOT_FOUND gRPC error.
@@ -132,10 +135,9 @@ app.get('/', async (req, res) => {
     try {
         let companyId = req.query.companyId || req.query.company;
         const driverId = req.query.driverId || req.query.driver;
-        const routeId = req.query.id; // Legacy param for Inspector view
+        const routeId = req.query.id; 
         let activeStops = [];
 
-        // Catch Inspector View (routeId provided, but no companyId)
         if (routeId && !companyId) {
             const routeDoc = await db.collection('Users').doc(String(routeId)).get();
             if (!routeDoc.exists) {
@@ -168,7 +170,6 @@ app.get('/', async (req, res) => {
             if (uData.isInspector === true || String(uData.isInspector).toLowerCase() === 'true') {
                 inspectors.push({ id: doc.id, name: uData.name || "Inspector", isInspector: true });
             }
-            // If they passed driverId specifically, load their bay
             if (driverId && doc.id === String(driverId)) {
                 activeStops = uData.stagingBay || [];
             }
@@ -470,6 +471,135 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, updatedStops: finalStops });
         }
 
+        // --- 4. PRE-ROUTE STAGING & CRUD (Phase 1) ---
+
+        // Single order attribute update (e.g., toggling completion status)
+        if (action === 'updateOrder') {
+            const { rowId, driverId, updates } = payload;
+            if (!rowId || !driverId || !updates) return res.status(400).json({error: "Missing parameters"});
+
+            const driverRef = db.collection('Users').doc(String(driverId));
+            const driverDoc = await driverRef.get();
+            if (!driverDoc.exists) return res.status(404).json({error: "Driver not found"});
+
+            let bay = driverDoc.data().stagingBay || [];
+            let changed = false;
+
+            for (let i = 0; i < bay.length; i++) {
+                let s = bay[i];
+                if (String(Array.isArray(s) ? s[0] : s.rowId) === String(rowId)) {
+                    if (updates.status !== undefined) bay[i][11] = updates.status;
+                    if (updates.eta !== undefined) bay[i][7] = updates.eta;
+                    if (updates.dist !== undefined) bay[i][8] = updates.dist;
+                    if (updates.routeNum !== undefined) bay[i][1] = updates.routeNum;
+                    changed = true;
+                    break;
+                }
+            }
+
+            if (changed) {
+                await driverRef.update({ stagingBay: bay });
+                return res.status(200).json({ success: true });
+            } else {
+                return res.status(404).json({ error: "Order not found in staging bay" });
+            }
+        }
+
+        // Bulk operations: Reassigning drivers or bulk unrouting to 'Pending'
+        if (action === 'updateMultipleOrders') {
+            const { updatesList, sharedUpdates } = payload;
+            if (!updatesList || !Array.isArray(updatesList)) return res.status(400).json({error: "Missing updatesList"});
+
+            const batch = db.batch();
+            const usersSnap = await db.collection('Users').get();
+            let usersData = {};
+            usersSnap.forEach(d => usersData[d.id] = { ref: d.ref, bay: d.data().stagingBay || [], changed: false });
+
+            const newDriverId = sharedUpdates && sharedUpdates.driverId ? String(sharedUpdates.driverId) : null;
+
+            updatesList.forEach(updateReq => {
+                let targetRowId = String(updateReq.rowId);
+                let currentDriverId = updateReq.driverId ? String(updateReq.driverId) : null;
+
+                let foundSourceId = null;
+                let orderTuple = null;
+
+                if (currentDriverId && usersData[currentDriverId]) {
+                    let idx = usersData[currentDriverId].bay.findIndex(s => String(Array.isArray(s) ? s[0] : s.rowId) === targetRowId);
+                    if (idx > -1) {
+                        foundSourceId = currentDriverId;
+                        orderTuple = usersData[currentDriverId].bay[idx];
+                        usersData[currentDriverId].bay.splice(idx, 1);
+                        usersData[currentDriverId].changed = true;
+                    }
+                } else {
+                    for (let uid in usersData) {
+                        let idx = usersData[uid].bay.findIndex(s => String(Array.isArray(s) ? s[0] : s.rowId) === targetRowId);
+                        if (idx > -1) {
+                            foundSourceId = uid;
+                            orderTuple = usersData[uid].bay[idx];
+                            usersData[uid].bay.splice(idx, 1);
+                            usersData[uid].changed = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (orderTuple) {
+                    if (sharedUpdates) {
+                        if (sharedUpdates.routeNum !== undefined || sharedUpdates.cluster !== undefined) orderTuple[1] = sharedUpdates.routeNum || sharedUpdates.cluster;
+                        if (sharedUpdates.eta !== undefined) orderTuple[7] = sharedUpdates.eta;
+                        if (sharedUpdates.dist !== undefined) orderTuple[8] = sharedUpdates.dist;
+                        if (sharedUpdates.status !== undefined) orderTuple[11] = sharedUpdates.status;
+                        if (sharedUpdates.durationSecs !== undefined) orderTuple[12] = sharedUpdates.durationSecs;
+                    }
+
+                    let destDriverId = newDriverId || foundSourceId;
+                    if (destDriverId && usersData[destDriverId]) {
+                        usersData[destDriverId].bay.push(orderTuple);
+                        usersData[destDriverId].changed = true;
+                    }
+                }
+            });
+
+            for (let uid in usersData) {
+                if (usersData[uid].changed) {
+                    batch.update(usersData[uid].ref, { stagingBay: usersData[uid].bay });
+                }
+            }
+
+            await batch.commit();
+            return res.status(200).json({ success: true });
+        }
+
+        // Bulk Delete: Removing orders from the database completely
+        if (action === 'deleteMultipleOrders') {
+            const { rowIds } = payload;
+            if (!rowIds || !Array.isArray(rowIds)) return res.status(400).json({ error: "Missing rowIds payload" });
+
+            const batch = db.batch();
+            const usersSnap = await db.collection('Users').get();
+            let deletedCount = 0;
+
+            usersSnap.forEach(doc => {
+                let bay = doc.data().stagingBay || [];
+                let originalLength = bay.length;
+                
+                let newBay = bay.filter(s => {
+                    let id = Array.isArray(s) ? s[0] : (s.rowId || s.id);
+                    return !rowIds.includes(String(id));
+                });
+                
+                if (newBay.length !== originalLength) {
+                    batch.update(doc.ref, { stagingBay: newBay });
+                    deletedCount += (originalLength - newBay.length);
+                }
+            });
+            
+            await batch.commit();
+            return res.status(200).json({ success: true, deleted: deletedCount });
+        }
+
         return res.status(400).json({ error: "Invalid action provided." });
 
     } catch (error) {
@@ -484,5 +614,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.12) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.13) listening on port ${port}`);
 });
