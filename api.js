@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V12.5 */
+/* * Dashboard - V12.7 */
 /* * FILE: api.js */
-/* * Changes: Extracted network payloads, endpoints, and Testing API logging. */
+/* * Changes: Re-integrated window.logToTestConsole hooks into loadData and performUpload. */
 /* * */
 
 function apiFetch(payload) {
@@ -29,8 +29,11 @@ async function loadData() {
         let fetchUrl = `${WEB_APP_URL}${queryParams}&_t=${new Date().getTime()}`;
         const res = await fetch(fetchUrl);
         const data = await res.json();
-        
-        if (isTestingMode) logToTestConsole(`GET loadData() [${activeTestingBackend}]`, data);
+
+        // Testing UI Logging Hook
+        if (isTestingMode && typeof window.logToTestConsole === 'function') {
+            window.logToTestConsole(`GET loadData() [${activeTestingBackend}]`, data);
+        }
 
         if (data.confirmHijack) {
             const overlay = document.getElementById('processing-overlay');
@@ -191,7 +194,8 @@ async function loadData() {
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
             if (sidebarDriverEl && !isCompanyTier) sidebarDriverEl.innerText = displayName;
 
-            updateInspectorDropdown(); updateRouteButtonColors();
+            if (typeof updateInspectorDropdown === 'function') updateInspectorDropdown(); 
+            if (typeof updateRouteButtonColors === 'function') updateRouteButtonColors();
             
             let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
             if (!hasValidStops && data.companyAddress) {
@@ -204,13 +208,16 @@ async function loadData() {
                 } catch (err) { console.error("Geocoding failed for company address.", err); }
             }
         }
-        render(); drawRoute(); updateSummary(); initSortable();
+        if (typeof render === 'function') render(); 
+        if (typeof drawRoute === 'function') drawRoute(); 
+        if (typeof updateSummary === 'function') updateSummary(); 
+        if (typeof initSortable === 'function') initSortable();
     } catch (e) { 
         console.error("Error loading data:", e); isFreshGlideRefresh = false;
     } finally {
         const overlay = document.getElementById('processing-overlay');
         if (overlay && !isPollingForRoute && !isFreshGlideRefresh) overlay.style.display = 'none';
-        updateUndoUI();
+        if (typeof updateUndoUI === 'function') updateUndoUI();
     }
 }
 
@@ -234,7 +241,10 @@ async function performUpload(file, inspectorId, csvType, overrideLock = false) {
             if (!isManagerView) payload.routeId = routeId;
             if (overrideLock) payload.overrideLock = true;
             
-            if (isTestingMode) logToTestConsole(`POST performUpload() [${activeTestingBackend}]`, payload);
+            // Testing UI Logging Hook
+            if (isTestingMode && typeof window.logToTestConsole === 'function') {
+                window.logToTestConsole(`POST performUpload() [${activeTestingBackend}]`, payload);
+            }
             
             const res = await apiFetch(payload);
             const data = await res.json();
@@ -296,193 +306,10 @@ async function executeRouteReset(driverId) {
             if (String(s.driverId) === String(driverId) && isRouteAssigned(s.status)) { s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending'; }
         });
         routeStart = null; routeEnd = null; dirtyRoutes.clear();
-        render(); drawRoute(); updateSummary(); updateUndoUI();
+        if (typeof render === 'function') render(); 
+        if (typeof drawRoute === 'function') drawRoute(); 
+        if (typeof updateSummary === 'function') updateSummary(); 
+        if (typeof updateUndoUI === 'function') updateUndoUI();
     } catch(e) { await customAlert("Error resetting the route."); } 
     finally { if(overlay) overlay.style.display = 'none'; }
-}
-
-function silentSaveRouteState() {
-    const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    if (inspId === 'all' || !inspId) return;
-    
-    let routedStops = stops.filter(s => {
-        if (!isRouteAssigned(s.status)) return false;
-        if (isManagerView) return String(s.driverId) === String(inspId);
-        return s.routeTargetId === String(routeId);
-    });
-    if (routedStops.length === 0) return;
-
-    let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
-    let macroState = 'Ready';
-    if (dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint';
-    else if (dirtyRoutes.size > 0) macroState = 'Staging';
-    
-    let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState };
-    if (!isManagerView) payload.routeId = routeId;
-
-    apiFetch(payload).catch(e => console.log("Silent save error", e));
-}
-
-async function handleGenerateRoute() {
-    if (currentInspectorFilter === 'all') return;
-    const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
-    if (!insp) return;
-
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    let stopsToOptimize = [];
-    const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
-    const hasActiveRoutes = stops.some(s => isRouteAssigned(s.status));
-
-    if (isEndpointsDirty) {
-        stopsToOptimize = stops.filter(s => isActiveStop(s) && s.lng && s.lat && String(s.driverId) === String(insp.id));
-        if (hasActiveRoutes) stopsToOptimize = stopsToOptimize.filter(s => s.cluster !== 'X');
-    } else {
-        stopsToOptimize = stops.filter(s => {
-            if (!isActiveStop(s) || !s.lng || !s.lat || String(s.driverId) !== String(insp.id)) return false;
-            if (hasActiveRoutes && s.cluster === 'X') return false;
-            const routeKey = `${s.driverId}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
-            return dirtyRoutes.has(routeKey) || !isRouteAssigned(s.status);
-        });
-    }
-    
-    let sentClusters = [...new Set(stopsToOptimize.map(s => s.cluster))].filter(c => c !== 'X').sort();
-
-    let flatStopsPayload = stopsToOptimize.map(s => {
-        let outCluster = s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1;
-        return minifyStop(s, outCluster);
-    });
-
-    const eps = getActiveEndpoints();
-    let sAddr = eps.start ? eps.start.address : '';
-    let eAddr = eps.end ? eps.end.address : '';
-
-    stopsToOptimize.forEach(s => { s.routeState = 'Queued'; });
-    render(); 
-
-    try {
-        let payload = { action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, stops: flatStopsPayload, startAddr: sAddr, endAddr: eAddr, routeState: 'Queued' };
-        if (!isManagerView) payload.routeId = routeId;
-
-        const res = await apiFetch(payload);
-        const data = await res.json();
-        
-        if (data.updatedStops || (data.stops && Array.isArray(data.stops))) {
-            let optimizedData = data.updatedStops || data.stops;
-            const returnedStopsMap = new Map();
-            optimizedData.forEach(s => {
-                let exp = expandStop(s); let backendCluster = exp.cluster; let mappedCluster = backendCluster;
-                if (sentClusters.length > 0) {
-                    if (sentClusters.includes(backendCluster)) mappedCluster = backendCluster; 
-                    else if (backendCluster < sentClusters.length) mappedCluster = sentClusters[backendCluster]; 
-                    else if (sentClusters.length === 1) mappedCluster = sentClusters[0]; 
-                }
-                returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
-            });
-
-            stops = stops.map(s => {
-                if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
-                if (s.routeState === 'Queued') s.routeState = 'Ready';
-                return s;
-            });
-
-            stops.sort((a, b) => {
-                let cA = a.cluster === 'X' ? 999 : (a.cluster || 0); let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
-                if (cA !== cB) return cA - cB; return timeToMins(a.eta) - timeToMins(b.eta);
-            });
-
-            isPollingForRoute = false; dirtyRoutes.clear();
-            render(); drawRoute(); updateSummary(); silentSaveRouteState(); 
-        } else if (data.status === 'queued' || data.success) {
-            let pqPayload = { action: 'processQueue', driverId: insp.id };
-            if (!isManagerView) pqPayload.routeId = routeId;
-            apiFetch(pqPayload).catch(err => console.log("Ignored expected timeout from processQueue", err));
-            isPollingForRoute = true; pollRetries = 0; setTimeout(loadData, 5000);
-        } else { await loadData(); }
-    } catch (e) {
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Generation encountered an error. Please wait a moment and try again.");
-    } 
-}
-
-async function handleCalculate() {
-    const overlay = document.getElementById('processing-overlay');
-    if (overlay) overlay.style.display = 'flex';
-
-    try {
-        const activeStops = stops.filter(s => isStopVisible(s, false) && s.lng && s.lat);
-        const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
-        const hasActiveRoutes = stops.some(s => isRouteAssigned(s.status));
-        let stopsToCalculate = [];
-
-        if (isEndpointsDirty) {
-            stopsToCalculate = activeStops;
-            if (hasActiveRoutes) stopsToCalculate = stopsToCalculate.filter(s => s.cluster !== 'X');
-        } else {
-            stopsToCalculate = activeStops.filter(s => {
-                if (hasActiveRoutes && s.cluster === 'X') return false;
-                const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
-                return dirtyRoutes.has(routeKey);
-            });
-        }
-
-        if (stopsToCalculate.length === 0) { 
-            if (overlay) overlay.style.display = 'none';
-            dirtyRoutes.clear(); render(); drawRoute(); updateSummary(); return; 
-        }
-        
-        let sentClusters = [...new Set(stopsToCalculate.map(s => s.cluster))].filter(c => c !== 'X').sort();
-        const eps = getActiveEndpoints();
-        let payload = {
-            action: 'calculate', driverId: isManagerView ? currentInspectorFilter : driverParam, driver: driverParam,
-            startTime: currentStartTime, startAddr: eps.start?.address || null, endAddr: eps.end?.address || null, isManager: isManagerView,
-            stops: stopsToCalculate.map(s => { let outC = s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1; return minifyStop(s, outC); })
-        };
-        if (!isManagerView) payload.routeId = routeId;
-
-        const res = await apiFetch(payload);
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-
-        const returnedStopsMap = new Map();
-        data.updatedStops.forEach(s => {
-            let exp = expandStop(s); let backendCluster = exp.cluster; let mappedCluster = backendCluster;
-            if (sentClusters.length > 0) {
-                if (sentClusters.includes(backendCluster)) mappedCluster = backendCluster;
-                else if (backendCluster < sentClusters.length) mappedCluster = sentClusters[backendCluster];
-                else if (sentClusters.length === 1) mappedCluster = sentClusters[0];
-            }
-            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
-        });
-
-        stops = stops.map(s => {
-            if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
-            return s;
-        });
-
-        if (!isManagerView) isAlteredRoute = true;
-        historyStack = []; dirtyRoutes.clear(); originalStops = JSON.parse(JSON.stringify(stops)); 
-        render(); drawRoute(); updateSummary(); silentSaveRouteState();
-    } catch (e) { 
-        if (overlay) overlay.style.display = 'none';
-        await customAlert("Error calculating the route. Please try again."); 
-    } finally { if (overlay) overlay.style.display = 'none'; }
-}
-
-async function handleRestoreOriginal() {
-    if(!(await customConfirm("Restore the original route layout planned by the manager?"))) return;
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-    try {
-        const inspId = isManagerView ? currentInspectorFilter : driverParam;
-        let payload = { action: 'restoreOriginalRoute', driverId: inspId };
-        if (!isManagerView) payload.routeId = routeId;
-        await apiFetch(payload);
-        await loadData(); 
-    } catch(e) {
-        if(overlay) overlay.style.display = 'none';
-        await customAlert("Error restoring the route. Please try again."); 
-        console.error(e);
-    } finally { if(overlay) overlay.style.display = 'none'; }
 }
