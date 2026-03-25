@@ -1,6 +1,6 @@
 {
   "name": "sproute-webhook-sync",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Core Sproute API engine: Syncs Glide Admin changes, parses CSV ingestion, and handles optimization routing.",
   "main": "index.js",
   "scripts": {
@@ -13,6 +13,7 @@
     "express": "^4.19.2",
     "firebase-admin": "^11.10.1",
     "firebase-functions": "^4.5.0",
+    "google-auth-library": "^9.0.0",
     "csv-parse": "^5.5.3",
     "node-fetch": "^2.7.0"
   }
