@@ -1,10 +1,8 @@
 // *
-// * Dashboard - V12.1
+// * Dashboard - V12.2
 // * FILE: app.js
 // * Changes: 
-// * 1. Added interceptor logic `logToVisualConsole()` to route API calls directly into the new UI when `isTestingMode` is active.
-// * 2. Overhauled `apiFetch()` and `loadData()` to dynamically switch endpoints based on the `activeBackend` toggle state.
-// * 3. Initialized the `FIRESTORE_API_URL` to route requests to the new Express server environment.
+// * 1. Updated `logToVisualConsole()` to route API requests to separate columns (`#console-sheet` vs `#console-firestore`) based on the active toggled backend.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -48,7 +46,9 @@ window.setTestingBackend = function(backend) {
 
 function logToVisualConsole(type, endpoint, data) {
     if (!isTestingMode) return;
-    const consoleEl = document.getElementById('visual-console');
+    
+    const targetId = activeBackend === 'firestore' ? 'console-firestore' : 'console-sheet';
+    const consoleEl = document.getElementById(targetId);
     if (!consoleEl) return;
 
     const entry = document.createElement('div');
