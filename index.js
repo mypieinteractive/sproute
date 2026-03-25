@@ -1,12 +1,11 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.10
+ * VERSION: V1.11
  * * CHANGES:
- * V1.10 - Core Engine Port. Added `app.get('/')` to supply the V12.2 Dashboard 
- * initial load JSON blueprint. Integrated `google-auth-library` for Enterprise API. 
- * Built `generateRoute` (Optimization) and `calculate` (Recalculation with Chunking) 
- * blocks. Implemented 1:1 Schema translation for stagingBay and endpoints. 
- * Replaced legacy API tracking with dual explicit increment fields.
+ * V1.11 - Dashboard GET Fix. Added explicit Project ID fallback for Firebase Admin 
+ * to resolve '5 NOT_FOUND' gRPC errors. Added routing logic to handle the 
+ * Immutable Inspector View (when '?id=' is passed instead of '?companyId=').
+ * V1.10 - Core Engine Port. GET endpoint, generateRoute, calculate blocks.
  * V1.9 - Ingestion Engine Finalization. Real-time Admin Lock Verification.
  * V1.8 - Architecture Upgrade. Express.js + Docker.
  */
@@ -16,17 +15,17 @@ const admin = require('firebase-admin');
 const { parse } = require('csv-parse/sync');
 const { GoogleAuth } = require('google-auth-library');
 
-// Use native fetch if available in Node 18+, otherwise require 'node-fetch'
 const fetch = globalThis.fetch || require('node-fetch'); 
 
-admin.initializeApp();
+// Explicitly bind to the Project ID from the environment to prevent 5 NOT_FOUND errors
+admin.initializeApp({
+    projectId: process.env.GOOGLE_CLOUD_PROJECT
+});
 const db = admin.firestore();
 
-// Initialize Native Express App
 const app = express();
 app.use(express.json());
 
-// CORS Middleware
 app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -36,7 +35,6 @@ app.use((req, res, next) => {
 });
 
 // --- HELPER FUNCTIONS ---
-
 function getDistMi(lat1, lon1, lat2, lon2) {
     const R = 3958.8;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -59,7 +57,6 @@ function incrementApiUsage(batch, driverRef, compRef, field, count) {
     batch.update(compRef, { [field]: admin.firestore.FieldValue.increment(count) });
 }
 
-// Map APIs
 async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, apiKey) {
     try {
         const waypoints = stopsGeo.map(s => `${s.lat},${s.lng}`).join('|');
@@ -129,11 +126,23 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
 // ==========================================
 app.get('/', async (req, res) => {
     try {
-        const companyId = req.query.companyId || req.query.company;
+        let companyId = req.query.companyId || req.query.company;
         const driverId = req.query.driverId || req.query.driver;
-        if (!companyId) return res.status(400).json({ error: "companyId parameter is required." });
+        const routeId = req.query.id; // Legacy param for Inspector view
+        let activeStops = [];
 
-        // 1. Fetch Company Settings
+        // Catch Inspector View (routeId provided, but no companyId)
+        if (routeId && !companyId) {
+            const routeDoc = await db.collection('Users').doc(String(routeId)).get();
+            if (!routeDoc.exists) {
+                return res.status(404).json({ error: "Route not found.", id: routeId });
+            }
+            companyId = routeDoc.data().companyId;
+            activeStops = routeDoc.data().stagingBay || [];
+        }
+
+        if (!companyId) return res.status(400).json({ error: "Missing company or route ID parameter." });
+
         const compRef = db.collection('Companies').doc(String(companyId));
         const compDoc = await compRef.get();
         
@@ -147,33 +156,26 @@ app.get('/', async (req, res) => {
             if (cData.name) displayName = String(cData.name).trim();
         }
 
-        // 2. Fetch Inspectors & Active Stops
         const usersSnap = await db.collection('Users').where('companyId', '==', String(companyId)).get();
         const inspectors = [];
-        let activeStops = [];
         
         usersSnap.forEach(doc => {
             const uData = doc.data();
             if (uData.isInspector === true || String(uData.isInspector).toLowerCase() === 'true') {
-                inspectors.push({
-                    id: doc.id,
-                    name: uData.name || "Inspector",
-                    isInspector: true
-                });
+                inspectors.push({ id: doc.id, name: uData.name || "Inspector", isInspector: true });
             }
+            // If they passed driverId specifically, load their bay
             if (driverId && doc.id === String(driverId)) {
                 activeStops = uData.stagingBay || [];
             }
         });
 
-        // 3. Fetch CSV Types
         const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).get();
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
             if (doc.data().type) csvTypes.push(doc.data().type);
         });
 
-        // 4. Return V12.2 Dashboard Blueprint
         return res.status(200).json({
             stops: activeStops,
             inspectors: inspectors,
@@ -199,8 +201,6 @@ app.post('/', async (req, res) => {
 
         // --- 1. CSV INGESTION ENGINE ---
         if (action === 'uploadCsv') {
-            console.log(`[API] Executing uploadCsv for Driver: ${payload.driverId}`);
-            
             const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
             if (!csvData || !driverId || !companyId || !type) return res.status(400).json({ error: "Missing required upload parameters." });
 
@@ -303,8 +303,6 @@ app.post('/', async (req, res) => {
 
         // --- 2. OPTIMIZATION ENGINE (generateRoute) ---
         if (action === 'generateRoute') {
-            console.log(`[API] Executing generateRoute (Optimization) for Driver: ${payload.driverId}`);
-            
             const driverRef = db.collection('Users').doc(String(payload.driverId));
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
@@ -364,7 +362,6 @@ app.post('/', async (req, res) => {
                         ]);
                     });
                 } else {
-                    // Fallback to preserve if API fails entirely
                     cStops.forEach(s => finalStops.push(s.orig));
                 }
             }
@@ -380,8 +377,6 @@ app.post('/', async (req, res) => {
 
         // --- 3. RECALCULATION ENGINE (calculate) ---
         if (action === 'calculate') {
-            console.log(`[API] Executing calculate (Dirty Recalc) for Driver: ${payload.driverId}`);
-            
             const driverRef = db.collection('Users').doc(String(payload.driverId));
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
@@ -425,7 +420,6 @@ app.post('/', async (req, res) => {
                         let chunkStops = routeStops.slice(i, i + chunkSize);
                         let currentEnd = (i + chunkSize < routeStops.length) ? routeStops[i + chunkSize] : endpoints.end;
                         
-                        // Preserve sequence is TRUE for calculate recalculations
                         let chunkOptimized = await callStandardRoutingAPI(currentStart, chunkStops, currentEnd, true, mapsApiKey);
                         if (!chunkOptimized) { apiSuccess = false; break; }
 
@@ -486,5 +480,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.10) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.11) listening on port ${port}`);
 });
