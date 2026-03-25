@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V12.1
+// * Dashboard - V12.2
 // * FILE: app.js
 // * Changes: 
-// * 1. Converted WEB_APP_URL from a const to a let to allow dynamic reassignment.
-// * 2. Added logic to check if `adminParam` strictly equals 'firestore'.
-// * 3. Reassigns WEB_APP_URL to the new Cloud Run/Firestore URL if true to enable parallel testing.
+// * 1. Added backendParam to capture the 'backend' URL parameter.
+// * 2. Updated the A/B switch logic to trigger based on `backend=firestore` instead of `admin=firestore`.
+// * 3. This allows parallel testing while maintaining actual Admin IDs for permissions.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -40,9 +40,10 @@ let routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const adminParam = params.get('admin');
+const backendParam = params.get('backend'); // New parameter for testing switch
 
 // --- A/B Firestore Testing Switch ---
-if (adminParam === 'firestore') {
+if (backendParam === 'firestore') {
     WEB_APP_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
     console.log("🔥 Firestore testing mode enabled: API requests routed to Cloud Run.");
 }
