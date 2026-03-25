@@ -1,5 +1,5 @@
 // *
-// * Dashboard - V12.0
+// * Dashboard - V12.3
 // * FILE: app.js
 // * Changes: 
 // * 1. Added showAddOrderModal() to generate the single-order form and validate inputs.
@@ -702,6 +702,11 @@ async function loadData() {
         let fetchUrl = `${WEB_APP_URL}${queryParams}&_t=${new Date().getTime()}`;
         const res = await fetch(fetchUrl);
         const data = await res.json();
+
+// Push the raw JSON to the new testing console panel
+        if (isTestingMode) {
+            logToTestConsole(`GET loadData() [${activeTestingBackend}]`, data);
+        }
         
         if (data.confirmHijack) {
             const overlay = document.getElementById('processing-overlay');
@@ -3453,6 +3458,92 @@ if (headerDropzone && headerInput) {
             headerInput.value = ''; // Reset input
         }
     };
+}
+
+// --- V12.3: Logging & Testing UI Injection ---
+window.logToTestConsole = function(title, data) {
+    if (!isTestingMode) return;
+    const container = document.getElementById('test-log-container');
+    if (!container) return;
+    
+    const entry = document.createElement('div');
+    entry.style.cssText = 'background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 8px; overflow-x: auto; font-size: 11px;';
+    
+    const time = new Date().toLocaleTimeString();
+    let dataStr = '';
+    try {
+        dataStr = JSON.stringify(data, null, 2);
+    } catch(e) {
+        dataStr = String(data);
+    }
+
+    entry.innerHTML = `<div style="color: #79c0ff; font-weight: bold; margin-bottom: 6px; border-bottom: 1px dashed #30363d; padding-bottom: 4px;">[${time}] ${title}</div><pre style="margin:0; color:#e6edf3;">${dataStr}</pre>`;
+    
+    container.prepend(entry);
+};
+
+function initTestingModeUI() {
+    if (!isTestingMode) return;
+    
+    document.body.style.flexDirection = 'row'; 
+
+    const testHeader = document.createElement('div');
+    testHeader.id = 'test-mode-header';
+    testHeader.style.cssText = 'position: absolute; top: 0; left: 0; width: 100vw; height: 45px; background: repeating-linear-gradient(45deg, #8b0000, #8b0000 10px, #a50000 10px, #a50000 20px); border-bottom: 2px solid #ff4d4d; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; z-index: 999999; gap: 20px; box-sizing: border-box; box-shadow: 0 4px 10px rgba(0,0,0,0.5);';
+    
+    const titleSpan = document.createElement('span');
+    titleSpan.innerHTML = '<i class="fa-solid fa-flask"></i> TESTING MODE ACTIVE';
+    titleSpan.style.textShadow = '1px 1px 2px #000';
+    titleSpan.style.letterSpacing = '1px';
+    
+    const btnAppScript = document.createElement('button');
+    btnAppScript.innerText = 'Apps Script';
+    btnAppScript.style.cssText = `padding: 6px 12px; cursor: pointer; border: 2px solid #fff; border-radius: 20px; font-weight: bold; font-size: 13px; transition: 0.2s; background: ${activeTestingBackend === 'appscript' ? '#fff' : 'transparent'}; color: ${activeTestingBackend === 'appscript' ? '#8b0000' : '#fff'}; box-shadow: ${activeTestingBackend === 'appscript' ? '0 0 8px rgba(255,255,255,0.8)' : 'none'};`;
+    btnAppScript.onclick = () => { sessionStorage.setItem('sproute_testing_backend', 'appscript'); location.reload(); };
+
+    const btnFirestore = document.createElement('button');
+    btnFirestore.innerText = 'Firestore';
+    btnFirestore.style.cssText = `padding: 6px 12px; cursor: pointer; border: 2px solid #fff; border-radius: 20px; font-weight: bold; font-size: 13px; transition: 0.2s; background: ${activeTestingBackend === 'firestore' ? '#fff' : 'transparent'}; color: ${activeTestingBackend === 'firestore' ? '#8b0000' : '#fff'}; box-shadow: ${activeTestingBackend === 'firestore' ? '0 0 8px rgba(255,255,255,0.8)' : 'none'};`;
+    btnFirestore.onclick = () => { sessionStorage.setItem('sproute_testing_backend', 'firestore'); location.reload(); };
+
+    testHeader.appendChild(titleSpan);
+    testHeader.appendChild(btnAppScript);
+    testHeader.appendChild(btnFirestore);
+    document.body.appendChild(testHeader);
+
+    const adjustContainer = (id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.marginTop = '45px';
+            el.style.height = 'calc(100vh - 45px)';
+        }
+    };
+
+    // Adjust your specific UI containers to make room for the header
+    adjustContainer('map-wrapper');
+    adjustContainer('sidebar');
+    adjustContainer('resizer');
+    
+    const consolePanel = document.createElement('div');
+    consolePanel.id = 'test-console-panel';
+    consolePanel.style.cssText = 'width: 350px; height: calc(100vh - 45px); margin-top: 45px; background: #0d1117; border-right: 2px solid #30363d; overflow-y: auto; color: #c9d1d9; font-family: "Courier New", Courier, monospace; font-size: 12px; padding: 10px; box-sizing: border-box; flex: none; display: flex; flex-direction: column; gap: 10px; z-index: 50; position: relative;';
+    
+    const consoleTitle = document.createElement('div');
+    consoleTitle.innerHTML = '<div style="color:#58a6ff; font-size:14px; border-bottom:1px solid #30363d; padding-bottom:8px; margin-bottom:5px; font-weight:bold; display:flex; justify-content:space-between; align-items:center;"><span><i class="fa-solid fa-terminal"></i> Data Inspector</span><button onclick="document.getElementById(\'test-log-container\').innerHTML=\'\'" style="background:transparent; border:1px solid #555; color:#888; border-radius:4px; cursor:pointer; font-size:11px; padding:2px 6px;">Clear</button></div>';
+    consolePanel.appendChild(consoleTitle);
+
+    const logContainer = document.createElement('div');
+    logContainer.id = 'test-log-container';
+    logContainer.style.display = 'flex';
+    logContainer.style.flexDirection = 'column';
+    logContainer.style.gap = '10px';
+    consolePanel.appendChild(logContainer);
+
+    document.body.insertBefore(consolePanel, document.body.firstChild);
+}
+
+if (isTestingMode) {
+    initTestingModeUI();
 }
 
 loadData();
