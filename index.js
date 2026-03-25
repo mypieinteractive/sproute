@@ -1,22 +1,20 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.9
+ * VERSION: V1.10
  * * CHANGES:
- * V1.9 - Ingestion Engine Finalization. Replaced the environment variable for 
- * DEFAULT_STATE with a hardcoded fallback. Implemented real-time Admin Lock 
- * Verification natively in Firestore to prevent routing collisions, returning 
- * 'confirm_hijack' to the frontend if a locked route is accessed without an override.
- * V1.8 - Architecture Upgrade. Replaced functions-framework with a native Express.js 
- * server and Docker containerization to bypass OS mismatches. 
- * V1.7 - Resolved Cloud Run 8080 timeout.
- * V1.6 - Architecture Migration. Stripped out the Firebase CLI wrappers.
- * V1.5 - Data Ingestion Engine. Added 'uploadCsv', Firestore GeocodeCache.
- * V1.4 - Routing Engine. Added the 'calculate' action block.
+ * V1.10 - Core Engine Port. Added `app.get('/')` to supply the V12.2 Dashboard 
+ * initial load JSON blueprint. Integrated `google-auth-library` for Enterprise API. 
+ * Built `generateRoute` (Optimization) and `calculate` (Recalculation with Chunking) 
+ * blocks. Implemented 1:1 Schema translation for stagingBay and endpoints. 
+ * Replaced legacy API tracking with dual explicit increment fields.
+ * V1.9 - Ingestion Engine Finalization. Real-time Admin Lock Verification.
+ * V1.8 - Architecture Upgrade. Express.js + Docker.
  */
 
 const express = require('express');
 const admin = require('firebase-admin');
 const { parse } = require('csv-parse/sync');
+const { GoogleAuth } = require('google-auth-library');
 
 // Use native fetch if available in Node 18+, otherwise require 'node-fetch'
 const fetch = globalThis.fetch || require('node-fetch'); 
@@ -26,22 +24,19 @@ const db = admin.firestore();
 
 // Initialize Native Express App
 const app = express();
-
-// Middleware to parse incoming JSON payloads
 app.use(express.json());
 
-// CORS Middleware to allow Dashboard communication
+// CORS Middleware
 app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') {
-        return res.status(204).send('');
-    }
+    if (req.method === 'OPTIONS') return res.status(204).send('');
     next();
 });
 
-// Math Helper for Fallback Routing
+// --- HELPER FUNCTIONS ---
+
 function getDistMi(lat1, lon1, lat2, lon2) {
     const R = 3958.8;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -51,63 +46,177 @@ function getDistMi(lat1, lon1, lat2, lon2) {
     return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-// Helper to convert Alpha Columns (e.g., "A", "Z") to Zero-Indexed Integers
 function colIdx(c) {
     if (!c || c === "(None)" || c === "") return -1;
     let idx = 0;
-    for (let i = 0; i < c.length; i++) {
-        idx = idx * 26 + (c.charCodeAt(i) - 64);
-    }
+    for (let i = 0; i < c.length; i++) idx = idx * 26 + (c.charCodeAt(i) - 64);
     return idx - 1;
 }
 
-// Core Webhook Endpoint
+function incrementApiUsage(batch, driverRef, compRef, field, count) {
+    if (count <= 0) return;
+    batch.update(driverRef, { [field]: admin.firestore.FieldValue.increment(count) });
+    batch.update(compRef, { [field]: admin.firestore.FieldValue.increment(count) });
+}
+
+// Map APIs
+async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, apiKey) {
+    try {
+        const waypoints = stopsGeo.map(s => `${s.lat},${s.lng}`).join('|');
+        const opt = preserveSequence ? '' : 'optimize:true|';
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${startGeo.lat},${startGeo.lng}&destination=${endGeo.lat},${endGeo.lng}&waypoints=${opt}${waypoints}&units=imperial&key=${apiKey}`;
+        
+        const res = await fetch(encodeURI(url));
+        const data = await res.json();
+        
+        if (data.status !== "OK" || !data.routes || data.routes.length === 0) return null;
+        const waypointOrder = (data.routes[0].waypoint_order && data.routes[0].waypoint_order.length > 0) ? data.routes[0].waypoint_order : stopsGeo.map((_, i) => i);
+        
+        return waypointOrder.map((origIdx, i) => ({
+            index: origIdx,
+            distance: ((data.routes[0].legs[i].distance.value || 0) * 0.000621371).toFixed(1) + " mi",
+            durationSecs: data.routes[0].legs[i].duration.value
+        }));
+    } catch (e) {
+        console.error(`Standard API Error: ${e.message}`);
+        return null;
+    }
+}
+
+async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, projectId) {
+    try {
+        const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+        const client = await auth.getClient();
+        const tokenResponse = await client.getAccessToken();
+        
+        const payload = {
+            model: {
+                shipments: stopsGeo.map((s, i) => ({ deliveries: [{ arrivalLocation: { latitude: s.lat, longitude: s.lng } }], label: i.toString() })),
+                vehicles: [{
+                    startLocation: { latitude: startGeo.lat, longitude: startGeo.lng },
+                    endLocation: { latitude: endGeo.lat, longitude: endGeo.lng },
+                    label: "primary_vehicle"
+                }]
+            }
+        };
+        
+        if (preserveSequence) {
+            payload.injectedFirstSolutionRoutes = [{ vehicleIndex: 0, visits: stopsGeo.map((s, i) => ({ shipmentIndex: i })) }];
+        }
+
+        const res = await fetch(`https://routeoptimization.googleapis.com/v1/projects/${projectId}:optimizeTours`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${tokenResponse.token}`, "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        if (data.error || !data.routes || data.routes.length === 0) return null;
+
+        return data.routes[0].visits.map((v, i) => ({
+            index: parseInt(v.shipmentLabel),
+            distance: ((data.routes[0].transitions[i]?.travelDistanceMeters || 0) * 0.000621371).toFixed(1) + " mi",
+            durationSecs: parseFloat((data.routes[0].transitions[i]?.travelDuration || "0s").replace('s', ''))
+        }));
+    } catch (e) {
+        console.error(`Enterprise API Error: ${e.message}`);
+        return null;
+    }
+}
+
+// ==========================================
+// ENDPOINT: DASHBOARD INITIALIZATION (GET)
+// ==========================================
+app.get('/', async (req, res) => {
+    try {
+        const companyId = req.query.companyId || req.query.company;
+        const driverId = req.query.driverId || req.query.driver;
+        if (!companyId) return res.status(400).json({ error: "companyId parameter is required." });
+
+        // 1. Fetch Company Settings
+        const compRef = db.collection('Companies').doc(String(companyId));
+        const compDoc = await compRef.get();
+        
+        let accountType = "individual";
+        let displayName = "Dashboard";
+        let permissions = { modify: true, reoptimize: true };
+
+        if (compDoc.exists) {
+            const cData = compDoc.data();
+            if (cData.accountType) accountType = String(cData.accountType).trim();
+            if (cData.name) displayName = String(cData.name).trim();
+        }
+
+        // 2. Fetch Inspectors & Active Stops
+        const usersSnap = await db.collection('Users').where('companyId', '==', String(companyId)).get();
+        const inspectors = [];
+        let activeStops = [];
+        
+        usersSnap.forEach(doc => {
+            const uData = doc.data();
+            if (uData.isInspector === true || String(uData.isInspector).toLowerCase() === 'true') {
+                inspectors.push({
+                    id: doc.id,
+                    name: uData.name || "Inspector",
+                    isInspector: true
+                });
+            }
+            if (driverId && doc.id === String(driverId)) {
+                activeStops = uData.stagingBay || [];
+            }
+        });
+
+        // 3. Fetch CSV Types
+        const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).get();
+        const csvTypes = [];
+        csvSettingsSnap.forEach(doc => {
+            if (doc.data().type) csvTypes.push(doc.data().type);
+        });
+
+        // 4. Return V12.2 Dashboard Blueprint
+        return res.status(200).json({
+            stops: activeStops,
+            inspectors: inspectors,
+            csvTypes: csvTypes,
+            accountType: accountType,
+            displayName: displayName,
+            permissions: permissions
+        });
+
+    } catch (error) {
+        console.error(`[GET INIT ERROR] ${error.message}`);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// ENDPOINT: WEBHOOK ACTIONS (POST)
+// ==========================================
 app.post('/', async (req, res) => {
     try {
         const payload = req.body;
         const action = payload.action;
 
-        // ==========================================
-        // PHASE 2: CSV INGESTION ENGINE
-        // ==========================================
+        // --- 1. CSV INGESTION ENGINE ---
         if (action === 'uploadCsv') {
             console.log(`[API] Executing uploadCsv for Driver: ${payload.driverId}`);
             
             const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
-            if (!csvData || !driverId || !companyId || !type) {
-                return res.status(400).json({ error: "Missing required upload parameters." });
-            }
+            if (!csvData || !driverId || !companyId || !type) return res.status(400).json({ error: "Missing required upload parameters." });
 
-            // 1. Fetch CSV Settings from Firestore
-            const settingsSnapshot = await db.collection('CSV_Settings')
-                .where('companyId', '==', String(companyId))
-                .where('type', '==', String(type))
-                .limit(1).get();
-
-            if (settingsSnapshot.empty) {
-                return res.status(404).json({ error: `CSV Settings not found for Type: '${type}'` });
-            }
+            const settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('type', '==', String(type)).limit(1).get();
+            if (settingsSnapshot.empty) return res.status(404).json({ error: `CSV Settings not found for Type: '${type}'` });
             const settings = settingsSnapshot.docs[0].data().mappingArray; 
 
-            // 2. Fetch Driver Document & Verify Admin Locks
             const driverRef = db.collection('Users').doc(String(driverId));
             const driverDoc = await driverRef.get();
-            if (!driverDoc.exists) {
-                return res.status(404).json({ error: `Driver ID ${driverId} not found.` });
-            }
+            if (!driverDoc.exists) return res.status(404).json({ error: `Driver ID ${driverId} not found.` });
 
             const currentLock = driverDoc.data().lockedBy || "";
             const uId = String(adminId || "").trim();
 
-            // Hijack Prevention Logic
             if (!overrideLock && currentLock !== "" && currentLock !== uId) {
-                console.log(`[API] Strict ID mismatch for Driver ${driverId}. Requesting Hijack confirmation.`);
-                // Return 200 so the frontend successfully parses the custom hijack payload
-                return res.status(200).json({ 
-                    success: false, 
-                    status: 'confirm_hijack', 
-                    driverId: driverId 
-                });
+                return res.status(200).json({ success: false, status: 'confirm_hijack', driverId: driverId });
             }
 
             const existingBay = driverDoc.data().stagingBay || [];
@@ -121,22 +230,14 @@ app.post('/', async (req, res) => {
                 }
             });
 
-            // 3. Parse CSV via csv-parse
-            const records = parse(csvData, {
-                skip_empty_lines: true,
-                relax_column_count: true
-            });
-
-            const fallbackState = 'TX'; // Hardcoded per V1.9 instructions
+            const records = parse(csvData, { skip_empty_lines: true, relax_column_count: true });
+            const fallbackState = 'TX';
             const mapsApiKey = process.env.MAPS_API_KEY;
             
-            let newOrders = [];
-            let geocodeCallCount = 0;
+            let newOrders = [], geocodeCallCount = 0;
 
-            // 4. Process Rows (Start at index 1 to skip headers)
             for (let j = 1; j < records.length; j++) {
                 const row = records[j];
-                
                 let street = colIdx(settings[2]) > -1 ? row[colIdx(settings[2])] : "";
                 let city = colIdx(settings[9]) > -1 ? row[colIdx(settings[9])] : "";
                 let state = colIdx(settings[10]) > -1 ? row[colIdx(settings[10])] : fallbackState;
@@ -144,136 +245,246 @@ app.post('/', async (req, res) => {
 
                 if (street) {
                     let fullAddr = `${street}, ${city}, ${state} ${zip}`.replace(/,,/g, ",").trim();
-                    let clientVal = row[colIdx(settings[4])] || "";
-                    let dueDateRaw = row[colIdx(settings[5])] || "";
-                    let orderTypeVal = row[colIdx(settings[6])] || "";
-                    
                     let csvLatRaw = colIdx(settings[7]) > -1 ? row[colIdx(settings[7])] : "";
                     let csvLngRaw = colIdx(settings[8]) > -1 ? row[colIdx(settings[8])] : "";
                     
-                    let parsedCsvLat = parseFloat(csvLatRaw);
-                    let parsedCsvLng = parseFloat(csvLngRaw);
+                    let parsedCsvLat = parseFloat(csvLatRaw), parsedCsvLng = parseFloat(csvLngRaw);
                     let hasCsvCoords = !isNaN(parsedCsvLat) && !isNaN(parsedCsvLng) && parsedCsvLat !== 0 && parsedCsvLng !== 0;
                     
-                    let shortDate = "";
-                    if (dueDateRaw) {
-                        let d = new Date(dueDateRaw);
-                        if (!isNaN(d.getTime())) {
-                            shortDate = `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
-                        } else {
-                            shortDate = String(dueDateRaw).substring(0,8); 
-                        }
-                    }
-
                     let lat = null, lng = null;
-
                     if (hasCsvCoords) {
-                        lat = parsedCsvLat; 
-                        lng = parsedCsvLng;
+                        lat = parsedCsvLat; lng = parsedCsvLng;
                     } else {
-                        // Firestore GeocodeCache Lookup
                         const cacheRef = db.collection('GeocodeCache').doc(fullAddr.replace(/\//g, ''));
                         const cacheDoc = await cacheRef.get();
 
                         if (cacheDoc.exists) {
-                            lat = cacheDoc.data().lat;
-                            lng = cacheDoc.data().lng;
+                            lat = cacheDoc.data().lat; lng = cacheDoc.data().lng;
                         } else if (mapsApiKey) {
-                            // Hit Google Maps Geocoding API
                             const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddr)}&key=${mapsApiKey}`);
                             const geoData = await geoRes.json();
                             geocodeCallCount++;
-
                             if (geoData.status === "OK" && geoData.results.length > 0) {
-                                lat = geoData.results[0].geometry.location.lat;
-                                lng = geoData.results[0].geometry.location.lng;
-                                
-                                // Save to Firestore Cache instantly
-                                await cacheRef.set({
-                                    lat: lat,
-                                    lng: lng,
-                                    timestamp: admin.firestore.FieldValue.serverTimestamp()
-                                });
+                                lat = geoData.results[0].geometry.location.lat; lng = geoData.results[0].geometry.location.lng;
+                                await cacheRef.set({ lat: lat, lng: lng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
                             }
                         }
                     }
 
-                    let initialStatus = "P"; 
-                    let displayAddress = street.split(',')[0].trim();
-                    if (zip) displayAddress += ", " + zip.trim();
-                    let displayClient = String(clientVal).substring(0, 3);
-
-                    if (!lat || !lng || (lat === 32.776 && lng === -96.797)) {
-                        initialStatus = "V"; 
-                        lat = 32.776;
-                        lng = -96.797;
-                    } else {
-                        lat = Number(parseFloat(lat).toFixed(5)); 
-                        lng = Number(parseFloat(lng).toFixed(5));
-                    }
+                    let initialStatus = (!lat || !lng || (lat === 32.776 && lng === -96.797)) ? "V" : "P"; 
+                    if (initialStatus === "V") { lat = 32.776; lng = -96.797; } 
+                    else { lat = Number(parseFloat(lat).toFixed(5)); lng = Number(parseFloat(lng).toFixed(5)); }
 
                     maxSeq++;
-                    let generatedRowId = `${driverId}-${maxSeq}`;
+                    let displayAddress = street.split(',')[0].trim(); if (zip) displayAddress += ", " + zip.trim();
+                    let clientVal = row[colIdx(settings[4])] || "", displayClient = String(clientVal).substring(0, 3);
+                    let dueDateRaw = row[colIdx(settings[5])] || "", shortDate = dueDateRaw ? String(dueDateRaw).substring(0,8) : "";
+                    let orderTypeVal = row[colIdx(settings[6])] || "";
 
-                    // Match exact legacy tuple structure
-                    newOrders.push([ 
-                        generatedRowId, 1, displayAddress, displayClient, type, shortDate, 
-                        orderTypeVal, "", 0, lat, lng, initialStatus, 0 
-                    ]);
+                    newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, type, shortDate, orderTypeVal, "", 0, lat, lng, initialStatus, 0 ]);
                 }
             }
 
-            if (newOrders.length === 0) {
-                return res.status(200).json({ success: true, message: "No valid orders found in CSV." });
-            }
+            if (newOrders.length === 0) return res.status(200).json({ success: true, message: "No valid orders found." });
 
-            // 5. Save to Firestore natively using ArrayUnion and apply Admin Lock
             const batch = db.batch();
+            const compRef = db.collection('Companies').doc(String(companyId));
             
             batch.update(driverRef, {
                 stagingBay: admin.firestore.FieldValue.arrayUnion(...newOrders),
                 routeState: 'Pending',
                 lockedBy: uId
             });
-
-            // 6. Track Geocoding API Usage
-            if (geocodeCallCount > 0) {
-                const compRef = db.collection('Companies').doc(String(companyId));
-                batch.update(compRef, {
-                    apiGeocodeCount: admin.firestore.FieldValue.increment(geocodeCallCount)
-                });
-            }
-
+            incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
+            
             await batch.commit();
-
             return res.status(200).json({ success: true, count: newOrders.length });
         }
 
-        // ==========================================
-        // PHASE 1: ROUTING ENGINE (V1.4)
-        // ==========================================
-        if (action === 'calculate') {
-            console.log(`[API] Executing calculate logic.`);
-            // ... (The full calculate block ported from Feature_Routing_TODO.gs resides here)
+        // --- 2. OPTIMIZATION ENGINE (generateRoute) ---
+        if (action === 'generateRoute') {
+            console.log(`[API] Executing generateRoute (Optimization) for Driver: ${payload.driverId}`);
             
-            return res.status(200).json({ success: true, status: "calculated_placeholder" });
+            const driverRef = db.collection('Users').doc(String(payload.driverId));
+            const driverDoc = await driverRef.get();
+            if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
+
+            const compId = driverDoc.data().companyId;
+            const compRef = db.collection('Companies').doc(String(compId));
+            const compDoc = await compRef.get();
+            const serviceDelay = compDoc.exists ? (parseInt(compDoc.data().serviceDelay) || 0) : 0;
+            const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
+
+            let stagingBay = driverDoc.data().stagingBay || [];
+            let endpoints = driverDoc.data().endpoints || { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
+            
+            let clusters = {};
+            stagingBay.forEach(s => {
+                let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1);
+                if (!clusters[rLabel]) clusters[rLabel] = [];
+                clusters[rLabel].push({ orig: s, lat: parseFloat(Array.isArray(s) ? s[9] : s.lat), lng: parseFloat(Array.isArray(s) ? s[10] : s.lng) });
+            });
+
+            let finalStops = [];
+            let stdCalls = 0, entCalls = 0;
+            const mapsApiKey = process.env.MAPS_API_KEY;
+            const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+
+            for (let routeNum in clusters) {
+                let cStops = clusters[routeNum].filter(s => s && s.lat && s.lng);
+                if (cStops.length === 0) continue;
+
+                const routeInput = cStops.map(s => ({ lat: s.lat, lng: s.lng }));
+                let optimized = null;
+                let time = new Date(); time.setHours(startHour, 0, 0, 0);
+
+                if (routeInput.length <= 25) {
+                    optimized = await callStandardRoutingAPI(endpoints.start, routeInput, endpoints.end, false, mapsApiKey);
+                    if (optimized) stdCalls++;
+                } else {
+                    optimized = await callEnterpriseRoutingAPI(endpoints.start, routeInput, endpoints.end, false, projectId);
+                    if (optimized) entCalls += routeInput.length;
+                }
+
+                if (optimized) {
+                    optimized.forEach((visit) => {
+                        let s = cStops[visit.index].orig;
+                        time = new Date(time.getTime() + (visit.durationSecs * 1000));
+                        let etaTimeOnly = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+                        time = new Date(time.getTime() + (serviceDelay * 60 * 1000));
+
+                        let numDist = Number(parseFloat(visit.distance).toFixed(1));
+                        let isTuple = Array.isArray(s);
+                        finalStops.push([
+                            isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
+                            isTuple ? s[2] : s.address, isTuple ? s[3] : s.client, 
+                            isTuple ? s[4] : s.app, isTuple ? s[5] : s.dueDate, 
+                            isTuple ? s[6] : s.type, etaTimeOnly, numDist, 
+                            isTuple ? s[9] : s.lat, isTuple ? s[10] : s.lng, "R", visit.durationSecs
+                        ]);
+                    });
+                } else {
+                    // Fallback to preserve if API fails entirely
+                    cStops.forEach(s => finalStops.push(s.orig));
+                }
+            }
+
+            const batch = db.batch();
+            batch.update(driverRef, { stagingBay: finalStops, routeState: 'Ready' });
+            incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
+            incrementApiUsage(batch, driverRef, compRef, 'apiUsage_EnterpriseRouting', entCalls);
+            
+            await batch.commit();
+            return res.status(200).json({ success: true, updatedStops: finalStops });
+        }
+
+        // --- 3. RECALCULATION ENGINE (calculate) ---
+        if (action === 'calculate') {
+            console.log(`[API] Executing calculate (Dirty Recalc) for Driver: ${payload.driverId}`);
+            
+            const driverRef = db.collection('Users').doc(String(payload.driverId));
+            const driverDoc = await driverRef.get();
+            if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
+
+            const compId = driverDoc.data().companyId;
+            const compRef = db.collection('Companies').doc(String(compId));
+            const compDoc = await compRef.get();
+            
+            const serviceDelay = compDoc.exists ? (parseInt(compDoc.data().serviceDelay) || 0) : 0;
+            const useExactApi = compDoc.exists ? (String(compDoc.data().useExactApi).toUpperCase() === 'TRUE') : false;
+            const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
+
+            let stagingBay = driverDoc.data().stagingBay || [];
+            let endpoints = driverDoc.data().endpoints || { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
+            const mapsApiKey = process.env.MAPS_API_KEY;
+
+            let clusters = {};
+            stagingBay.forEach(s => {
+                let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1);
+                if (!clusters[rLabel]) clusters[rLabel] = [];
+                clusters[rLabel].push({ orig: s, lat: parseFloat(Array.isArray(s) ? s[9] : s.lat), lng: parseFloat(Array.isArray(s) ? s[10] : s.lng) });
+            });
+
+            let finalStops = [];
+            let stdCalls = 0;
+
+            for (let routeNum in clusters) {
+                let routeStops = clusters[routeNum].filter(s => s && s.lat && s.lng);
+                if (routeStops.length === 0) continue;
+
+                let baseTime = new Date(); baseTime.setHours(startHour, 0, 0, 0);
+                let finalResults = [];
+                let apiSuccess = false;
+
+                if (useExactApi) {
+                    apiSuccess = true;
+                    let currentStart = endpoints.start;
+                    let chunkSize = 25;
+
+                    for (let i = 0; i < routeStops.length; i += chunkSize) {
+                        let chunkStops = routeStops.slice(i, i + chunkSize);
+                        let currentEnd = (i + chunkSize < routeStops.length) ? routeStops[i + chunkSize] : endpoints.end;
+                        
+                        // Preserve sequence is TRUE for calculate recalculations
+                        let chunkOptimized = await callStandardRoutingAPI(currentStart, chunkStops, currentEnd, true, mapsApiKey);
+                        if (!chunkOptimized) { apiSuccess = false; break; }
+
+                        stdCalls++;
+                        finalResults = finalResults.concat(chunkOptimized);
+                        currentStart = chunkStops[chunkStops.length - 1]; 
+                    }
+                }
+
+                if (!useExactApi || !apiSuccess) {
+                    finalResults = [];
+                    let prevGeo = endpoints.start;
+                    for (let i = 0; i < routeStops.length; i++) {
+                        let d = getDistMi(prevGeo.lat, prevGeo.lng, routeStops[i].lat, routeStops[i].lng);
+                        finalResults.push({ distance: d.toFixed(1) + " mi", durationSecs: (d / 25) * 3600 });
+                        prevGeo = routeStops[i];
+                    }
+                }
+
+                finalResults.forEach((res, i) => {
+                    baseTime = new Date(baseTime.getTime() + (res.durationSecs * 1000));
+                    let etaTimeOnly = baseTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+                    baseTime = new Date(baseTime.getTime() + (serviceDelay * 60 * 1000));
+
+                    let s = routeStops[i].orig;
+                    let numDist = Number(parseFloat(res.distance).toFixed(1));
+                    let isTuple = Array.isArray(s);
+
+                    finalStops.push([
+                        isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
+                        isTuple ? s[2] : s.address, isTuple ? s[3] : s.client, 
+                        isTuple ? s[4] : s.app, isTuple ? s[5] : s.dueDate, 
+                        isTuple ? s[6] : s.type, etaTimeOnly, numDist, 
+                        isTuple ? s[9] : s.lat, isTuple ? s[10] : s.lng, "R", res.durationSecs
+                    ]);
+                });
+            }
+
+            const batch = db.batch();
+            batch.update(driverRef, { stagingBay: finalStops, routeState: 'Ready' });
+            incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
+            
+            await batch.commit();
+            return res.status(200).json({ success: true, updatedStops: finalStops });
         }
 
         return res.status(400).json({ error: "Invalid action provided." });
 
     } catch (error) {
-        console.error(`[API ERROR] ${error.message}`, error);
+        console.error(`[POST ERROR] ${error.message}`);
         return res.status(500).json({ error: error.message });
     }
 });
 
-// Handle any unsupported methods on the root path
-app.all('/', (req, res) => {
+app.all('*', (req, res) => {
     res.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// EXPLICIT PORT BINDING
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.9) actively listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.10) listening on port ${port}`);
 });
