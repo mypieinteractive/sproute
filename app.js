@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V12.0
+// * Dashboard - V12.1
 // * FILE: app.js
 // * Changes: 
-// * 1. Added showAddOrderModal() to generate the single-order form and validate inputs.
-// * 2. Implemented logic to construct a fake CSV Blob inside showAddOrderModal() to perfectly mimic standard CSV uploads.
-// * 3. Updated render() to toggle the entire `#header-actions-wrapper` rather than just the dropzone.
+// * 1. Added interceptor logic `logToVisualConsole()` to route API calls directly into the new UI when `isTestingMode` is active.
+// * 2. Overhauled `apiFetch()` and `loadData()` to dynamically switch endpoints based on the `activeBackend` toggle state.
+// * 3. Initialized the `FIRESTORE_API_URL` to route requests to the new Express server environment.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -22,20 +22,82 @@ document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCu
 document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
+
+// --- A/B TESTING & BACKEND URLS ---
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+const FIRESTORE_API_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
+
+const params = new URLSearchParams(window.location.search);
+let isTestingMode = params.has('testing') || params.get('testing') === '';
+let activeBackend = 'sheet';
+
+if (isTestingMode) {
+    document.body.classList.add('testing-mode');
+}
+
+window.setTestingBackend = function(backend) {
+    activeBackend = backend;
+    document.getElementById('btn-backend-sheet').classList.toggle('active', backend === 'sheet');
+    document.getElementById('btn-backend-firestore').classList.toggle('active', backend === 'firestore');
+    logToVisualConsole('INFO', 'System Toggle', `Switched backend routing to: ${backend.toUpperCase()}`);
+    
+    // Clear snapshot so it doesn't falsely diff against the other backend's structure
+    sessionStorage.removeItem('sproute_snapshot');
+    loadData(); 
+};
+
+function logToVisualConsole(type, endpoint, data) {
+    if (!isTestingMode) return;
+    const consoleEl = document.getElementById('visual-console');
+    if (!consoleEl) return;
+
+    const entry = document.createElement('div');
+    let typeClass = 'log-req';
+    if (type === 'RES') typeClass = 'log-res';
+    if (type === 'ERR') typeClass = 'log-err';
+    if (type === 'INFO') typeClass = 'log-info';
+
+    entry.className = `log-entry ${typeClass}`;
+    
+    const time = new Date().toLocaleTimeString();
+    let dataStr = '';
+    try {
+        dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+    } catch (e) {
+        dataStr = 'Unparseable Data';
+    }
+    
+    entry.innerHTML = `<strong>[${time}] ${type} - ${endpoint}</strong><br>${dataStr}`;
+    consoleEl.appendChild(entry);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+}
 
 // Global API Usage Tracker
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
 
 // Central Wrapper to inject tracking counts into all backend POST requests
-function apiFetch(payload) {
+async function apiFetch(payload) {
     payload.frontEndApiUsage = { geocode: frontEndApiUsage.geocode, mapLoads: frontEndApiUsage.mapLoads };
     frontEndApiUsage.geocode = 0;
     frontEndApiUsage.mapLoads = 0;
-    return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+    
+    const targetUrl = activeBackend === 'firestore' ? FIRESTORE_API_URL : WEB_APP_URL;
+    
+    logToVisualConsole('REQ', `POST ${payload.action}`, payload);
+    
+    try {
+        const response = await fetch(targetUrl, { method: 'POST', body: JSON.stringify(payload) });
+        const clonedRes = response.clone();
+        clonedRes.json()
+            .then(data => logToVisualConsole('RES', `POST ${payload.action}`, data))
+            .catch(e => logToVisualConsole('RES', `POST ${payload.action}`, 'Non-JSON Response / Parse Error'));
+        return response;
+    } catch (err) {
+        logToVisualConsole('ERR', `POST ${payload.action}`, err.message);
+        throw err;
+    }
 }
 
-const params = new URLSearchParams(window.location.search);
 let routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
@@ -322,7 +384,7 @@ function silentSaveRouteState() {
 }
 
 // APPLY CSS CLASS BEFORE RENDER
-document.body.className = `view-${viewMode} manager-all-inspectors`;
+document.body.className = `view-${viewMode} manager-all-inspectors ${isTestingMode ? 'testing-mode' : ''}`;
 if (viewMode === 'managermobilesplit') {
     document.body.classList.add('split-show-map');
 }
@@ -635,9 +697,16 @@ function performResize(e) {
         mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px';
         mapWrapEl.style.flex = 'none';
     } else {
+        // Adjust for the Testing Sidebar width if present
+        let testingSidebarOffset = 0;
+        if (isTestingMode) {
+            const ts = document.getElementById('testing-sidebar');
+            if (ts) testingSidebarOffset = ts.offsetWidth;
+        }
+
         let newWidth = window.innerWidth - clientX;
         if (newWidth < 300) newWidth = 300;
-        if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
+        if (newWidth > window.innerWidth - 300 - testingSidebarOffset) newWidth = window.innerWidth - 300 - testingSidebarOffset;
         sidebarEl.style.width = newWidth + 'px';
     }
 }
@@ -678,9 +747,13 @@ async function loadData() {
     }
 
     try {
-        let fetchUrl = `${WEB_APP_URL}${queryParams}&_t=${new Date().getTime()}`;
+        const targetUrl = activeBackend === 'firestore' ? FIRESTORE_API_URL : WEB_APP_URL;
+        let fetchUrl = `${targetUrl}${queryParams}&_t=${new Date().getTime()}`;
+        
+        logToVisualConsole('REQ', 'GET loadData', fetchUrl);
         const res = await fetch(fetchUrl);
-        const data = await res.json();
+        const data = await res.clone().json();
+        logToVisualConsole('RES', 'GET loadData', data);
         
         if (data.confirmHijack) {
             const overlay = document.getElementById('processing-overlay');
@@ -934,6 +1007,7 @@ async function loadData() {
         
     } catch (e) { 
         console.error("Error loading data:", e); 
+        logToVisualConsole('ERR', 'GET loadData', e.message);
         isFreshGlideRefresh = false;
     } finally {
         const overlay = document.getElementById('processing-overlay');
@@ -2475,8 +2549,6 @@ async function performUpload(file, inspectorId, csvType, overrideLock = false) {
             if (!isManagerView) payload.routeId = routeId;
             if (overrideLock) payload.overrideLock = true;
             
-            console.log("🚀 SENDING UPLOAD PAYLOAD TO BACKEND:", payload);
-            
             const res = await apiFetch(payload);
             const data = await res.json();
             
@@ -3414,6 +3486,10 @@ if (headerDropzone && headerInput) {
     headerDropzone.ondragover = (e) => {
         e.preventDefault();
         headerDropzone.classList.add('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
     };
     headerDropzone.ondragleave = (e) => {
         e.preventDefault();
