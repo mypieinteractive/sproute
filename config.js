@@ -1,7 +1,7 @@
 /* * */
-/* * Dashboard - V12.5 */
+/* * Dashboard - V12.7 */
 /* * FILE: config.js */
-/* * Changes: Extracted global state, URL parsing, and A/B testing logic. */
+/* * Changes: Re-implemented the Testing Mode logic triggered by backend=testing parameter. */
 /* * */
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
@@ -11,7 +11,7 @@ let routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const adminParam = params.get('admin');
-const backendParam = params.get('backend'); // Testing switch
+const backendParam = params.get('backend'); 
 
 // --- A/B Testing Mode Configuration ---
 let WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
@@ -26,6 +26,7 @@ if (isTestingMode) {
         console.log("🟢 Testing Mode: API requests routed to Apps Script.");
     }
 }
+// --------------------------------------
 
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
 const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
