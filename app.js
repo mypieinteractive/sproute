@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V12.2
+// * Dashboard - V12.0
 // * FILE: app.js
 // * Changes: 
-// * 1. Added backendParam to capture the 'backend' URL parameter.
-// * 2. Updated the A/B switch logic to trigger based on `backend=firestore` instead of `admin=firestore`.
-// * 3. This allows parallel testing while maintaining actual Admin IDs for permissions.
+// * 1. Added showAddOrderModal() to generate the single-order form and validate inputs.
+// * 2. Implemented logic to construct a fake CSV Blob inside showAddOrderModal() to perfectly mimic standard CSV uploads.
+// * 3. Updated render() to toggle the entire `#header-actions-wrapper` rather than just the dropzone.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -22,7 +22,7 @@ document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCu
 document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
-let WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
 // Global API Usage Tracker
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
@@ -40,14 +40,6 @@ let routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const adminParam = params.get('admin');
-const backendParam = params.get('backend'); // New parameter for testing switch
-
-// --- A/B Firestore Testing Switch ---
-if (backendParam === 'firestore') {
-    WEB_APP_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
-    console.log("🔥 Firestore testing mode enabled: API requests routed to Cloud Run.");
-}
-// ------------------------------------
 
 const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
 // Include managermobilesplit in manager views
