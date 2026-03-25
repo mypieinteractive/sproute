@@ -1,26 +1,159 @@
-// *
-// * Dashboard - V12.4
-// * FILE: routing.js
-// * Changes: Extracted route calculation, history stacking, and live clustering logic.
-// *
+/* * */
+/* * Dashboard - V12.5 */
+/* * FILE: routing.js */
+/* * Changes: Extracted data models, formatting utilities, and routing/clustering math. */
+/* * */
 
-function markRouteDirty(driverId, clusterIdx) {
-    dirtyRoutes.add(`${driverId || 'unassigned'}_${clusterIdx || 0}`);
+function expandStop(minStop) {
+    if (!minStop) return {};
+    if (!Array.isArray(minStop) && !minStop.rawTuple && !minStop.data && !minStop.tuple && minStop.address) return minStop;
+
+    let t = null;
+    if (Array.isArray(minStop)) t = minStop;
+    else if (minStop.rawTuple) t = minStop.rawTuple;
+    else if (minStop.data) t = minStop.data;
+    else if (minStop.tuple) t = minStop.tuple;
+
+    let expanded = { ...minStop }; 
+
+    if (t && Array.isArray(t) && t.length >= 12) {
+        let rawCluster = String(t[1] || '').trim().toUpperCase();
+        expanded.id = String(t[0]);
+        expanded.rowId = String(t[0]);
+        if (rawCluster === 'X' || rawCluster === '') expanded.cluster = 'X';
+        else {
+            let clusterIdx = parseInt(rawCluster);
+            expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1);
+        }
+        expanded.address = String(t[2] || '');
+        expanded.client = String(t[3] || '');
+        expanded.app = String(t[4] || '');
+        expanded.dueDate = String(t[5] || '');
+        expanded.type = String(t[6] || '');
+        expanded.eta = String(t[7] || '');
+        expanded.dist = parseFloat(t[8] || 0);
+        expanded.lat = parseFloat(t[9] || 0);
+        expanded.lng = parseFloat(t[10] || 0);
+        expanded.status = String(t[11] || 'P');
+        expanded.durationSecs = parseInt(t[12] || 0, 10);
+    }
+    return expanded;
 }
 
+function minifyStop(s, routeNum) {
+    return [
+        s.rowId || s.id || "", routeNum, s.address || "", s.client ? String(s.client).substring(0, 3) : "", 
+        s.app || "", s.dueDate || "", s.type || "", s.eta || "", s.dist ? Number(parseFloat(s.dist)) : 0, 
+        s.lat ? Number(parseFloat(s.lat).toFixed(5)) : 0, s.lng ? Number(parseFloat(s.lng).toFixed(5)) : 0, 
+        getStatusCode(s.status), Number(s.durationSecs) || 0                              
+    ];
+}
+
+function timeToMins(tStr) {
+    if (!tStr || typeof tStr !== 'string') return Number.MAX_SAFE_INTEGER;
+    let m = tStr.match(/(\d+):(\d+)\s*(AM|PM|am|pm)/i);
+    if (!m) return Number.MAX_SAFE_INTEGER;
+    let h = parseInt(m[1], 10);
+    let mins = parseInt(m[2], 10);
+    let p = m[3].toUpperCase();
+    if (p === 'PM' && h < 12) h += 12;
+    if (p === 'AM' && h === 12) h = 0;
+    return (h * 60) + mins;
+}
+
+function sortByEta(a, b) { return timeToMins(a.eta) - timeToMins(b.eta); }
+function getStatusText(code) {
+    if (!code) return 'Pending';
+    let c = String(code).trim().toUpperCase();
+    if (c === 'S' || c === 'DISPATCHED') return 'Dispatched';
+    if (c === 'R' || c === 'ROUTED') return 'Routed';
+    if (c === 'C' || c === 'COMPLETED') return 'Completed';
+    if (c === 'D' || c === 'DELETED') return 'Deleted';
+    if (c === 'V' || c === 'O') return 'Validation Failed';
+    if (c === 'P' || c === 'PENDING') return 'Pending';
+    return STATUS_MAP_TO_TEXT[c] || 'Pending';
+}
+function getStatusCode(text) {
+    if (!text) return 'P';
+    return STATUS_MAP_TO_CODE[String(text).toLowerCase()] || 'P';
+}
+function isRouteAssigned(status) {
+    if (!status) return false;
+    const s = status.toLowerCase();
+    return s === 'routed' || s === 'completed' || s === 'dispatched';
+}
+function isActiveStop(s) {
+    const status = (s.status || '').toLowerCase().trim();
+    if (isManagerView) {
+        if (status === 'dispatched' || status === 's') return false;
+        return (status === 'pending' || status === 'routed' || status === 'completed');
+    } else {
+        let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
+        if (s.hiddenInInspector) active = false;
+        return active;
+    }
+}
+function isStopVisible(s, applyRouteFilter = true) {
+    if (!isActiveStop(s)) return false;
+    if (isManagerView && currentInspectorFilter !== 'all') {
+        if (String(s.driverId) !== String(currentInspectorFilter)) return false;
+    }
+    if (!isManagerView && !isRouteAssigned(s.status)) return false;
+    if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
+        if (s.cluster !== currentRouteViewFilter) return false;
+    }
+    return true;
+}
+
+function hexToRgba(hex, alpha) {
+    let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getVisualStyle(stopData) {
+    const isRouted = isRouteAssigned(stopData.status);
+    let inspectorIndex = 0;
+    if (stopData.driverId) {
+        const idx = inspectors.findIndex(i => String(i.id) === String(stopData.driverId));
+        if (idx !== -1) inspectorIndex = idx;
+    }
+    
+    const baseColor = MASTER_PALETTE[inspectorIndex % MASTER_PALETTE.length];
+    const cluster = stopData.cluster === 'X' ? 0 : (stopData.cluster || 0);
+    const hasRoutedForInsp = stops.some(s => String(s.driverId) === String(stopData.driverId) && isRouteAssigned(s.status));
+    
+    const isPreviewingClusters = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount > 1 && !hasRoutedForInsp && !isRouted;
+    const isSinglePreview = isManagerView && currentInspectorFilter !== 'all' && currentRouteCount === 1 && !hasRoutedForInsp && !isRouted;
+    
+    let bgHex, borderHex = baseColor, textHex;
+    if (isRouted || isPreviewingClusters) {
+        if (cluster === 0) { bgHex = baseColor; textHex = '#ffffff'; }
+        else if (cluster === 1) { bgHex = '#000000'; textHex = '#ffffff'; }
+        else { bgHex = '#ffffff'; textHex = '#000000'; }
+    } else if (isSinglePreview) {
+        bgHex = baseColor; textHex = '#ffffff';
+    } else {
+        bgHex = 'transparent'; textHex = baseColor;
+    }
+
+    let bgFinal = bgHex;
+    if (bgHex !== 'transparent') {
+        bgFinal = bgHex.startsWith('#') ? hexToRgba(bgHex, 0.75) : bgHex;
+    }
+    return { bg: bgFinal, border: borderHex, text: textHex, line: borderHex };
+}
+
+function markRouteDirty(driverId, clusterIdx) { dirtyRoutes.add(`${driverId || 'unassigned'}_${clusterIdx || 0}`); }
+
 function pushToHistory() {
-    historyStack.push({
-        stops: JSON.parse(JSON.stringify(stops)),
-        dirty: new Set(dirtyRoutes)
-    });
+    historyStack.push({ stops: JSON.parse(JSON.stringify(stops)), dirty: new Set(dirtyRoutes) });
     if (historyStack.length > 20) historyStack.shift();
-    if (typeof updateUndoUI === 'function') updateUndoUI();
+    updateUndoUI();
 }
 
 async function undoLastAction() {
     if (historyStack.length === 0) return;
     const last = historyStack.pop();
-
     const resurrectedStops = last.stops.filter(oldStop => !stops.some(currentStop => String(currentStop.id) === String(oldStop.id)));
 
     stops = last.stops;
@@ -30,134 +163,48 @@ async function undoLastAction() {
         const overlay = document.getElementById('processing-overlay');
         if (overlay) overlay.style.display = 'flex';
         try {
-            let payload = {
-                action: 'recreateOrders',
-                driverId: isManagerView ? currentInspectorFilter : driverParam,
-                orders: resurrectedStops
-            };
+            let payload = { action: 'recreateOrders', driverId: isManagerView ? currentInspectorFilter : driverParam, orders: resurrectedStops };
             if (!isManagerView) payload.routeId = routeId;
-
             await apiFetch(payload);
-        } catch (e) {
-            console.error("Failed to resurrect orders:", e);
-        } finally {
-            if (overlay) overlay.style.display = 'none';
-        }
+        } catch (e) { console.error("Failed to resurrect orders:", e); } 
+        finally { if (overlay) overlay.style.display = 'none'; }
     }
 
-    if (typeof render === 'function') render(); 
-    if (typeof drawRoute === 'function') drawRoute(); 
-    if (typeof updateSummary === 'function') updateSummary(); 
-    updateRouteTimes(); 
-    if (typeof updateUndoUI === 'function') updateUndoUI();
-    if (typeof silentSaveRouteState === 'function') silentSaveRouteState(); 
+    render(); drawRoute(); updateSummary(); updateRouteTimes(); updateUndoUI();
+    silentSaveRouteState(); 
 }
 
-function reorderStopsFromDOM() {
-    let unroutedIds = [];
-    let routedIds = [];
-    
-    if (document.getElementById('unrouted-list')) {
-        unroutedIds = Array.from(document.getElementById('unrouted-list').children).map(el => el.id.replace('item-', '')).filter(Boolean);
+function getActiveEndpoints() {
+    if (!isManagerView) {
+        return { 
+            start: routeStart ? { address: routeStart.address, lat: routeStart.lat, lng: routeStart.lng } : null, 
+            end: routeEnd ? { address: routeEnd.address, lat: routeEnd.lat, lng: routeEnd.lng } : null 
+        };
     }
+    if (isManagerView && currentInspectorFilter === 'all') return { start: null, end: null };
+    const inspId = isManagerView ? currentInspectorFilter : driverParam;
+    const insp = inspectors.find(i => String(i.id) === String(inspId));
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
     
-    document.querySelectorAll('.routed-group-container').forEach(cont => {
-        const rIds = Array.from(cont.children).map(el => el.id.replace('item-', '')).filter(Boolean);
-        routedIds = routedIds.concat(rIds);
-    });
+    let start = null; let end = null;
+    if (hasRouted && routeStart && routeStart.address) start = routeStart;
+    else if (insp) start = { address: insp.startAddress || insp.start || '', lat: insp.startLat, lng: insp.startLng };
     
-    if (unroutedIds.length === 0 && routedIds.length === 0 && document.getElementById('main-list-container')) {
-        routedIds = Array.from(document.getElementById('main-list-container').children).map(el => el.id.replace('item-', '')).filter(Boolean);
-    }
+    if (hasRouted && routeEnd && routeEnd.address) end = routeEnd;
+    else if (insp) end = { address: insp.endAddress || insp.end || insp.startAddress || insp.start || '', lat: insp.endLat || insp.startLat, lng: insp.endLng || insp.startLng };
     
-    const visibleIds = new Set([...unroutedIds, ...routedIds]);
-    const otherStops = stops.filter(s => !visibleIds.has(s.id));
-    
-    const newUnrouted = unroutedIds.map(id => stops.find(s => String(s.id) === String(id))).filter(Boolean);
-    const newRouted = routedIds.map(id => stops.find(s => String(s.id) === String(id))).filter(Boolean);
-    
-    stops = [...otherStops, ...newUnrouted, ...newRouted];
-}
-
-function setRoutes(num) {
-    currentRouteCount = num;
-    document.body.setAttribute('data-route-count', num);
-    
-    for(let i=1; i<=3; i++) {
-        const btn = document.getElementById(`rbtn-${i}`);
-        if(btn) btn.classList.toggle('active', i === num);
-    }
-    const headerGenBtnText = document.getElementById('btn-header-generate-text');
-    if (headerGenBtnText) headerGenBtnText.innerText = "Optimize";
-    
-    stops.forEach(s => s.manualCluster = false); 
-    liveClusterUpdate();
-    if (typeof updateSelectionUI === 'function') updateSelectionUI(); 
-}
-
-function moveSelectedToRoute(cIdx) {
-    pushToHistory();
-    let movedStops = [];
-    const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
-    
-    selectedIds.forEach(id => {
-        const s = stops.find(st => String(st.id) === String(id));
-        if (s) {
-            if (isRouteAssigned(s.status)) {
-                markRouteDirty(s.driverId, s.cluster); 
-            }
-            s.cluster = cIdx;
-            s.manualCluster = true; 
-            
-            if (hasActiveRoutes) {
-                s.status = 'Routed';
-                s.routeState = 'Staging';
-                markRouteDirty(s.driverId, s.cluster); 
-            }
-            movedStops.push(s);
-        }
-    });
-    
-    stops = stops.filter(s => !selectedIds.has(s.id));
-    stops.push(...movedStops);
-    
-    selectedIds.clear();
-    
-    if (typeof render === 'function') render(); 
-    if (typeof drawRoute === 'function') drawRoute();
-    if (typeof updateSummary === 'function') updateSummary();
-    updateRouteTimes();
-    if (typeof silentSaveRouteState === 'function') silentSaveRouteState();
-}
-
-function updateRouteTimes() {
-    if (isManagerView && currentInspectorFilter === 'all') return;
-    const activeStops = stops.filter(s => isStopVisible(s, false) && s.lng && s.lat);
-    for(let i=0; i<3; i++) {
-        const clusterStops = activeStops.filter(s => s.cluster === i);
-        const count = clusterStops.length;
-        let totalSecs = 0;
-        clusterStops.forEach(s => totalSecs += parseFloat(s.durationSecs || 0));
-        
-        const hrs = count > 0 ? ((totalSecs + (count * COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
-        const timeEl = document.getElementById(`rtime-${i+1}`);
-        if(timeEl) {
-            timeEl.innerText = count > 0 ? `${hrs} hrs` : '-- hrs';
-        }
-    }
+    return { start, end };
 }
 
 function liveClusterUpdate() {
     if (isManagerView && currentInspectorFilter === 'all') return;
-    
     const k = currentRouteCount;
     const w = parseInt(document.getElementById('slider-priority').value) / 100;
-    
     const activeStops = stops.filter(s => isStopVisible(s, false) && s.lng && s.lat);
     if(activeStops.length === 0) return;
 
     const hasActiveRoutes = stops.some(st => isRouteAssigned(st.status));
-    
     const unroutedStops = activeStops.filter(s => {
         if (isRouteAssigned(s.status)) return false;
         if (hasActiveRoutes && s.cluster === 'X') return false;
@@ -166,21 +213,16 @@ function liveClusterUpdate() {
 
     if(k === 1) {
         unroutedStops.forEach(s => { s.cluster = 0; s.manualCluster = false; });
-        if (typeof updateMarkerColors === 'function') updateMarkerColors();
-        updateRouteTimes();
+        updateMarkerColors(); updateRouteTimes();
         return;
     }
-
     if (unroutedStops.length === 0) return;
 
-    let today = new Date(); 
-    today.setHours(0,0,0,0);
-
+    let today = new Date(); today.setHours(0,0,0,0);
     unroutedStops.forEach(s => {
         s._urgency = 0;
         if (s.dueDate) {
-            let d = new Date(s.dueDate);
-            d.setHours(0,0,0,0);
+            let d = new Date(s.dueDate); d.setHours(0,0,0,0);
             if (d < today) s._urgency = 2;
             else if (d.getTime() === today.getTime()) s._urgency = 1;
         }
@@ -216,12 +258,9 @@ function liveClusterUpdate() {
     for(let i=0; i<k; i++) {
         if (clusterUrgency[i] > maxUrg) { maxUrg = clusterUrgency[i]; bestClusterIdx = i; }
     }
-    let temp = centroids[0];
-    centroids[0] = centroids[bestClusterIdx];
-    centroids[bestClusterIdx] = temp;
+    let temp = centroids[0]; centroids[0] = centroids[bestClusterIdx]; centroids[bestClusterIdx] = temp;
 
     let capacity = Math.ceil(unroutedStops.length / k);
-    
     let maxGeoDist = 0.0001;
     unroutedStops.forEach(s => {
         centroids.forEach(c => {
@@ -231,299 +270,34 @@ function liveClusterUpdate() {
     });
 
     const pullMultiplier = maxGeoDist * 2.5; 
-
     unroutedStops.forEach(s => {
         if (s.manualCluster) return;
-
         let dist0 = Math.sqrt(Math.pow(s.lat - centroids[0].lat, 2) + Math.pow(s.lng - centroids[0].lng, 2));
-        let bestAltDist = Infinity;
-        let bestAltIdx = 0;
-
+        let bestAltDist = Infinity; let bestAltIdx = 0;
         for(let i=1; i<k; i++) {
             let d = Math.sqrt(Math.pow(s.lat - centroids[i].lat, 2) + Math.pow(s.lng - centroids[i].lng, 2));
             if (d < bestAltDist) { bestAltDist = d; bestAltIdx = i; }
         }
-
         let effectiveDist0 = dist0 - ((s._urgency / 2) * w * pullMultiplier);
-        s._dist0 = dist0;
-        s._bestAltDist = bestAltDist;
-        s._bestAltIdx = bestAltIdx;
-        s._effectiveDist0 = effectiveDist0;
-        s._affinity0 = bestAltDist - effectiveDist0;
+        s._dist0 = dist0; s._bestAltDist = bestAltDist; s._bestAltIdx = bestAltIdx; s._effectiveDist0 = effectiveDist0; s._affinity0 = bestAltDist - effectiveDist0;
     });
 
     let sortedStops = [...unroutedStops].filter(s => !s.manualCluster).sort((a, b) => b._affinity0 - a._affinity0);
-
-    let route0Count = 0;
-    let altCounts = new Array(k).fill(0);
+    let route0Count = 0; let altCounts = new Array(k).fill(0);
 
     sortedStops.forEach(s => {
         let wants0 = s._affinity0 > 0;
         if (wants0) {
-            if (route0Count < capacity) {
-                s.cluster = 0;
-                route0Count++;
-            } else if (s._effectiveDist0 < 0) {
-                s.cluster = 0;
-                route0Count++;
-            } else {
-                s.cluster = s._bestAltIdx;
-                altCounts[s._bestAltIdx]++;
-            }
+            if (route0Count < capacity || s._effectiveDist0 < 0) { s.cluster = 0; route0Count++; } 
+            else { s.cluster = s._bestAltIdx; altCounts[s._bestAltIdx]++; }
         } else {
-            s.cluster = s._bestAltIdx;
-            altCounts[s._bestAltIdx]++;
+            s.cluster = s._bestAltIdx; altCounts[s._bestAltIdx]++;
         }
     });
 
     unroutedStops.forEach(s => {
-        delete s._urgency;
-        delete s._tempCluster;
-        delete s._dist0;
-        delete s._bestAltDist;
-        delete s._bestAltIdx;
-        delete s._effectiveDist0;
-        delete s._affinity0;
+        delete s._urgency; delete s._tempCluster; delete s._dist0; delete s._bestAltDist; delete s._bestAltIdx; delete s._effectiveDist0; delete s._affinity0;
     });
     
-    if (typeof updateMarkerColors === 'function') updateMarkerColors();
-    updateRouteTimes();
-}
-
-async function handleGenerateRoute() {
-    if (currentInspectorFilter === 'all') return;
-    const insp = inspectors.find(i => String(i.id) === String(currentInspectorFilter));
-    if (!insp) return;
-
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    let stopsToOptimize = [];
-    const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
-    const hasActiveRoutes = stops.some(s => isRouteAssigned(s.status));
-
-    if (isEndpointsDirty) {
-        stopsToOptimize = stops.filter(s => isActiveStop(s) && s.lng && s.lat && String(s.driverId) === String(insp.id));
-        if (hasActiveRoutes) {
-            stopsToOptimize = stopsToOptimize.filter(s => s.cluster !== 'X');
-        }
-    } else {
-        stopsToOptimize = stops.filter(s => {
-            if (!isActiveStop(s) || !s.lng || !s.lat || String(s.driverId) !== String(insp.id)) return false;
-            if (hasActiveRoutes && s.cluster === 'X') return false;
-            
-            const routeKey = `${s.driverId}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
-            return dirtyRoutes.has(routeKey) || !isRouteAssigned(s.status);
-        });
-    }
-    
-    let sentClusters = [...new Set(stopsToOptimize.map(s => s.cluster))].filter(c => c !== 'X').sort();
-
-    let flatStopsPayload = stopsToOptimize.map(s => {
-        let outCluster = s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1;
-        return minifyStop(s, outCluster);
-    });
-
-    const eps = getActiveEndpoints();
-    let sAddr = eps.start ? eps.start.address : '';
-    let eAddr = eps.end ? eps.end.address : '';
-
-    stopsToOptimize.forEach(s => {
-        s.routeState = 'Queued';
-    });
-    if (typeof render === 'function') render(); 
-
-    try {
-        let payload = { 
-            action: 'generateRoute', 
-            inspectorName: insp.name, 
-            driverId: insp.id, 
-            stops: flatStopsPayload, 
-            startAddr: sAddr, 
-            endAddr: eAddr, 
-            routeState: 'Queued' 
-        };
-        if (!isManagerView) payload.routeId = routeId;
-
-        const res = await apiFetch(payload);
-        const data = await res.json();
-        
-        if (data.updatedStops || (data.stops && Array.isArray(data.stops))) {
-            let optimizedData = data.updatedStops || data.stops;
-            const returnedStopsMap = new Map();
-            optimizedData.forEach(s => {
-                let exp = expandStop(s);
-                let backendCluster = exp.cluster;
-                let mappedCluster = backendCluster;
-
-                if (sentClusters.length > 0) {
-                    if (sentClusters.includes(backendCluster)) {
-                        mappedCluster = backendCluster; 
-                    } else if (backendCluster < sentClusters.length) {
-                        mappedCluster = sentClusters[backendCluster]; 
-                    } else if (sentClusters.length === 1) {
-                        mappedCluster = sentClusters[0]; 
-                    }
-                }
-
-                returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
-            });
-
-            stops = stops.map(s => {
-                if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
-                if (s.routeState === 'Queued') s.routeState = 'Ready';
-                return s;
-            });
-
-            stops.sort((a, b) => {
-                let cA = a.cluster === 'X' ? 999 : (a.cluster || 0);
-                let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
-                if (cA !== cB) return cA - cB;
-                return timeToMins(a.eta) - timeToMins(b.eta);
-            });
-
-            isPollingForRoute = false;
-            dirtyRoutes.clear();
-            if (typeof render === 'function') render(); 
-            if (typeof drawRoute === 'function') drawRoute(); 
-            if (typeof updateSummary === 'function') updateSummary();
-            if (typeof silentSaveRouteState === 'function') silentSaveRouteState(); 
-        } else if (data.status === 'queued' || data.success) {
-            let pqPayload = { action: 'processQueue', driverId: insp.id };
-            if (!isManagerView) pqPayload.routeId = routeId;
-            
-            apiFetch(pqPayload).catch(err => console.log("Ignored expected timeout from processQueue", err));
-            
-            isPollingForRoute = true;
-            pollRetries = 0;
-            setTimeout(loadData, 5000);
-        } else {
-            await loadData();
-        }
-    } catch (e) {
-        if(overlay) overlay.style.display = 'none';
-        if (typeof customAlert === 'function') await customAlert("Generation encountered an error. Please wait a moment and try again.");
-    } 
-}
-
-async function handleCalculate() {
-    const overlay = document.getElementById('processing-overlay');
-    if (overlay) overlay.style.display = 'flex';
-
-    try {
-        const activeStops = stops.filter(s => isStopVisible(s, false) && s.lng && s.lat);
-        const isEndpointsDirty = dirtyRoutes.has('endpoints_0');
-        const hasActiveRoutes = stops.some(s => isRouteAssigned(s.status));
-        let stopsToCalculate = [];
-
-        if (isEndpointsDirty) {
-            stopsToCalculate = activeStops;
-            if (hasActiveRoutes) {
-                stopsToCalculate = stopsToCalculate.filter(s => s.cluster !== 'X');
-            }
-        } else {
-            stopsToCalculate = activeStops.filter(s => {
-                if (hasActiveRoutes && s.cluster === 'X') return false;
-                const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
-                return dirtyRoutes.has(routeKey);
-            });
-        }
-
-        if (stopsToCalculate.length === 0) { 
-            if (overlay) overlay.style.display = 'none';
-            dirtyRoutes.clear();
-            if (typeof render === 'function') render(); 
-            if (typeof drawRoute === 'function') drawRoute(); 
-            if (typeof updateSummary === 'function') updateSummary();
-            return; 
-        }
-        
-        let sentClusters = [...new Set(stopsToCalculate.map(s => s.cluster))].filter(c => c !== 'X').sort();
-
-        const eps = getActiveEndpoints();
-
-        let payload = {
-            action: 'calculate',
-            driverId: isManagerView ? currentInspectorFilter : driverParam,
-            driver: driverParam,
-            startTime: currentStartTime,
-            startAddr: eps.start?.address || null,
-            endAddr: eps.end?.address || null,
-            isManager: isManagerView,
-            stops: stopsToCalculate.map(s => {
-                let outC = s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1;
-                return minifyStop(s, outC);
-            })
-        };
-        if (!isManagerView) payload.routeId = routeId;
-
-        const res = await apiFetch(payload);
-        const data = await res.json();
-        
-        if (data.error) throw new Error(data.error);
-
-        const returnedStopsMap = new Map();
-        data.updatedStops.forEach(s => {
-            let exp = expandStop(s);
-            let backendCluster = exp.cluster;
-            let mappedCluster = backendCluster;
-
-            if (sentClusters.length > 0) {
-                if (sentClusters.includes(backendCluster)) {
-                    mappedCluster = backendCluster;
-                } else if (backendCluster < sentClusters.length) {
-                    mappedCluster = sentClusters[backendCluster];
-                } else if (sentClusters.length === 1) {
-                    mappedCluster = sentClusters[0];
-                }
-            }
-
-            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
-        });
-
-        stops = stops.map(s => {
-            if (returnedStopsMap.has(String(s.id))) {
-                return returnedStopsMap.get(String(s.id));
-            }
-            return s;
-        });
-
-        if (!isManagerView) isAlteredRoute = true;
-        historyStack = []; 
-        dirtyRoutes.clear();
-        originalStops = JSON.parse(JSON.stringify(stops)); 
-        if (typeof render === 'function') render(); 
-        if (typeof drawRoute === 'function') drawRoute(); 
-        if (typeof updateSummary === 'function') updateSummary();
-        if (typeof silentSaveRouteState === 'function') silentSaveRouteState();
-
-    } catch (e) { 
-        if (overlay) overlay.style.display = 'none';
-        if (typeof customAlert === 'function') await customAlert("Error calculating the route. Please try again."); 
-    } finally { 
-        if (overlay) overlay.style.display = 'none'; 
-    }
-}
-
-async function handleRestoreOriginal() {
-    if(typeof customConfirm === 'function' && !(await customConfirm("Restore the original route layout planned by the manager?"))) return;
-    
-    const overlay = document.getElementById('processing-overlay');
-    if(overlay) overlay.style.display = 'flex';
-
-    try {
-        const inspId = isManagerView ? currentInspectorFilter : driverParam;
-        let payload = { action: 'restoreOriginalRoute', driverId: inspId };
-        if (!isManagerView) payload.routeId = routeId;
-
-        await apiFetch(payload);
-        
-        if (typeof loadData === 'function') await loadData(); 
-    } catch(e) {
-        if(overlay) overlay.style.display = 'none';
-        if (typeof customAlert === 'function') await customAlert("Error restoring the route. Please try again."); 
-        console.error(e);
-    } finally {
-        if(overlay) overlay.style.display = 'none'; 
-    }
+    updateMarkerColors(); updateRouteTimes();
 }
