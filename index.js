@@ -1,11 +1,14 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.8
+ * VERSION: V1.9
  * * CHANGES:
+ * V1.9 - Ingestion Engine Finalization. Replaced the environment variable for 
+ * DEFAULT_STATE with a hardcoded fallback. Implemented real-time Admin Lock 
+ * Verification natively in Firestore to prevent routing collisions, returning 
+ * 'confirm_hijack' to the frontend if a locked route is accessed without an override.
  * V1.8 - Architecture Upgrade. Replaced functions-framework with a native Express.js 
- * server and Docker containerization to bypass Google Cloud Buildpack OS mismatches. 
- * Explicitly bound the server to listen on 0.0.0.0:$PORT.
- * V1.7 - Resolved Cloud Run 8080 timeout. Added functions-framework wrapper.
+ * server and Docker containerization to bypass OS mismatches. 
+ * V1.7 - Resolved Cloud Run 8080 timeout.
  * V1.6 - Architecture Migration. Stripped out the Firebase CLI wrappers.
  * V1.5 - Data Ingestion Engine. Added 'uploadCsv', Firestore GeocodeCache.
  * V1.4 - Routing Engine. Added the 'calculate' action block.
@@ -24,7 +27,7 @@ const db = admin.firestore();
 // Initialize Native Express App
 const app = express();
 
-// Middleware to parse incoming JSON payloads (Crucial for Express)
+// Middleware to parse incoming JSON payloads
 app.use(express.json());
 
 // CORS Middleware to allow Dashboard communication
@@ -38,7 +41,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Math Helper for Fallback Routing (Migrated from Core_System)
+// Math Helper for Fallback Routing
 function getDistMi(lat1, lon1, lat2, lon2) {
     const R = 3958.8;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -70,7 +73,7 @@ app.post('/', async (req, res) => {
         if (action === 'uploadCsv') {
             console.log(`[API] Executing uploadCsv for Driver: ${payload.driverId}`);
             
-            const { csvData, driverId, companyId, type } = payload;
+            const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
             if (!csvData || !driverId || !companyId || !type) {
                 return res.status(400).json({ error: "Missing required upload parameters." });
             }
@@ -86,11 +89,25 @@ app.post('/', async (req, res) => {
             }
             const settings = settingsSnapshot.docs[0].data().mappingArray; 
 
-            // 2. Fetch Driver Document to determine starting Sequence ID
+            // 2. Fetch Driver Document & Verify Admin Locks
             const driverRef = db.collection('Users').doc(String(driverId));
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) {
                 return res.status(404).json({ error: `Driver ID ${driverId} not found.` });
+            }
+
+            const currentLock = driverDoc.data().lockedBy || "";
+            const uId = String(adminId || "").trim();
+
+            // Hijack Prevention Logic
+            if (!overrideLock && currentLock !== "" && currentLock !== uId) {
+                console.log(`[API] Strict ID mismatch for Driver ${driverId}. Requesting Hijack confirmation.`);
+                // Return 200 so the frontend successfully parses the custom hijack payload
+                return res.status(200).json({ 
+                    success: false, 
+                    status: 'confirm_hijack', 
+                    driverId: driverId 
+                });
             }
 
             const existingBay = driverDoc.data().stagingBay || [];
@@ -110,7 +127,7 @@ app.post('/', async (req, res) => {
                 relax_column_count: true
             });
 
-            const fallbackState = process.env.DEFAULT_STATE || 'TX';
+            const fallbackState = 'TX'; // Hardcoded per V1.9 instructions
             const mapsApiKey = process.env.MAPS_API_KEY;
             
             let newOrders = [];
@@ -171,7 +188,7 @@ app.post('/', async (req, res) => {
                                 lat = geoData.results[0].geometry.location.lat;
                                 lng = geoData.results[0].geometry.location.lng;
                                 
-                                // Save to Firestore Cache instantly (TTL handles expiration)
+                                // Save to Firestore Cache instantly
                                 await cacheRef.set({
                                     lat: lat,
                                     lng: lng,
@@ -210,12 +227,13 @@ app.post('/', async (req, res) => {
                 return res.status(200).json({ success: true, message: "No valid orders found in CSV." });
             }
 
-            // 5. Save to Firestore natively using ArrayUnion
+            // 5. Save to Firestore natively using ArrayUnion and apply Admin Lock
             const batch = db.batch();
             
             batch.update(driverRef, {
                 stagingBay: admin.firestore.FieldValue.arrayUnion(...newOrders),
-                routeState: 'Pending'
+                routeState: 'Pending',
+                lockedBy: uId
             });
 
             // 6. Track Geocoding API Usage
@@ -254,8 +272,8 @@ app.all('/', (req, res) => {
     res.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// EXPLICIT PORT BINDING - The absolute fix for the 8080 timeout
+// EXPLICIT PORT BINDING
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.8) actively listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.9) actively listening on port ${port}`);
 });
