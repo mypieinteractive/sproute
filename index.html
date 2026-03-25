@@ -15,6 +15,17 @@
 </head>
 <body class="view-inspector manager-all-inspectors">
 
+<aside id="testing-sidebar">
+    <div class="test-header">Testing Mode</div>
+    <div class="test-rocker rocker" style="margin: 15px;">
+        <div id="btn-backend-sheet" class="active" onclick="setTestingBackend('sheet')">Sheet</div>
+        <div id="btn-backend-firestore" onclick="setTestingBackend('firestore')">Firestore</div>
+    </div>
+    <div id="visual-console">
+        <div class="log-entry log-info"><strong>System Initialize</strong><br>Awaiting network activity...</div>
+    </div>
+</aside>
+
 <div id="processing-overlay" style="display: flex;">
     <div class="spinner-container">
         <div class="loader"></div>
