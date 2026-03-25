@@ -1,13 +1,12 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.14
+ * VERSION: V1.15
  * * CHANGES:
- * V1.14 - GET / Initialization Overhaul. Implemented dynamic Company ID resolution 
- * via unified Users collection (adminId/driverId fallback). Added Manager 
- * aggregation logic to loop through all company users, extract stagingBays, and 
- * wrap tuples with explicit `driverId` and `routeState` markers for the front-end.
- * V1.13 - Phase 1 CRUD Migration. Added POST handlers for `updateOrder`, 
- * `updateMultipleOrders`, and `deleteMultipleOrders`.
+ * V1.15 - Payload Parity Fix. Updated the GET / endpoint to include `startLat`, `startLng`, etc. 
+ * inside the `inspectors` array, added `driverName` to the manager stop wrappers, and injected 
+ * `routeStart`, `routeEnd`, and `routeState` into the root JSON object for individual inspector views.
+ * V1.14 - GET / Initialization Overhaul. Implemented dynamic Company ID resolution.
+ * V1.13 - Phase 1 CRUD Migration. Added POST handlers for update/delete operations.
  * V1.12 - Database Targeting Fix. Explicitly target 'sproute' firestore database.
  * V1.11 - Dashboard GET Fix. Added explicit Project ID fallback.
  * V1.10 - Core Engine Port. GET endpoint, generateRoute, calculate blocks.
@@ -174,16 +173,36 @@ app.get('/', async (req, res) => {
         const usersSnap = await db.collection('Users').where('companyId', '==', String(resolvedCompanyId)).get();
         const inspectors = [];
         
+        let globalRouteStart = null;
+        let globalRouteEnd = null;
+        let globalRouteState = 'Pending';
+        let foundDriverName = '';
+        
         usersSnap.forEach(doc => {
             const uData = doc.data();
             const isInsp = uData.isInspector === true || String(uData.isInspector).toLowerCase() === 'true';
+            
+            // Extract endpoints for UI
+            let startAddr = uData.endpoints?.start?.address || uData.startAddress || "";
+            let startLat = uData.endpoints?.start?.lat || uData.startLat || null;
+            let startLng = uData.endpoints?.start?.lng || uData.startLng || null;
+
+            let endAddr = uData.endpoints?.end?.address || uData.endAddress || "";
+            let endLat = uData.endpoints?.end?.lat || uData.endLat || null;
+            let endLng = uData.endpoints?.end?.lng || uData.endLng || null;
             
             if (isInsp) {
                 inspectors.push({ 
                     id: doc.id, 
                     name: uData.name || "Inspector", 
                     email: uData.email || "", 
-                    isInspector: true 
+                    isInspector: true,
+                    startAddress: startAddr,
+                    startLat: startLat,
+                    startLng: startLng,
+                    endAddress: endAddr,
+                    endLat: endLat,
+                    endLng: endLng
                 });
             }
 
@@ -195,13 +214,20 @@ app.get('/', async (req, res) => {
                     activeStops.push({
                         data: stopTuple,
                         driverId: doc.id,
+                        driverName: uData.name || "Inspector",
                         routeState: uData.routeState || 'Pending'
                     });
                 });
             } else {
-                // If not manager, only return the requested driver's raw bay
+                // If not manager, only return the requested driver's raw bay and global states
                 if (driverId && doc.id === String(driverId)) {
                     activeStops = uData.stagingBay || [];
+                    globalRouteState = uData.routeState || 'Pending';
+                    foundDriverName = uData.name || '';
+                    if (uData.endpoints) {
+                        globalRouteStart = uData.endpoints.start || null;
+                        globalRouteEnd = uData.endpoints.end || null;
+                    }
                 }
             }
         });
@@ -228,6 +254,15 @@ app.get('/', async (req, res) => {
             companyLogo: companyData.companyLogo || "",
             ccCompanyDefault: companyData.ccCompanyDefault !== false // Default true unless explicitly false
         };
+        
+        // Inject root variables for individual inspector views
+        if (!isManager && driverId) {
+            responseObj.routeStart = globalRouteStart;
+            responseObj.routeEnd = globalRouteEnd;
+            responseObj.routeState = globalRouteState;
+            responseObj.driverId = driverId;
+            if (foundDriverName) responseObj.driverName = foundDriverName;
+        }
 
         // Inject Admin Email if requested for the dispatch modal
         if (adminId) {
@@ -663,5 +698,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.14) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.15) listening on port ${port}`);
 });
