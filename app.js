@@ -1,10 +1,11 @@
 // *
-// * Dashboard - V11.17
+// * Dashboard - V11.19
 // * FILE: app.js
 // * Changes: 
-// * 1. Added showAddOrderModal() to generate the single-order form and validate inputs.
-// * 2. Implemented logic to construct a fake CSV Blob inside showAddOrderModal() to perfectly mimic standard CSV uploads.
-// * 3. Updated render() to toggle the entire `#header-actions-wrapper` rather than just the dropzone.
+// * 1. Added FIRESTORE_APP_URL constant for the new Google Cloud backend.
+// * 2. Added `backendParam` extraction from the URL to check for `&backend=firestore`.
+// * 3. Created `activeApiUrl` to dynamically route requests based on the URL parameter.
+// * 4. Updated `apiFetch()` and `loadData()` to use `activeApiUrl` instead of hardcoding the web app URL.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -23,6 +24,21 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+const FIRESTORE_APP_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
+
+const params = new URLSearchParams(window.location.search);
+let routeId = params.get('id');
+const driverParam = params.get('driver');
+const companyParam = params.get('company');
+const adminParam = params.get('admin');
+const backendParam = params.get('backend');
+
+// A/B Backend Switch Logic
+const activeApiUrl = (backendParam && backendParam.toLowerCase() === 'firestore') ? FIRESTORE_APP_URL : WEB_APP_URL;
+
+const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
+// Include managermobilesplit in manager views
+const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile' || viewMode === 'managermobilesplit'); 
 
 // Global API Usage Tracker
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
@@ -32,18 +48,8 @@ function apiFetch(payload) {
     payload.frontEndApiUsage = { geocode: frontEndApiUsage.geocode, mapLoads: frontEndApiUsage.mapLoads };
     frontEndApiUsage.geocode = 0;
     frontEndApiUsage.mapLoads = 0;
-    return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+    return fetch(activeApiUrl, { method: 'POST', body: JSON.stringify(payload) });
 }
-
-const params = new URLSearchParams(window.location.search);
-let routeId = params.get('id');
-const driverParam = params.get('driver');
-const companyParam = params.get('company');
-const adminParam = params.get('admin');
-
-const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
-// Include managermobilesplit in manager views
-const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile' || viewMode === 'managermobilesplit'); 
 
 // Global Keyboard Listeners
 document.addEventListener('keydown', (e) => { 
@@ -678,7 +684,7 @@ async function loadData() {
     }
 
     try {
-        let fetchUrl = `${WEB_APP_URL}${queryParams}&_t=${new Date().getTime()}`;
+        let fetchUrl = `${activeApiUrl}${queryParams}&_t=${new Date().getTime()}`;
         const res = await fetch(fetchUrl);
         const data = await res.json();
         
@@ -2207,7 +2213,7 @@ function showAddOrderModal() {
     let appBtns = availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
     let appHtml = `
         <div class="form-group">
-            <label>App <span style="float:right; font-weight:normal;">Optional</span></label>
+            <label>App</label>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">
                 ${appBtns}
             </div>
@@ -2228,16 +2234,16 @@ function showAddOrderModal() {
 
             <div class="form-group">
                 <label>Address <span style="float:right; font-weight:normal;">Required</span></label>
-                <input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345">
+                <input type="text" id="add-address" class="form-control" placeholder="e.g. 123 Main St, City, ST 12345">
             </div>
 
             <div class="grid-2-col">
                 <div class="form-group">
-                    <label>Latitude <span style="float:right; font-weight:normal;">Optional</span></label>
+                    <label>Latitude</label>
                     <input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776">
                 </div>
                 <div class="form-group">
-                    <label>Longitude <span style="float:right; font-weight:normal;">Optional</span></label>
+                    <label>Longitude</label>
                     <input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797">
                 </div>
             </div>
@@ -2249,12 +2255,12 @@ function showAddOrderModal() {
 
             <div class="grid-2-col">
                 <div class="form-group">
-                    <label>Client <span style="float:right; font-weight:normal;">Optional</span></label>
-                    <input type="text" id="add-client" class="form-control" placeholder="Client Name">
+                    <label>Client</label>
+                    <input type="text" id="add-client" class="form-control" placeholder="">
                 </div>
                 <div class="form-group">
-                    <label>Order Type <span style="float:right; font-weight:normal;">Optional</span></label>
-                    <input type="text" id="add-type" class="form-control" placeholder="e.g. Install">
+                    <label>Order Type</label>
+                    <input type="text" id="add-type" class="form-control" placeholder="">
                 </div>
             </div>
 
