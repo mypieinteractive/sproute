@@ -1,10 +1,10 @@
 // *
-// * Dashboard - V12.0
+// * Dashboard - V12.1
 // * FILE: app.js
 // * Changes: 
-// * 1. Added showAddOrderModal() to generate the single-order form and validate inputs.
-// * 2. Implemented logic to construct a fake CSV Blob inside showAddOrderModal() to perfectly mimic standard CSV uploads.
-// * 3. Updated render() to toggle the entire `#header-actions-wrapper` rather than just the dropzone.
+// * 1. Converted WEB_APP_URL from a const to a let to allow dynamic reassignment.
+// * 2. Added logic to check if `adminParam` strictly equals 'firestore'.
+// * 3. Reassigns WEB_APP_URL to the new Cloud Run/Firestore URL if true to enable parallel testing.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -22,7 +22,7 @@ document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCu
 document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
+let WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
 
 // Global API Usage Tracker
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
@@ -40,6 +40,13 @@ let routeId = params.get('id');
 const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const adminParam = params.get('admin');
+
+// --- A/B Firestore Testing Switch ---
+if (adminParam === 'firestore') {
+    WEB_APP_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
+    console.log("🔥 Firestore testing mode enabled: API requests routed to Cloud Run.");
+}
+// ------------------------------------
 
 const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
 // Include managermobilesplit in manager views
