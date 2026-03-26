@@ -1,17 +1,14 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.19
+ * VERSION: V1.20
  * * CHANGES:
- * V1.19 - Deep Schema Alignment. Removed flat-field and stringified JSON logic. 
- * Updated all extractors and update methods to traverse the actual nested NoSQL 
- * schema (e.g., `settings.accountType`, `roles.isInspector`, `defaultEndpoints.start`, 
- * and `activeStaging.orders`). Updated nested field mutations using dot-notation.
- * V1.18 - Schema Alignment (Deprecated).
+ * V1.20 - Glide Webhook Integration. Added payload inference to auto-detect incoming 
+ * webhooks from Glide. Built `updateUserFromGlide` handler to split comma-delimited 
+ * coordinates, map flat Glide properties to nested Firestore paths using dot-notation, 
+ * and automatically upsert new user profiles. Included `updateEndpoint` for the dashboard UI.
+ * V1.19 - Deep Schema Alignment. 
  * V1.17 - Payload Parity & Query Expansion.
- * V1.16 - Schema Extractor Update.
  * V1.15 - Payload Parity Fix.
- * V1.14 - GET / Initialization Overhaul. 
- * V1.13 - Phase 1 CRUD Migration. 
  */
 
 const express = require('express');
@@ -188,7 +185,7 @@ app.get('/', async (req, res) => {
             reoptimize: companyData.permissions?.reoptimize ?? true 
         };
         let companyEmail = companyData.email || "";
-        let defaultEmailMessage = companyData.settings?.defaultEmailMessage || "";
+        let defaultEmailMessage = companyData.settings?.defaultEmailMessage || companyData.defaultEmailMessage || "";
         let serviceDelay = parseInt(companyData.settings?.serviceDelayMins || 0);
         let companyAddress = companyData.address || "";
         let companyLogo = companyData.logoUrl || "";
@@ -217,8 +214,6 @@ app.get('/', async (req, res) => {
             const stagingBay = uData.activeStaging?.orders || [];
             const rState = uData.activeStaging?.status || 'Pending';
 
-            // Push ALL users into the inspectors dictionary to retain color coding for Edge Cases, 
-            // but pass the isInspector flag so app.js can filter them out of the UI dropdowns
             inspectors.push({ 
                 id: doc.id, name: driverName, email: driverEmail, isInspector: isInsp,
                 startAddress: startAddr, startLat: startLat, startLng: startLng,
@@ -242,7 +237,7 @@ app.get('/', async (req, res) => {
             }
         });
 
-        // Fetch CSV Settings (Using exact schema fields)
+        // Fetch CSV Settings
         const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
@@ -298,11 +293,105 @@ app.post('/', async (req, res) => {
         let action = payload.action;
 
         // Auto-detect Glide Webhook (Payload Inference)
-        if (!action && payload.driverId && (payload.startCoords || payload.endCoords || payload.startAddress || payload.endAddress)) {
-            action = 'updateInspectorDefault';
+        if (!action && payload._collection === "Users" && payload.driverId) {
+            action = 'updateUserFromGlide';
         }
 
-        // --- 1. CSV INGESTION ENGINE ---
+        // --- 1. GLIDE WEBHOOK INGESTION ---
+        if (action === 'updateUserFromGlide') {
+            const { driverId, companyId, name, email, startAddress, endAddress, startCoords, endCoords, isInspector, modifyRoutes, reoptimize } = payload;
+            if (!driverId) return res.status(400).json({ error: "Missing driverId." });
+
+            const driverRef = db.collection('Users').doc(String(driverId));
+            const driverDoc = await driverRef.get();
+
+            const parseCoords = (coordsStr) => {
+                if (!coordsStr) return null;
+                let parts = String(coordsStr).split(',');
+                if (parts.length >= 2) {
+                    let lat = parseFloat(parts[0].trim());
+                    let lng = parseFloat(parts[1].trim());
+                    if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+                }
+                return null;
+            };
+
+            let sGeo = parseCoords(startCoords);
+            let eGeo = parseCoords(endCoords);
+
+            if (!driverDoc.exists) {
+                // Create new user profile from scratch based on nested schema
+                const newUser = {
+                    companyId: companyId || "",
+                    name: name || "New User",
+                    email: email || "",
+                    roles: { isInspector: isInspector === true },
+                    permissions: {
+                        modifyRoutes: modifyRoutes === true,
+                        reoptimize: reoptimize === true
+                    },
+                    defaultEndpoints: {
+                        start: { address: startAddress || "", lat: sGeo ? sGeo.lat : null, lng: sGeo ? sGeo.lng : null },
+                        end: { address: endAddress || "", lat: eGeo ? eGeo.lat : null, lng: eGeo ? eGeo.lng : null }
+                    },
+                    activeStaging: { orders: [], status: 'Pending' }
+                };
+                await driverRef.set(newUser);
+            } else {
+                // Update existing user using dot-notation to preserve other nested data
+                let updates = {};
+                
+                if (name !== undefined) updates['name'] = name;
+                if (email !== undefined) updates['email'] = email;
+                if (companyId !== undefined) updates['companyId'] = companyId;
+                
+                if (isInspector !== undefined) updates['roles.isInspector'] = isInspector === true;
+                if (modifyRoutes !== undefined) updates['permissions.modifyRoutes'] = modifyRoutes === true;
+                if (reoptimize !== undefined) updates['permissions.reoptimize'] = reoptimize === true;
+
+                if (startAddress !== undefined) updates['defaultEndpoints.start.address'] = startAddress;
+                if (sGeo) {
+                    updates['defaultEndpoints.start.lat'] = sGeo.lat;
+                    updates['defaultEndpoints.start.lng'] = sGeo.lng;
+                }
+
+                if (endAddress !== undefined) updates['defaultEndpoints.end.address'] = endAddress;
+                if (eGeo) {
+                    updates['defaultEndpoints.end.lat'] = eGeo.lat;
+                    updates['defaultEndpoints.end.lng'] = eGeo.lng;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    await driverRef.update(updates);
+                }
+            }
+            return res.status(200).json({ success: true });
+        }
+
+        // --- 2. DASHBOARD UI ENDPOINT UPDATE ---
+        if (action === 'updateEndpoint') {
+            const { driverId, type, address, lat, lng } = payload;
+            if (!driverId || !type) return res.status(400).json({ error: "Missing parameters." });
+
+            const driverRef = db.collection('Users').doc(String(driverId));
+            const driverDoc = await driverRef.get();
+            if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
+
+            let pLat = parseFloat(lat);
+            let pLng = parseFloat(lng);
+            let pAddr = address || "";
+
+            let updates = {
+                [`defaultEndpoints.${type}.address`]: pAddr,
+                [`defaultEndpoints.${type}.lat`]: pLat,
+                [`defaultEndpoints.${type}.lng`]: pLng
+            };
+
+            await driverRef.update(updates);
+            return res.status(200).json({ success: true, endpoint: { lat: pLat, lng: pLng, address: pAddr } });
+        }
+
+        // --- 3. CSV INGESTION ENGINE ---
         if (action === 'uploadCsv') {
             const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
             if (!csvData || !driverId || !companyId || !type) return res.status(400).json({ error: "Missing required upload parameters." });
@@ -407,7 +496,7 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, count: newOrders.length });
         }
 
-        // --- 2. OPTIMIZATION ENGINE (generateRoute) ---
+        // --- 4. OPTIMIZATION ENGINE (generateRoute) ---
         if (action === 'generateRoute') {
             const driverRef = db.collection('Users').doc(String(payload.driverId));
             const driverDoc = await driverRef.get();
@@ -484,7 +573,7 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, updatedStops: finalStops });
         }
 
-        // --- 3. RECALCULATION ENGINE (calculate) ---
+        // --- 5. RECALCULATION ENGINE (calculate) ---
         if (action === 'calculate') {
             const driverRef = db.collection('Users').doc(String(payload.driverId));
             const driverDoc = await driverRef.get();
@@ -578,7 +667,7 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, updatedStops: finalStops });
         }
 
-        // --- 4. PRE-ROUTE STAGING & CRUD (Phase 1) ---
+        // --- 6. PRE-ROUTE STAGING & CRUD (Phase 1) ---
 
         if (action === 'updateOrder') {
             const { rowId, driverId, updates } = payload;
@@ -721,5 +810,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.19) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.20) listening on port ${port}`);
 });
