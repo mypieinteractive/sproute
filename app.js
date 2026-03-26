@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V12.4
+// * Dashboard - V12.5
 // * FILE: app.js
 // * Changes: 
-// * 1. Modified `logToVisualConsole()` to use `prepend()` for reverse-chronological logging.
-// * 2. Removed `scrollTop` auto-scrolling behavior from the console output.
+// * 1. Hardened inspector filtering logic in `showUploadModal` and `showAddOrderModal` 
+// * to strictly evaluate boolean values and strip out explicitly `false` users.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -204,6 +204,9 @@ let currentRouteViewFilter = 'all';
 let isFirstMapRender = true;
 
 let latestSuggestions = { start: null, end: null };
+
+// Safe casting helper for inspector booleans
+const isTrueInspector = (val) => val === true || String(val).trim().toLowerCase() === 'true';
 
 // --- CORE VISIBILITY FILTER ---
 function isStopVisible(s, applyRouteFilter = true) {
@@ -537,8 +540,7 @@ function updateInspectorDropdown() {
     
     inspectors.forEach((i, idx) => { 
         if (validInspectorIds.has(String(i.id))) {
-            const isInsp = i.isInspector === true || String(i.isInspector).toLowerCase() === 'true';
-            if (isInsp) {
+            if (isTrueInspector(i.isInspector)) {
                 const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
                 filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: bold;">${i.name}</option>`; 
             }
@@ -2266,7 +2268,7 @@ function showAddOrderModal() {
 
     let inspectorHtml = '';
     if (isManagerView && currentInspectorFilter === 'all' && !isIndividual) {
-        const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
+        const filteredInspectors = inspectors.filter(i => isTrueInspector(i.isInspector));
         let inspBtns = filteredInspectors.map(insp => `<div class="pill-btn add-insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
         inspectorHtml = `
             <div class="form-group">
@@ -2434,7 +2436,7 @@ function showUploadModal(file) {
 
     let inspectorHtml = '';
     if (isManagerView && currentInspectorFilter === 'all' && !isIndividual) {
-        const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
+        const filteredInspectors = inspectors.filter(i => isTrueInspector(i.isInspector));
         let inspBtns = filteredInspectors.map(insp => `<div class="pill-btn insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
         inspectorHtml = `
             <div style="margin-bottom: 20px;">
@@ -2745,7 +2747,7 @@ function render() {
             let inspectorHtml = `<div class="col-insp" style="display: ${isSingleInspector ? 'none' : 'block'};">${s.driverName || driverParam || 'Unassigned'}</div>`;
             
             if (inspectors.length > 0) {
-                const filteredInspectors = inspectors.filter(i => i.isInspector === true || String(i.isInspector).toLowerCase() === 'true');
+                const filteredInspectors = inspectors.filter(i => isTrueInspector(i.isInspector));
                 
                 const optionsHtml = filteredInspectors.map((insp) => {
                     const originalIdx = inspectors.indexOf(insp);
