@@ -6,6 +6,12 @@
  * Updated all extractors and update methods to traverse the actual nested NoSQL 
  * schema (e.g., `settings.accountType`, `roles.isInspector`, `defaultEndpoints.start`, 
  * and `activeStaging.orders`). Updated nested field mutations using dot-notation.
+ * V1.18 - Schema Alignment (Deprecated).
+ * V1.17 - Payload Parity & Query Expansion.
+ * V1.16 - Schema Extractor Update.
+ * V1.15 - Payload Parity Fix.
+ * V1.14 - GET / Initialization Overhaul. 
+ * V1.13 - Phase 1 CRUD Migration. 
  */
 
 const express = require('express');
@@ -182,7 +188,7 @@ app.get('/', async (req, res) => {
             reoptimize: companyData.permissions?.reoptimize ?? true 
         };
         let companyEmail = companyData.email || "";
-        let defaultEmailMessage = companyData.settings?.defaultEmailMessage || companyData.defaultEmailMessage || "";
+        let defaultEmailMessage = companyData.settings?.defaultEmailMessage || "";
         let serviceDelay = parseInt(companyData.settings?.serviceDelayMins || 0);
         let companyAddress = companyData.address || "";
         let companyLogo = companyData.logoUrl || "";
@@ -211,13 +217,13 @@ app.get('/', async (req, res) => {
             const stagingBay = uData.activeStaging?.orders || [];
             const rState = uData.activeStaging?.status || 'Pending';
 
-            if (isInsp) {
-                inspectors.push({ 
-                    id: doc.id, name: driverName, email: driverEmail, isInspector: true,
-                    startAddress: startAddr, startLat: startLat, startLng: startLng,
-                    endAddress: endAddr, endLat: endLat, endLng: endLng
-                });
-            }
+            // Push ALL users into the inspectors dictionary to retain color coding for Edge Cases, 
+            // but pass the isInspector flag so app.js can filter them out of the UI dropdowns
+            inspectors.push({ 
+                id: doc.id, name: driverName, email: driverEmail, isInspector: isInsp,
+                startAddress: startAddr, startLat: startLat, startLng: startLng,
+                endAddress: endAddr, endLat: endLat, endLng: endLng
+            });
 
             if (isManager) {
                 stagingBay.forEach(stopTuple => {
@@ -236,7 +242,7 @@ app.get('/', async (req, res) => {
             }
         });
 
-        // Fetch CSV Settings
+        // Fetch CSV Settings (Using exact schema fields)
         const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
