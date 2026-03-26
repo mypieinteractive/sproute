@@ -295,7 +295,12 @@ app.get('/', async (req, res) => {
 app.post('/', async (req, res) => {
     try {
         const payload = req.body;
-        const action = payload.action;
+        let action = payload.action;
+
+        // Auto-detect Glide Webhook (Payload Inference)
+        if (!action && payload.driverId && (payload.startCoords || payload.endCoords || payload.startAddress || payload.endAddress)) {
+            action = 'updateInspectorDefault';
+        }
 
         // --- 1. CSV INGESTION ENGINE ---
         if (action === 'uploadCsv') {
