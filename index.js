@@ -1,15 +1,11 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.18
+ * VERSION: V1.19
  * * CHANGES:
- * V1.18 - Schema Alignment. Added JSON.parse() for `Users.JSON` (staging bay) 
- * and `Companies.Permissions`. Updated `CSV_Settings` queries to use exact 
- * "Company ID" and "Type" fields based on database schema. Applied JSON.stringify() 
- * to all array updates being pushed back to the `JSON` field in Firestore.
- * V1.17 - Payload Parity & Query Expansion.
- * V1.16 - Schema Extractor Update.
- * V1.15 - Payload Parity Fix.
- * V1.14 - GET / Initialization Overhaul. 
+ * V1.19 - Deep Schema Alignment. Removed flat-field and stringified JSON logic. 
+ * Updated all extractors and update methods to traverse the actual nested NoSQL 
+ * schema (e.g., `settings.accountType`, `roles.isInspector`, `defaultEndpoints.start`, 
+ * and `activeStaging.orders`). Updated nested field mutations using dot-notation.
  */
 
 const express = require('express');
@@ -58,24 +54,6 @@ function incrementApiUsage(batch, driverRef, compRef, field, count) {
     if (count <= 0) return;
     batch.update(driverRef, { [field]: admin.firestore.FieldValue.increment(count) });
     batch.update(compRef, { [field]: admin.firestore.FieldValue.increment(count) });
-}
-
-function getField(data, keys) {
-    for (let k of keys) {
-        if (data[k] !== undefined) return data[k];
-    }
-    return undefined;
-}
-
-function safeJsonParse(dataStr, fallback = []) {
-    if (!dataStr) return fallback;
-    if (typeof dataStr === 'object') return dataStr;
-    try {
-        return JSON.parse(dataStr);
-    } catch (e) {
-        console.error("JSON Parse Error:", e.message);
-        return fallback;
-    }
 }
 
 function formatStopForManager(obj, driverId, companyId, routeState) {
@@ -177,12 +155,13 @@ app.get('/', async (req, res) => {
         let resolvedCompanyId = explicitCompanyId ? String(explicitCompanyId).trim() : null;
         let activeStops = [];
 
+        // Resolve Company ID via Users collection if missing
         if (!resolvedCompanyId) {
             let lookupId = adminId || driverId; 
             if (lookupId) {
                 const userDoc = await db.collection('Users').doc(String(lookupId)).get();
                 if (userDoc.exists) {
-                    resolvedCompanyId = getField(userDoc.data(), ['Company ID', 'companyId', 'CompanyId']);
+                    resolvedCompanyId = userDoc.data().companyId;
                 }
             }
         }
@@ -191,68 +170,46 @@ app.get('/', async (req, res) => {
             return res.status(400).json({ error: "Could not resolve Company ID from provided parameters." });
         }
 
-        let compDoc = null;
-        let companyData = {};
-        
+        // Fetch Company Data
         const compRef = db.collection('Companies').doc(String(resolvedCompanyId));
-        let directDoc = await compRef.get();
-        
-        if (directDoc.exists) {
-            compDoc = directDoc;
-        } else {
-            const compQuery = await db.collection('Companies').where('Company ID', '==', String(resolvedCompanyId)).limit(1).get();
-            if (!compQuery.empty) {
-                compDoc = compQuery.docs[0];
-            } else {
-                const compQuery2 = await db.collection('Companies').where('Row ID', '==', String(resolvedCompanyId)).limit(1).get();
-                if (!compQuery2.empty) compDoc = compQuery2.docs[0];
-            }
-        }
+        const compDoc = await compRef.get();
+        let companyData = compDoc.exists ? compDoc.data() : {};
 
-        if (compDoc && compDoc.exists) {
-            companyData = compDoc.data();
-        }
+        let accountType = companyData.settings?.accountType || "Company";
+        let displayName = companyData.name || "Dashboard";
+        let permissions = { 
+            modify: companyData.permissions?.modifyRoutes ?? true, 
+            reoptimize: companyData.permissions?.reoptimize ?? true 
+        };
+        let companyEmail = companyData.email || "";
+        let defaultEmailMessage = companyData.settings?.defaultEmailMessage || companyData.defaultEmailMessage || "";
+        let serviceDelay = parseInt(companyData.settings?.serviceDelayMins || 0);
+        let companyAddress = companyData.address || "";
+        let companyLogo = companyData.logoUrl || "";
+        let ccCompanyDefault = companyData.settings?.ccCompanyDefault !== false;
 
-        let rawAccountType = String(getField(companyData, ['Account Type', 'accountType', 'Tier']) || "Individual").trim();
-        let accountType = rawAccountType.charAt(0).toUpperCase() + rawAccountType.slice(1).toLowerCase();
-        let displayName = String(getField(companyData, ['Company Name', 'name', 'Name']) || "Dashboard").trim();
-        
-        let rawPermissions = getField(companyData, ['Permissions', 'permissions']);
-        let permissions = safeJsonParse(rawPermissions, { modify: true, reoptimize: true });
-        
-        let companyEmail = getField(companyData, ['Company Email', 'companyEmail', 'Email']) || "";
-        let defaultEmailMessage = getField(companyData, ['Default Email Message', 'defaultEmailMessage']) || "";
-        let serviceDelay = parseInt(getField(companyData, ['Service Delay', 'serviceDelay'])) || 0;
-        let companyAddress = getField(companyData, ['Company Address', 'companyAddress', 'Address']) || "";
-        let companyLogo = getField(companyData, ['Company Logo', 'companyLogo', 'Logo']) || "";
-        
-        let rawCc = getField(companyData, ['CC Company Default', 'ccCompanyDefault']);
-        let ccCompanyDefault = rawCc === undefined ? false : (String(rawCc).toLowerCase() === 'true');
-
-        let queryField = companyData['Company ID'] !== undefined ? 'Company ID' : 'companyId';
-        const usersSnap = await db.collection('Users').where(queryField, '==', String(resolvedCompanyId)).get();
+        // Fetch Users Data
+        const usersSnap = await db.collection('Users').where('companyId', '==', String(resolvedCompanyId)).get();
         
         const inspectors = [];
         let globalRouteStart = null, globalRouteEnd = null, globalRouteState = 'Pending', foundDriverName = '';
         
         usersSnap.forEach(doc => {
             const uData = doc.data();
-            const rawIsInsp = getField(uData, ['Is Inspector', 'isInspector', 'IsInspector']);
-            const isInsp = rawIsInsp === true || String(rawIsInsp).toLowerCase() === 'true';
+            const isInsp = uData.roles?.isInspector === true;
             
-            let startAddr = getField(uData, ['Start Address', 'startAddress']) || (uData.endpoints?.start?.address) || "";
-            let startLat = getField(uData, ['Start Lat', 'startLat']) || (uData.endpoints?.start?.lat) || null;
-            let startLng = getField(uData, ['Start Lng', 'startLng']) || (uData.endpoints?.start?.lng) || null;
+            let startAddr = uData.defaultEndpoints?.start?.address || "";
+            let startLat = uData.defaultEndpoints?.start?.lat || null;
+            let startLng = uData.defaultEndpoints?.start?.lng || null;
 
-            let endAddr = getField(uData, ['End Address', 'endAddress']) || (uData.endpoints?.end?.address) || "";
-            let endLat = getField(uData, ['End Lat', 'endLat']) || (uData.endpoints?.end?.lat) || null;
-            let endLng = getField(uData, ['End Lng', 'endLng']) || (uData.endpoints?.end?.lng) || null;
+            let endAddr = uData.defaultEndpoints?.end?.address || "";
+            let endLat = uData.defaultEndpoints?.end?.lat || null;
+            let endLng = uData.defaultEndpoints?.end?.lng || null;
             
-            const driverName = getField(uData, ['Name', 'name']) || "Inspector";
-            const driverEmail = getField(uData, ['Email', 'email']) || "";
-            const rawBay = getField(uData, ['JSON', 'stagingBay', 'Staging Bay']) || [];
-            const stagingBay = safeJsonParse(rawBay, []);
-            const rState = getField(uData, ['Route State', 'routeState', 'Status']) || 'Pending';
+            const driverName = uData.name || "Inspector";
+            const driverEmail = uData.email || "";
+            const stagingBay = uData.activeStaging?.orders || [];
+            const rState = uData.activeStaging?.status || 'Pending';
 
             if (isInsp) {
                 inspectors.push({ 
@@ -271,25 +228,19 @@ app.get('/', async (req, res) => {
                     activeStops = stagingBay;
                     globalRouteState = rState;
                     foundDriverName = driverName;
-                    if (uData.endpoints) {
-                        globalRouteStart = uData.endpoints.start || null;
-                        globalRouteEnd = uData.endpoints.end || null;
+                    if (uData.defaultEndpoints) {
+                        globalRouteStart = uData.defaultEndpoints.start || null;
+                        globalRouteEnd = uData.defaultEndpoints.end || null;
                     }
                 }
             }
         });
 
-        // Use exact "Company ID" field based on schema
-        let csvQueryField = 'Company ID';
-        let csvSettingsSnap = await db.collection('CSV_Settings').where(csvQueryField, '==', String(resolvedCompanyId)).get();
-        if (csvSettingsSnap.empty) {
-            csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
-        }
-
+        // Fetch CSV Settings
+        const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
-            let t = getField(doc.data(), ['Type', 'type']);
-            if (t) csvTypes.push(t);
+            if (doc.data().csvType) csvTypes.push(doc.data().csvType);
         });
 
         const responseObj = {
@@ -319,9 +270,8 @@ app.get('/', async (req, res) => {
 
         if (adminId) {
             const adminDoc = await db.collection('Users').doc(String(adminId)).get();
-            if (adminDoc.exists) {
-                let aEmail = getField(adminDoc.data(), ['Email', 'email']);
-                if (aEmail) responseObj.adminEmail = aEmail;
+            if (adminDoc.exists && adminDoc.data().email) {
+                responseObj.adminEmail = adminDoc.data().email;
             }
         }
 
@@ -346,29 +296,23 @@ app.post('/', async (req, res) => {
             const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
             if (!csvData || !driverId || !companyId || !type) return res.status(400).json({ error: "Missing required upload parameters." });
 
-            let settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('Type', '==', String(type)).limit(1).get();
-            if (settingsSnapshot.empty) {
-                settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('type', '==', String(type)).limit(1).get();
-            }
+            const settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('csvType', '==', String(type)).limit(1).get();
             if (settingsSnapshot.empty) return res.status(404).json({ error: `CSV Settings not found for Type: '${type}'` });
             
-            const rawMapping = getField(settingsSnapshot.docs[0].data(), ['Mapping Array', 'mappingArray']);
-            const settings = safeJsonParse(rawMapping, []); 
+            const settings = settingsSnapshot.docs[0].data().mappingArray || []; 
 
             const driverRef = db.collection('Users').doc(String(driverId));
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({ error: `Driver ID ${driverId} not found.` });
 
-            const currentLock = getField(driverDoc.data(), ['Locked By', 'lockedBy']) || "";
+            const currentLock = driverDoc.data().lockedBy || "";
             const uId = String(adminId || "").trim();
 
             if (!overrideLock && currentLock !== "" && currentLock !== uId) {
                 return res.status(200).json({ success: false, status: 'confirm_hijack', driverId: driverId });
             }
 
-            const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
-            const existingBay = safeJsonParse(rawBay, []);
-            
+            const existingBay = driverDoc.data().activeStaging?.orders || [];
             let maxSeq = 0;
             existingBay.forEach(s => {
                 let idStr = String(Array.isArray(s) ? s[0] : (s.rowId || ""));
@@ -440,15 +384,11 @@ app.post('/', async (req, res) => {
             const compRef = db.collection('Companies').doc(String(companyId));
             
             const updatedBay = existingBay.concat(newOrders);
-            
-            let jsonFieldKey = driverDoc.data().JSON !== undefined ? 'JSON' : 'stagingBay';
-            let rStateFieldKey = driverDoc.data()['Route State'] !== undefined ? 'Route State' : 'routeState';
-            let lockedFieldKey = driverDoc.data()['Locked By'] !== undefined ? 'Locked By' : 'lockedBy';
 
             batch.update(driverRef, {
-                [jsonFieldKey]: JSON.stringify(updatedBay),
-                [rStateFieldKey]: 'Pending',
-                [lockedFieldKey]: uId
+                'activeStaging.orders': updatedBay,
+                'activeStaging.status': 'Pending',
+                'lockedBy': uId
             });
             incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
             
@@ -462,16 +402,14 @@ app.post('/', async (req, res) => {
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
 
-            const compId = getField(driverDoc.data(), ['Company ID', 'companyId']);
+            const compId = driverDoc.data().companyId;
             const compRef = db.collection('Companies').doc(String(compId));
             const compDoc = await compRef.get();
-            const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['Service Delay', 'serviceDelay'])) || 0) : 0;
+            const serviceDelay = compDoc.exists ? (parseInt(compDoc.data().settings?.serviceDelayMins) || 0) : 0;
             const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
-            const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
-            let stagingBay = safeJsonParse(rawBay, []);
-            
-            let endpoints = driverDoc.data().endpoints || { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
+            let stagingBay = driverDoc.data().activeStaging?.orders || [];
+            let endpoints = driverDoc.data().defaultEndpoints || { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
             
             let clusters = {};
             stagingBay.forEach(s => {
@@ -524,12 +462,9 @@ app.post('/', async (req, res) => {
             }
 
             const batch = db.batch();
-            let jsonFieldKey = driverDoc.data().JSON !== undefined ? 'JSON' : 'stagingBay';
-            let rStateFieldKey = driverDoc.data()['Route State'] !== undefined ? 'Route State' : 'routeState';
-
             batch.update(driverRef, { 
-                [jsonFieldKey]: JSON.stringify(finalStops), 
-                [rStateFieldKey]: 'Ready' 
+                'activeStaging.orders': finalStops, 
+                'activeStaging.status': 'Ready' 
             });
             incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
             incrementApiUsage(batch, driverRef, compRef, 'apiUsage_EnterpriseRouting', entCalls);
@@ -544,20 +479,16 @@ app.post('/', async (req, res) => {
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
 
-            const compId = getField(driverDoc.data(), ['Company ID', 'companyId']);
+            const compId = driverDoc.data().companyId;
             const compRef = db.collection('Companies').doc(String(compId));
             const compDoc = await compRef.get();
             
-            const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['Service Delay', 'serviceDelay'])) || 0) : 0;
-            
-            let rawExact = getField(compDoc.data(), ['Use Exact API', 'useExactApi']);
-            const useExactApi = rawExact === undefined ? false : (String(rawExact).toUpperCase() === 'TRUE');
+            const serviceDelay = compDoc.exists ? (parseInt(compDoc.data().settings?.serviceDelayMins) || 0) : 0;
+            const useExactApi = compDoc.exists ? (compDoc.data().settings?.useExactApi === true) : false;
             const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
-            const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
-            let stagingBay = safeJsonParse(rawBay, []);
-
-            let endpoints = driverDoc.data().endpoints || { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
+            let stagingBay = driverDoc.data().activeStaging?.orders || [];
+            let endpoints = driverDoc.data().defaultEndpoints || { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
             const mapsApiKey = process.env.MAPS_API_KEY;
 
             let clusters = {};
@@ -626,12 +557,9 @@ app.post('/', async (req, res) => {
             }
 
             const batch = db.batch();
-            let jsonFieldKey = driverDoc.data().JSON !== undefined ? 'JSON' : 'stagingBay';
-            let rStateFieldKey = driverDoc.data()['Route State'] !== undefined ? 'Route State' : 'routeState';
-
             batch.update(driverRef, { 
-                [jsonFieldKey]: JSON.stringify(finalStops), 
-                [rStateFieldKey]: 'Ready' 
+                'activeStaging.orders': finalStops, 
+                'activeStaging.status': 'Ready' 
             });
             incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
             
@@ -649,8 +577,7 @@ app.post('/', async (req, res) => {
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({error: "Driver not found"});
 
-            const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
-            let bay = safeJsonParse(rawBay, []);
+            let bay = driverDoc.data().activeStaging?.orders || [];
             let changed = false;
 
             for (let i = 0; i < bay.length; i++) {
@@ -666,8 +593,7 @@ app.post('/', async (req, res) => {
             }
 
             if (changed) {
-                let jsonFieldKey = driverDoc.data().JSON !== undefined ? 'JSON' : 'stagingBay';
-                await driverRef.update({ [jsonFieldKey]: JSON.stringify(bay) });
+                await driverRef.update({ 'activeStaging.orders': bay });
                 return res.status(200).json({ success: true });
             } else {
                 return res.status(404).json({ error: "Order not found in staging bay" });
@@ -683,9 +609,7 @@ app.post('/', async (req, res) => {
             let usersData = {};
             
             usersSnap.forEach(d => {
-                let rawBay = getField(d.data(), ['JSON', 'stagingBay']) || [];
-                let jsonFieldKey = d.data().JSON !== undefined ? 'JSON' : 'stagingBay';
-                usersData[d.id] = { ref: d.ref, bay: safeJsonParse(rawBay, []), changed: false, fieldKey: jsonFieldKey };
+                usersData[d.id] = { ref: d.ref, bay: d.data().activeStaging?.orders || [], changed: false };
             });
 
             const newDriverId = sharedUpdates && sharedUpdates.driverId ? String(sharedUpdates.driverId) : null;
@@ -737,7 +661,7 @@ app.post('/', async (req, res) => {
 
             for (let uid in usersData) {
                 if (usersData[uid].changed) {
-                    batch.update(usersData[uid].ref, { [usersData[uid].fieldKey]: JSON.stringify(usersData[uid].bay) });
+                    batch.update(usersData[uid].ref, { 'activeStaging.orders': usersData[uid].bay });
                 }
             }
 
@@ -754,8 +678,7 @@ app.post('/', async (req, res) => {
             let deletedCount = 0;
 
             usersSnap.forEach(doc => {
-                let rawBay = getField(doc.data(), ['JSON', 'stagingBay']) || [];
-                let bay = safeJsonParse(rawBay, []);
+                let bay = doc.data().activeStaging?.orders || [];
                 let originalLength = bay.length;
                 
                 let newBay = bay.filter(s => {
@@ -764,8 +687,7 @@ app.post('/', async (req, res) => {
                 });
                 
                 if (newBay.length !== originalLength) {
-                    let jsonFieldKey = doc.data().JSON !== undefined ? 'JSON' : 'stagingBay';
-                    batch.update(doc.ref, { [jsonFieldKey]: JSON.stringify(newBay) });
+                    batch.update(doc.ref, { 'activeStaging.orders': newBay });
                     deletedCount += (originalLength - newBay.length);
                 }
             });
@@ -788,5 +710,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.18) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.19) listening on port ${port}`);
 });
