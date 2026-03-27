@@ -1,3 +1,11 @@
+/**
+ * preOptimization.js
+ * VERSION: V1.34
+ * * CHANGES:
+ * V1.34 - Schema Cleanup. Stripped out expensive fallback queries for locating 
+ * CSV settings during upload. Exclusively queries by 'companyId' and 'csvType'.
+ */
+
 const { parse } = require('csv-parse/sync');
 const { colIdx, getField, safeJsonParse, incrementApiUsage } = require('./helpers');
 
@@ -5,13 +13,13 @@ async function uploadCsv(payload, res, db, admin) {
     const { csvData, driverId, companyId, csvType, adminId, overrideLock } = payload;
     if (!csvData || !driverId || !companyId || !csvType) return res.status(400).json({ error: "Missing required upload parameters." });
 
-    let settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('csvType', '==', String(csvType)).limit(1).get();
-    if (settingsSnapshot.empty) {
-        settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('csvType', '==', String(csvType)).limit(1).get();
-    }
-    if (settingsSnapshot.empty) {
-        settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('Type', '==', String(csvType)).limit(1).get();
-    }
+    // Cleaned up CSV Settings Query
+    const settingsSnapshot = await db.collection('CSV_Settings')
+        .where('companyId', '==', String(companyId))
+        .where('csvType', '==', String(csvType))
+        .limit(1)
+        .get();
+
     if (settingsSnapshot.empty) return res.status(404).json({ error: `CSV Settings not found for Type: '${csvType}'` });
     
     const sData = settingsSnapshot.docs[0].data();
