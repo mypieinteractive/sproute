@@ -1,10 +1,11 @@
 /**
  * glideWebhooks.js
- * VERSION: V1.34
+ * VERSION: V1.35
  * * CHANGES:
- * V1.34 - Schema Cleanup. Removed redundant Document ID injections (Company ID, Row ID) 
- * from the payload writes. Standardized the foreign key for linking users and 
- * CSV settings to the company as strictly 'companyId'.
+ * V1.35 - Pure CamelCase Harmonization. Stripped out all legacy Title Case 
+ * translations. The backend now trusts the Glide payload's camelCase keys 
+ * completely and writes them directly to Firestore to ensure clean, 1:1 parity 
+ * without code bloat. Added safe boolean parsing for 'isInspector'.
  */
 
 const { parseCoordsString } = require('./helpers');
@@ -18,44 +19,47 @@ async function updateUserFromGlide(payload, res, db) {
 
     let sGeo = parseCoordsString(startCoords);
     let eGeo = parseCoordsString(endCoords);
+    
+    // Safely parse the boolean in case Google Sheets/Glide passes it as a string
+    const parsedIsInspector = isInspector === true || String(isInspector).toLowerCase() === 'true';
 
     if (!driverDoc.exists) {
         const newUser = {
-            'companyId': companyId || "",
-            'Name': name || "New User",
-            'Email': email || "",
-            'Is Inspector': isInspector === true,
-            'Start Address': startAddress || "",
-            'End Address': endAddress || "",
-            'Start Lat': sGeo ? sGeo.lat : null,
-            'Start Lng': sGeo ? sGeo.lng : null,
-            'End Lat': eGeo ? eGeo.lat : null,
-            'End Lng': eGeo ? eGeo.lng : null,
-            'lockedBy': null,
-            'activeStaging': {
-                'orders': "[]",
-                'status': "Pending",
-                'conflictFlag': null
+            companyId: companyId || "",
+            name: name || "New User",
+            email: email || "",
+            isInspector: parsedIsInspector,
+            startAddress: startAddress || "",
+            endAddress: endAddress || "",
+            startLat: sGeo ? sGeo.lat : null,
+            startLng: sGeo ? sGeo.lng : null,
+            endLat: eGeo ? eGeo.lat : null,
+            endLng: eGeo ? eGeo.lng : null,
+            lockedBy: null,
+            activeStaging: {
+                orders: "[]",
+                status: "Pending",
+                conflictFlag: null
             }
         };
         await driverRef.set(newUser);
     } else {
         let updates = {};
-        if (name !== undefined) updates['Name'] = name;
-        if (email !== undefined) updates['Email'] = email;
+        if (name !== undefined) updates.name = name;
+        if (email !== undefined) updates.email = email;
         if (companyId !== undefined) updates.companyId = companyId;
-        if (isInspector !== undefined) updates['Is Inspector'] = isInspector === true;
+        if (isInspector !== undefined) updates.isInspector = parsedIsInspector;
 
-        if (startAddress !== undefined) updates['Start Address'] = startAddress;
+        if (startAddress !== undefined) updates.startAddress = startAddress;
         if (sGeo) {
-            updates['Start Lat'] = sGeo.lat;
-            updates['Start Lng'] = sGeo.lng;
+            updates.startLat = sGeo.lat;
+            updates.startLng = sGeo.lng;
         }
 
-        if (endAddress !== undefined) updates['End Address'] = endAddress;
+        if (endAddress !== undefined) updates.endAddress = endAddress;
         if (eGeo) {
-            updates['End Lat'] = eGeo.lat;
-            updates['End Lng'] = eGeo.lng;
+            updates.endLat = eGeo.lat;
+            updates.endLng = eGeo.lng;
         }
 
         if (Object.keys(updates).length > 0) {
@@ -66,8 +70,7 @@ async function updateUserFromGlide(payload, res, db) {
 }
 
 async function updateCompanyFromGlide(payload, res, db) {
-    const { companyId, name, address, email, logoUrl, startHour, serviceDelayMins, defaultEmailMessage, ccCompanyDefault, useExactApi } = payload;
-    const subStatus = payload['Subscription Status'];
+    const { companyId, name, address, email, logoUrl, startHour, serviceDelayMins, defaultEmailMessage, ccCompanyDefault, useExactApi, subscriptionStatus } = payload;
     
     if (!companyId) return res.status(400).json({ error: "Missing companyId." });
 
@@ -83,9 +86,7 @@ async function updateCompanyFromGlide(payload, res, db) {
     if (defaultEmailMessage !== undefined) updates.defaultEmailMessage = defaultEmailMessage;
     if (ccCompanyDefault !== undefined) updates.ccCompanyDefault = ccCompanyDefault;
     if (useExactApi !== undefined) updates.useExactApi = useExactApi;
-    if (subStatus !== undefined) updates['Subscription Status'] = subStatus;
-
-    // Notice: We completely removed setting updates['Company ID'] = companyId here
+    if (subscriptionStatus !== undefined) updates.subscriptionStatus = subscriptionStatus;
 
     await compRef.set(updates, { merge: true });
     return res.status(200).json({ success: true });
@@ -108,12 +109,7 @@ async function updateCsvSettingsFromGlide(payload, res, db) {
     if (lng !== undefined) updates.lng = lng;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;
-    
-    // Notice: We completely removed setting updates['Row ID'] = rowId here
-
-    if (companyId) {
-        updates.companyId = companyId;
-    }
+    if (companyId !== undefined) updates.companyId = companyId;
 
     await csvRef.set(updates, { merge: true });
     return res.status(200).json({ success: true });
@@ -133,13 +129,13 @@ async function updateEndpoint(payload, res, db) {
 
     let updates = {};
     if (type === 'start') {
-        updates['Start Address'] = pAddr;
-        updates['Start Lat'] = pLat;
-        updates['Start Lng'] = pLng;
+        updates.startAddress = pAddr;
+        updates.startLat = pLat;
+        updates.startLng = pLng;
     } else {
-        updates['End Address'] = pAddr;
-        updates['End Lat'] = pLat;
-        updates['End Lng'] = pLng;
+        updates.endAddress = pAddr;
+        updates.endLat = pLat;
+        updates.endLng = pLng;
     }
 
     await driverRef.update(updates);
