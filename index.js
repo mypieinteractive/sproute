@@ -1,11 +1,11 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.23
+ * VERSION: V1.24
  * * CHANGES:
- * V1.23 - Locked in Flat Schema. Removed legacy nested object fallbacks (e.g. `uData.endpoints`) 
- * from the `GET /` initial load, `generateRoute`, and `calculate` functions. The backend now strictly 
- * retrieves endpoint data directly from the flat `Start Lat`, `Start Lng`, and `Start Address` 
- * database fields.
+ * V1.24 - Locked in Glide Webhook Schema. Updated extractors in `GET /` to strictly
+ * pull from the exact camelCase and spaced keys sent by Glide for Company data 
+ * (e.g., 'Subscription Status', 'serviceDelayMins'). Updated `uploadCsv` to construct 
+ * the column mapping array directly from the flat CSV_Settings document fields.
  */
 
 const express = require('express');
@@ -219,21 +219,22 @@ app.get('/', async (req, res) => {
             companyData = compDoc.data();
         }
 
-        let rawAccountType = String(getField(companyData, ['Account Type', 'accountType', 'Tier']) || "Individual").trim();
+        // Locked to Company Webhook Schema
+        let rawAccountType = String(companyData['Subscription Status'] || companyData['Account Type'] || companyData.accountType || "Individual").trim();
         let accountType = rawAccountType.charAt(0).toUpperCase() + rawAccountType.slice(1).toLowerCase();
-        let displayName = String(getField(companyData, ['Company Name', 'name', 'Name']) || "Dashboard").trim();
+        let displayName = String(companyData.name || companyData['Company Name'] || "Dashboard").trim();
         
-        let rawPermissions = getField(companyData, ['Permissions', 'permissions']);
-        let permissions = safeJsonParse(rawPermissions, { modify: true, reoptimize: true });
+        let permissions = { modify: true, reoptimize: true }; 
+        if (companyData.useExactApi !== undefined) permissions.useExactApi = companyData.useExactApi;
         
-        let companyEmail = getField(companyData, ['Company Email', 'companyEmail', 'Email']) || "";
-        let defaultEmailMessage = getField(companyData, ['Default Email Message', 'defaultEmailMessage']) || "";
-        let serviceDelay = parseInt(getField(companyData, ['Service Delay', 'serviceDelay'])) || 0;
-        let companyAddress = getField(companyData, ['Company Address', 'companyAddress', 'Address']) || "";
-        let companyLogo = getField(companyData, ['Company Logo', 'companyLogo', 'Logo']) || "";
+        let companyEmail = companyData.email || companyData['Company Email'] || "";
+        let defaultEmailMessage = companyData.defaultEmailMessage || companyData['Default Email Message'] || "";
+        let serviceDelay = parseInt(companyData.serviceDelayMins || companyData['Service Delay']) || 0;
+        let companyAddress = companyData.address || companyData['Company Address'] || "";
+        let companyLogo = companyData.logoUrl || companyData['Company Logo'] || "";
         
-        let rawCc = getField(companyData, ['CC Company Default', 'ccCompanyDefault']);
-        let ccCompanyDefault = rawCc === undefined ? false : (String(rawCc).toLowerCase() === 'true');
+        let rawCc = companyData.ccCompanyDefault;
+        let ccCompanyDefault = rawCc === undefined ? false : (String(rawCc).toLowerCase() === 'true' || rawCc === true);
 
         let queryField = companyData['Company ID'] !== undefined ? 'Company ID' : 'companyId';
         const usersSnap = await db.collection('Users').where(queryField, '==', String(resolvedCompanyId)).get();
@@ -295,15 +296,14 @@ app.get('/', async (req, res) => {
             }
         });
 
-        let csvQueryField = 'Company ID';
-        let csvSettingsSnap = await db.collection('CSV_Settings').where(csvQueryField, '==', String(resolvedCompanyId)).get();
-        if (csvSettingsSnap.empty) {
+        let csvSettingsSnap = await db.collection('CSV_Settings').where(queryField, '==', String(resolvedCompanyId)).get();
+        if (csvSettingsSnap.empty && queryField === 'Company ID') {
             csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
         }
 
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
-            let t = getField(doc.data(), ['Type', 'type', 'csvType']);
+            let t = doc.data().csvType || doc.data().Type || doc.data().type;
             if (t) csvTypes.push(t);
         });
 
@@ -448,17 +448,29 @@ app.post('/', async (req, res) => {
             const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
             if (!csvData || !driverId || !companyId || !type) return res.status(400).json({ error: "Missing required upload parameters." });
 
-            let settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('Type', '==', String(type)).limit(1).get();
-            if (settingsSnapshot.empty) {
-                settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('type', '==', String(type)).limit(1).get();
-            }
+            let settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('csvType', '==', String(type)).limit(1).get();
             if (settingsSnapshot.empty) {
                 settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('csvType', '==', String(type)).limit(1).get();
             }
+            if (settingsSnapshot.empty) {
+                settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('Type', '==', String(type)).limit(1).get();
+            }
             if (settingsSnapshot.empty) return res.status(404).json({ error: `CSV Settings not found for Type: '${type}'` });
             
-            const rawMapping = getField(settingsSnapshot.docs[0].data(), ['Mapping Array', 'mappingArray']);
-            const settings = safeJsonParse(rawMapping, []); 
+            const sData = settingsSnapshot.docs[0].data();
+            
+            // Map the flat CSV_Settings fields to column indices
+            const settingsMap = {
+                address: colIdx(sData.address),
+                city: colIdx(sData.city),
+                state: colIdx(sData.state),
+                zip: colIdx(sData.zip),
+                client: colIdx(sData.client),
+                dueDate: colIdx(sData.dueDate),
+                orderType: colIdx(sData.orderType),
+                lat: colIdx(sData.lat),
+                lng: colIdx(sData.lng)
+            };
 
             const driverRef = db.collection('Users').doc(String(driverId));
             const driverDoc = await driverRef.get();
@@ -494,15 +506,16 @@ app.post('/', async (req, res) => {
 
             for (let j = 1; j < records.length; j++) {
                 const row = records[j];
-                let street = colIdx(settings[2]) > -1 ? row[colIdx(settings[2])] : "";
-                let city = colIdx(settings[9]) > -1 ? row[colIdx(settings[9])] : "";
-                let state = colIdx(settings[10]) > -1 ? row[colIdx(settings[10])] : fallbackState;
-                let zip = colIdx(settings[3]) > -1 ? row[colIdx(settings[3])] : "";
+                
+                let street = settingsMap.address > -1 ? row[settingsMap.address] : "";
+                let city = settingsMap.city > -1 ? row[settingsMap.city] : "";
+                let state = settingsMap.state > -1 ? row[settingsMap.state] : fallbackState;
+                let zip = settingsMap.zip > -1 ? row[settingsMap.zip] : "";
 
                 if (street) {
                     let fullAddr = `${street}, ${city}, ${state} ${zip}`.replace(/,,/g, ",").trim();
-                    let csvLatRaw = colIdx(settings[7]) > -1 ? row[colIdx(settings[7])] : "";
-                    let csvLngRaw = colIdx(settings[8]) > -1 ? row[colIdx(settings[8])] : "";
+                    let csvLatRaw = settingsMap.lat > -1 ? row[settingsMap.lat] : "";
+                    let csvLngRaw = settingsMap.lng > -1 ? row[settingsMap.lng] : "";
                     
                     let parsedCsvLat = parseFloat(csvLatRaw), parsedCsvLng = parseFloat(csvLngRaw);
                     let hasCsvCoords = !isNaN(parsedCsvLat) && !isNaN(parsedCsvLng) && parsedCsvLat !== 0 && parsedCsvLng !== 0;
@@ -533,9 +546,11 @@ app.post('/', async (req, res) => {
 
                     maxSeq++;
                     let displayAddress = street.split(',')[0].trim(); if (zip) displayAddress += ", " + zip.trim();
-                    let clientVal = row[colIdx(settings[4])] || "", displayClient = String(clientVal).substring(0, 3);
-                    let dueDateRaw = row[colIdx(settings[5])] || "", shortDate = dueDateRaw ? String(dueDateRaw).substring(0,8) : "";
-                    let orderTypeVal = row[colIdx(settings[6])] || "";
+                    let clientVal = settingsMap.client > -1 ? row[settingsMap.client] : "";
+                    let displayClient = String(clientVal).substring(0, 3);
+                    let dueDateRaw = settingsMap.dueDate > -1 ? row[settingsMap.dueDate] : "";
+                    let shortDate = dueDateRaw ? String(dueDateRaw).substring(0,8) : "";
+                    let orderTypeVal = settingsMap.orderType > -1 ? row[settingsMap.orderType] : "";
 
                     newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, type, shortDate, orderTypeVal, "", 0, lat, lng, initialStatus, 0 ]);
                 }
@@ -574,7 +589,7 @@ app.post('/', async (req, res) => {
             const compId = getField(driverDoc.data(), ['Company ID', 'companyId']);
             const compRef = db.collection('Companies').doc(String(compId));
             const compDoc = await compRef.get();
-            const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['Service Delay', 'serviceDelay']) || compDoc.data().settings?.serviceDelayMins) || 0) : 0;
+            const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
             const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
             const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
@@ -668,10 +683,10 @@ app.post('/', async (req, res) => {
             const compRef = db.collection('Companies').doc(String(compId));
             const compDoc = await compRef.get();
             
-            const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['Service Delay', 'serviceDelay']) || compDoc.data().settings?.serviceDelayMins) || 0) : 0;
+            const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
             
-            let rawExact = getField(compDoc.data(), ['Use Exact API', 'useExactApi']);
-            const useExactApi = rawExact === undefined ? (compDoc.data().settings?.useExactApi === true) : (String(rawExact).toUpperCase() === 'TRUE');
+            let rawExact = getField(compDoc.data(), ['useExactApi', 'Use Exact API']);
+            const useExactApi = rawExact === undefined ? false : (String(rawExact).toUpperCase() === 'TRUE' || rawExact === true);
             const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
             const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
@@ -935,5 +950,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.23) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.24) listening on port ${port}`);
 });
