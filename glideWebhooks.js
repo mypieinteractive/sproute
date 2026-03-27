@@ -1,3 +1,12 @@
+/**
+ * glideWebhooks.js
+ * VERSION: V1.34
+ * * CHANGES:
+ * V1.34 - Schema Cleanup. Removed redundant Document ID injections (Company ID, Row ID) 
+ * from the payload writes. Standardized the foreign key for linking users and 
+ * CSV settings to the company as strictly 'companyId'.
+ */
+
 const { parseCoordsString } = require('./helpers');
 
 async function updateUserFromGlide(payload, res, db) {
@@ -12,7 +21,7 @@ async function updateUserFromGlide(payload, res, db) {
 
     if (!driverDoc.exists) {
         const newUser = {
-            'Company ID': companyId || "",
+            'companyId': companyId || "",
             'Name': name || "New User",
             'Email': email || "",
             'Is Inspector': isInspector === true,
@@ -34,7 +43,7 @@ async function updateUserFromGlide(payload, res, db) {
         let updates = {};
         if (name !== undefined) updates['Name'] = name;
         if (email !== undefined) updates['Email'] = email;
-        if (companyId !== undefined) updates['Company ID'] = companyId;
+        if (companyId !== undefined) updates.companyId = companyId;
         if (isInspector !== undefined) updates['Is Inspector'] = isInspector === true;
 
         if (startAddress !== undefined) updates['Start Address'] = startAddress;
@@ -75,9 +84,8 @@ async function updateCompanyFromGlide(payload, res, db) {
     if (ccCompanyDefault !== undefined) updates.ccCompanyDefault = ccCompanyDefault;
     if (useExactApi !== undefined) updates.useExactApi = useExactApi;
     if (subStatus !== undefined) updates['Subscription Status'] = subStatus;
-    
-    updates['Company ID'] = companyId;
-    updates.companyId = companyId;
+
+    // Notice: We completely removed setting updates['Company ID'] = companyId here
 
     await compRef.set(updates, { merge: true });
     return res.status(200).json({ success: true });
@@ -101,11 +109,9 @@ async function updateCsvSettingsFromGlide(payload, res, db) {
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;
     
-    updates['Row ID'] = rowId;
-    updates.rowId = rowId;
-    
+    // Notice: We completely removed setting updates['Row ID'] = rowId here
+
     if (companyId) {
-        updates['Company ID'] = companyId;
         updates.companyId = companyId;
     }
 
