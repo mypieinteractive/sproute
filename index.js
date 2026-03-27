@@ -1,12 +1,10 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.25
+ * VERSION: V1.26
  * * CHANGES:
- * V1.25 - Expanded Webhook Auto-Detection. Added logic to infer incoming Glide webhooks 
- * for the `Companies` and `CSV_Settings` collections. Built `updateCompanyFromGlide` and 
- * `updateCsvSettingsFromGlide` handlers to safely parse and merge the flat fields directly 
- * into their respective Firestore documents.
- * V1.24 - Locked in Glide Webhook Schema.
+ * V1.26 - Payload Variable Alignment. Updated the `uploadCsv` destructuring to extract 
+ * `csvType` instead of `type` to perfectly match the frontend `app.js` payload.
+ * V1.25 - Expanded Webhook Auto-Detection. 
  */
 
 const express = require('express');
@@ -220,7 +218,6 @@ app.get('/', async (req, res) => {
             companyData = compDoc.data();
         }
 
-        // Locked to Company Webhook Schema
         let rawAccountType = String(companyData['Subscription Status'] || companyData['Account Type'] || companyData.accountType || "Individual").trim();
         let accountType = rawAccountType.charAt(0).toUpperCase() + rawAccountType.slice(1).toLowerCase();
         let displayName = String(companyData.name || companyData['Company Name'] || "Dashboard").trim();
@@ -357,7 +354,6 @@ app.post('/', async (req, res) => {
         const payload = req.body;
         let action = payload.action;
 
-        // Auto-detect Glide Webhooks (Payload Inference)
         if (!action) {
             if (payload._collection === "Users" && payload.driverId) {
                 action = 'updateUserFromGlide';
@@ -443,7 +439,6 @@ app.post('/', async (req, res) => {
             if (useExactApi !== undefined) updates.useExactApi = useExactApi;
             if (subStatus !== undefined) updates['Subscription Status'] = subStatus;
             
-            // Redundancy mapping to ensure the database can always link the document 
             updates['Company ID'] = companyId;
             updates.companyId = companyId;
 
@@ -513,21 +508,20 @@ app.post('/', async (req, res) => {
 
         // --- 5. CSV INGESTION ENGINE ---
         if (action === 'uploadCsv') {
-            const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
-            if (!csvData || !driverId || !companyId || !type) return res.status(400).json({ error: "Missing required upload parameters." });
+            const { csvData, driverId, companyId, csvType, adminId, overrideLock } = payload;
+            if (!csvData || !driverId || !companyId || !csvType) return res.status(400).json({ error: "Missing required upload parameters." });
 
-            let settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('csvType', '==', String(type)).limit(1).get();
+            let settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('csvType', '==', String(csvType)).limit(1).get();
             if (settingsSnapshot.empty) {
-                settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('csvType', '==', String(type)).limit(1).get();
+                settingsSnapshot = await db.collection('CSV_Settings').where('companyId', '==', String(companyId)).where('csvType', '==', String(csvType)).limit(1).get();
             }
             if (settingsSnapshot.empty) {
-                settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('Type', '==', String(type)).limit(1).get();
+                settingsSnapshot = await db.collection('CSV_Settings').where('Company ID', '==', String(companyId)).where('Type', '==', String(csvType)).limit(1).get();
             }
-            if (settingsSnapshot.empty) return res.status(404).json({ error: `CSV Settings not found for Type: '${type}'` });
+            if (settingsSnapshot.empty) return res.status(404).json({ error: `CSV Settings not found for Type: '${csvType}'` });
             
             const sData = settingsSnapshot.docs[0].data();
             
-            // Map the flat CSV_Settings fields to column indices
             const settingsMap = {
                 address: colIdx(sData.address),
                 city: colIdx(sData.city),
@@ -620,7 +614,7 @@ app.post('/', async (req, res) => {
                     let shortDate = dueDateRaw ? String(dueDateRaw).substring(0,8) : "";
                     let orderTypeVal = settingsMap.orderType > -1 ? row[settingsMap.orderType] : "";
 
-                    newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, type, shortDate, orderTypeVal, "", 0, lat, lng, initialStatus, 0 ]);
+                    newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, csvType, shortDate, orderTypeVal, "", 0, lat, lng, initialStatus, 0 ]);
                 }
             }
 
@@ -1018,5 +1012,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.25) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.26) listening on port ${port}`);
 });
