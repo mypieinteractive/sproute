@@ -1,12 +1,14 @@
 /**
  * index.js
- * VERSION: V1.31
+ * VERSION: V1.32
  * * CHANGES:
+ * V1.32 - Lock Logic Parity. Switched lock targeting to the root 'lockedBy' field. 
+ * Implemented Hijack Overwrite (clears existing bay if overrideLock is true). 
+ * Implemented Auto-Clear Lock (sets 'lockedBy' to null when bay length hits 0 
+ * across upload, update, and delete endpoints).
  * V1.31 - Strict Path Targeting. Removed all legacy fallback/guessing logic for 
  * 'JSON' and 'stagingBay' fields. The backend now strictly reads and writes 
- * directly to 'activeStaging.orders', 'activeStaging.status', and 
- * 'activeStaging.lockedByAdminId', eliminating the truthy array bug that 
- * was overwriting uploaded CSVs.
+ * directly to 'activeStaging.orders' and 'activeStaging.status'.
  * V1.30 - Date Parsing Fix. 
  * V1.29 - Forced Stringification. 
  * V1.28 - Bulletproof Payload Parsing.
@@ -265,14 +267,12 @@ app.get('/', async (req, res) => {
             const driverName = getField(uData, ['Name', 'name']) || "Inspector";
             const driverEmail = getField(uData, ['Email', 'email']) || "";
             
-            // --- STRICT TARGETING IMPLEMENTED ---
             let stagingBay = [];
             if (uData.activeStaging?.orders) {
                 stagingBay = safeJsonParse(uData.activeStaging.orders, []);
             }
             
             let rState = uData.activeStaging?.status || 'Pending';
-            // ------------------------------------
 
             inspectors.push({ 
                 id: doc.id, name: driverName, email: driverEmail, isInspector: isInsp,
@@ -403,7 +403,6 @@ app.post('/', async (req, res) => {
             let eGeo = parseCoordsString(endCoords);
 
             if (!driverDoc.exists) {
-                // --- STRICT TARGETING IMPLEMENTED ---
                 const newUser = {
                     'Company ID': companyId || "",
                     'Name': name || "New User",
@@ -415,10 +414,10 @@ app.post('/', async (req, res) => {
                     'Start Lng': sGeo ? sGeo.lng : null,
                     'End Lat': eGeo ? eGeo.lat : null,
                     'End Lng': eGeo ? eGeo.lng : null,
+                    'lockedBy': null,
                     'activeStaging': {
                         'orders': "[]",
                         'status': "Pending",
-                        'lockedByAdminId': null,
                         'conflictFlag': null
                     }
                 };
@@ -570,11 +569,11 @@ app.post('/', async (req, res) => {
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({ error: `Driver ID ${driverId} not found.` });
 
-            // --- STRICT TARGETING IMPLEMENTED ---
-            const currentLock = driverDoc.data().activeStaging?.lockedByAdminId || "";
+            // --- LOCK RETARGETING IMPLEMENTED ---
+            const currentLock = getField(driverDoc.data(), ['lockedBy', 'Locked By']);
             const uId = String(adminId || "").trim();
 
-            if (!overrideLock && currentLock !== "" && currentLock !== uId) {
+            if (!overrideLock && currentLock && currentLock !== uId) {
                 return res.status(200).json({ success: false, status: 'confirm_hijack', driverId: driverId });
             }
 
@@ -582,7 +581,11 @@ app.post('/', async (req, res) => {
             if (driverDoc.data().activeStaging?.orders) {
                 existingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
             }
-            // ------------------------------------
+
+            // --- HIJACK OVERWRITE IMPLEMENTED ---
+            if (overrideLock) {
+                existingBay = []; 
+            }
 
             let maxSeq = 0;
             existingBay.forEach(s => {
@@ -658,15 +661,21 @@ app.post('/', async (req, res) => {
             const compRef = db.collection('Companies').doc(String(companyId));
             
             const updatedBay = existingBay.concat(newOrders);
-            
-            // Forced Stringification
             let bayToSave = JSON.stringify(updatedBay);
 
-            batch.update(driverRef, {
+            let updates = {
                 'activeStaging.orders': bayToSave,
-                'activeStaging.status': 'Pending',
-                'activeStaging.lockedByAdminId': uId
-            });
+                'activeStaging.status': 'Pending'
+            };
+
+            // --- AUTO-CLEAR LOCK IMPLEMENTED ---
+            if (updatedBay.length === 0) {
+                updates['lockedBy'] = null;
+            } else if (uId) {
+                updates['lockedBy'] = uId;
+            }
+
+            batch.update(driverRef, updates);
             incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
             
             await batch.commit();
@@ -685,12 +694,10 @@ app.post('/', async (req, res) => {
             const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
             const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
-            // --- STRICT TARGETING IMPLEMENTED ---
             let stagingBay = [];
             if (driverDoc.data().activeStaging?.orders) {
                 stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
             }
-            // ------------------------------------
             
             let endpoints = { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
             let sLat = getField(driverDoc.data(), ['Start Lat', 'startLat']);
@@ -752,8 +759,6 @@ app.post('/', async (req, res) => {
             }
 
             const batch = db.batch();
-            
-            // Forced Stringification
             let bayToSave = JSON.stringify(finalStops);
 
             batch.update(driverRef, { 
@@ -783,12 +788,10 @@ app.post('/', async (req, res) => {
             const useExactApi = rawExact === undefined ? false : (String(rawExact).toUpperCase() === 'TRUE' || rawExact === true);
             const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
-            // --- STRICT TARGETING IMPLEMENTED ---
             let stagingBay = [];
             if (driverDoc.data().activeStaging?.orders) {
                 stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
             }
-            // ------------------------------------
 
             let endpoints = { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
             let sLat = getField(driverDoc.data(), ['Start Lat', 'startLat']);
@@ -867,8 +870,6 @@ app.post('/', async (req, res) => {
             }
 
             const batch = db.batch();
-
-            // Forced Stringification
             let bayToSave = JSON.stringify(finalStops);
 
             batch.update(driverRef, { 
@@ -891,12 +892,10 @@ app.post('/', async (req, res) => {
             const driverDoc = await driverRef.get();
             if (!driverDoc.exists) return res.status(404).json({error: "Driver not found"});
 
-            // --- STRICT TARGETING IMPLEMENTED ---
             let bay = [];
             if (driverDoc.data().activeStaging?.orders) {
                 bay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
             }
-            // ------------------------------------
             
             let changed = false;
 
@@ -913,9 +912,7 @@ app.post('/', async (req, res) => {
             }
 
             if (changed) {
-                // Forced Stringification
                 let bayToSave = JSON.stringify(bay);
-                
                 await driverRef.update({ 'activeStaging.orders': bayToSave });
                 return res.status(200).json({ success: true });
             } else {
@@ -932,13 +929,11 @@ app.post('/', async (req, res) => {
             let usersData = {};
             
             usersSnap.forEach(d => {
-                // --- STRICT TARGETING IMPLEMENTED ---
                 let bay = [];
                 if (d.data().activeStaging?.orders) {
                     bay = safeJsonParse(d.data().activeStaging.orders, []);
                 }
                 usersData[d.id] = { ref: d.ref, bay: bay, changed: false };
-                // ------------------------------------
             });
 
             const newDriverId = sharedUpdates && sharedUpdates.driverId ? String(sharedUpdates.driverId) : null;
@@ -990,9 +985,15 @@ app.post('/', async (req, res) => {
 
             for (let uid in usersData) {
                 if (usersData[uid].changed) {
-                    // Forced Stringification
                     let bayToSave = JSON.stringify(usersData[uid].bay);
-                    batch.update(usersData[uid].ref, { 'activeStaging.orders': bayToSave });
+                    let updates = { 'activeStaging.orders': bayToSave };
+                    
+                    // --- AUTO-CLEAR LOCK IMPLEMENTED ---
+                    if (usersData[uid].bay.length === 0) {
+                        updates['lockedBy'] = null;
+                    }
+                    
+                    batch.update(usersData[uid].ref, updates);
                 }
             }
 
@@ -1009,12 +1010,10 @@ app.post('/', async (req, res) => {
             let deletedCount = 0;
 
             usersSnap.forEach(doc => {
-                // --- STRICT TARGETING IMPLEMENTED ---
                 let bay = [];
                 if (doc.data().activeStaging?.orders) {
                     bay = safeJsonParse(doc.data().activeStaging.orders, []);
                 }
-                // ------------------------------------
                 
                 let originalLength = bay.length;
                 
@@ -1024,9 +1023,15 @@ app.post('/', async (req, res) => {
                 });
                 
                 if (newBay.length !== originalLength) {
-                    // Forced Stringification
                     let bayToSave = JSON.stringify(newBay);
-                    batch.update(doc.ref, { 'activeStaging.orders': bayToSave });
+                    let updates = { 'activeStaging.orders': bayToSave };
+                    
+                    // --- AUTO-CLEAR LOCK IMPLEMENTED ---
+                    if (newBay.length === 0) {
+                        updates['lockedBy'] = null;
+                    }
+
+                    batch.update(doc.ref, updates);
                     deletedCount += (originalLength - newBay.length);
                 }
             });
@@ -1049,5 +1054,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.31) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.32) listening on port ${port}`);
 });
