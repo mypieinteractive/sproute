@@ -1,11 +1,12 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.24
+ * VERSION: V1.25
  * * CHANGES:
- * V1.24 - Locked in Glide Webhook Schema. Updated extractors in `GET /` to strictly
- * pull from the exact camelCase and spaced keys sent by Glide for Company data 
- * (e.g., 'Subscription Status', 'serviceDelayMins'). Updated `uploadCsv` to construct 
- * the column mapping array directly from the flat CSV_Settings document fields.
+ * V1.25 - Expanded Webhook Auto-Detection. Added logic to infer incoming Glide webhooks 
+ * for the `Companies` and `CSV_Settings` collections. Built `updateCompanyFromGlide` and 
+ * `updateCsvSettingsFromGlide` handlers to safely parse and merge the flat fields directly 
+ * into their respective Firestore documents.
+ * V1.24 - Locked in Glide Webhook Schema.
  */
 
 const express = require('express');
@@ -356,12 +357,18 @@ app.post('/', async (req, res) => {
         const payload = req.body;
         let action = payload.action;
 
-        // Auto-detect Glide Webhook (Payload Inference)
-        if (!action && payload._collection === "Users" && payload.driverId) {
-            action = 'updateUserFromGlide';
+        // Auto-detect Glide Webhooks (Payload Inference)
+        if (!action) {
+            if (payload._collection === "Users" && payload.driverId) {
+                action = 'updateUserFromGlide';
+            } else if (payload._collection === "Companies" && payload.companyId) {
+                action = 'updateCompanyFromGlide';
+            } else if (payload._collection === "CSV_Settings" && payload.rowId) {
+                action = 'updateCsvSettingsFromGlide';
+            }
         }
 
-        // --- 1. GLIDE WEBHOOK INGESTION ---
+        // --- 1. GLIDE WEBHOOK INGESTION (USERS) ---
         if (action === 'updateUserFromGlide') {
             const { driverId, companyId, name, email, startAddress, endAddress, startCoords, endCoords, isInspector, modifyRoutes, reoptimize } = payload;
             if (!driverId) return res.status(400).json({ error: "Missing driverId." });
@@ -415,7 +422,68 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        // --- 2. DASHBOARD UI ENDPOINT UPDATE ---
+        // --- 2. GLIDE WEBHOOK INGESTION (COMPANIES) ---
+        if (action === 'updateCompanyFromGlide') {
+            const { companyId, name, address, email, logoUrl, startHour, serviceDelayMins, defaultEmailMessage, ccCompanyDefault, useExactApi } = payload;
+            const subStatus = payload['Subscription Status'];
+            
+            if (!companyId) return res.status(400).json({ error: "Missing companyId." });
+
+            const compRef = db.collection('Companies').doc(String(companyId));
+            
+            let updates = {};
+            if (name !== undefined) updates.name = name;
+            if (address !== undefined) updates.address = address;
+            if (email !== undefined) updates.email = email;
+            if (logoUrl !== undefined) updates.logoUrl = logoUrl;
+            if (startHour !== undefined) updates.startHour = startHour;
+            if (serviceDelayMins !== undefined) updates.serviceDelayMins = serviceDelayMins;
+            if (defaultEmailMessage !== undefined) updates.defaultEmailMessage = defaultEmailMessage;
+            if (ccCompanyDefault !== undefined) updates.ccCompanyDefault = ccCompanyDefault;
+            if (useExactApi !== undefined) updates.useExactApi = useExactApi;
+            if (subStatus !== undefined) updates['Subscription Status'] = subStatus;
+            
+            // Redundancy mapping to ensure the database can always link the document 
+            updates['Company ID'] = companyId;
+            updates.companyId = companyId;
+
+            await compRef.set(updates, { merge: true });
+            return res.status(200).json({ success: true });
+        }
+
+        // --- 3. GLIDE WEBHOOK INGESTION (CSV SETTINGS) ---
+        if (action === 'updateCsvSettingsFromGlide') {
+            const { rowId, companyId, csvType, address, zip, client, dueDate, orderType, lat, lng, city, state } = payload;
+            
+            if (!rowId) return res.status(400).json({ error: "Missing rowId." });
+
+            const csvRef = db.collection('CSV_Settings').doc(String(rowId));
+            
+            let updates = {};
+            if (csvType !== undefined) updates.csvType = csvType;
+            if (address !== undefined) updates.address = address;
+            if (zip !== undefined) updates.zip = zip;
+            if (client !== undefined) updates.client = client;
+            if (dueDate !== undefined) updates.dueDate = dueDate;
+            if (orderType !== undefined) updates.orderType = orderType;
+            if (lat !== undefined) updates.lat = lat;
+            if (lng !== undefined) updates.lng = lng;
+            if (city !== undefined) updates.city = city;
+            if (state !== undefined) updates.state = state;
+            
+            updates['Row ID'] = rowId;
+            updates.rowId = rowId;
+            
+            if (companyId) {
+                updates['Company ID'] = companyId;
+                updates.companyId = companyId;
+            }
+
+            await csvRef.set(updates, { merge: true });
+            return res.status(200).json({ success: true });
+        }
+
+        // --- 4. DASHBOARD UI ENDPOINT UPDATE ---
         if (action === 'updateEndpoint') {
             const { driverId, type, address, lat, lng } = payload;
             if (!driverId || !type) return res.status(400).json({ error: "Missing parameters." });
@@ -443,7 +511,7 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, endpoint: { lat: pLat, lng: pLng, address: pAddr } });
         }
 
-        // --- 3. CSV INGESTION ENGINE ---
+        // --- 5. CSV INGESTION ENGINE ---
         if (action === 'uploadCsv') {
             const { csvData, driverId, companyId, type, adminId, overrideLock } = payload;
             if (!csvData || !driverId || !companyId || !type) return res.status(400).json({ error: "Missing required upload parameters." });
@@ -580,7 +648,7 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, count: newOrders.length });
         }
 
-        // --- 4. OPTIMIZATION ENGINE (generateRoute) ---
+        // --- 6. OPTIMIZATION ENGINE (generateRoute) ---
         if (action === 'generateRoute') {
             const driverRef = db.collection('Users').doc(String(payload.driverId));
             const driverDoc = await driverRef.get();
@@ -673,7 +741,7 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, updatedStops: finalStops });
         }
 
-        // --- 5. RECALCULATION ENGINE (calculate) ---
+        // --- 7. RECALCULATION ENGINE (calculate) ---
         if (action === 'calculate') {
             const driverRef = db.collection('Users').doc(String(payload.driverId));
             const driverDoc = await driverRef.get();
@@ -786,7 +854,7 @@ app.post('/', async (req, res) => {
             return res.status(200).json({ success: true, updatedStops: finalStops });
         }
 
-        // --- 6. PRE-ROUTE STAGING & CRUD (Phase 1) ---
+        // --- 8. PRE-ROUTE STAGING & CRUD (Phase 1) ---
 
         if (action === 'updateOrder') {
             const { rowId, driverId, updates } = payload;
@@ -950,5 +1018,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.24) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.25) listening on port ${port}`);
 });
