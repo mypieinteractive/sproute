@@ -1,9 +1,12 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.26
+ * VERSION: V1.27
  * * CHANGES:
- * V1.26 - Payload Variable Alignment. Updated the `uploadCsv` destructuring to extract 
- * `csvType` instead of `type` to perfectly match the frontend `app.js` payload.
+ * V1.27 - Relaxed JSON Parsing. Updated `express.json({ type: '*/*' })` to parse all 
+ * incoming requests as JSON regardless of the Content-Type header. This allows the 
+ * backend to natively accept the `text/plain` webhook payloads sent from the frontend 
+ * without requiring any CORS-breaking changes to `app.js`.
+ * V1.26 - Payload Variable Alignment.
  * V1.25 - Expanded Webhook Auto-Detection. 
  */
 
@@ -22,7 +25,9 @@ const firebaseApp = admin.initializeApp({
 const db = getFirestore(firebaseApp, 'sproute');
 
 const app = express();
-app.use(express.json());
+
+// Parse all incoming payloads as JSON to accept text/plain from the frontend
+app.use(express.json({ type: '*/*' }));
 
 app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', '*');
@@ -1012,5 +1017,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.26) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.27) listening on port ${port}`);
 });
