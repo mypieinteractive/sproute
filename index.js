@@ -1,12 +1,18 @@
 /**
- * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
+ * index.js
  * VERSION: V1.29
  * * CHANGES:
- * V1.29 - Forced Stringification. All Firestore writes to activeStaging.orders 
+ * V1.29 - Forced Stringification. All Firestore writes to activeStaging.orders (or JSON)
  * are now explicitly stringified to emulate Google Sheet single-cell storage logic, 
  * bypassing Firestore's strict nested entity validation. Reads automatically parse 
  * the string back into an array for seamless frontend consumption.
- * V1.28 - Bulletproof Payload Parsing & Size Expansion. 
+ * V1.28 - Bulletproof Payload Parsing & Size Expansion. Increased the Express JSON and Text
+ * limits to '50mb' to prevent silent drops of large CSV payloads. Implemented a manual 
+ * fallback parser inside the POST route to securely catch and convert raw text/plain 
+ * strings or buffers sent by the Apps Script frontend.
+ * V1.27 - Relaxed JSON Parsing. 
+ * V1.26 - Payload Variable Alignment.
+ * V1.25 - Expanded Webhook Auto-Detection. 
  */
 
 const express = require('express');
@@ -265,10 +271,7 @@ app.get('/', async (req, res) => {
             let rawBay = getField(uData, ['JSON', 'stagingBay', 'Staging Bay']);
             let stagingBay = [];
             if (rawBay) stagingBay = safeJsonParse(rawBay, []);
-            else if (uData.activeStaging?.orders) {
-                // Safely parse stringified payloads
-                stagingBay = typeof uData.activeStaging.orders === 'string' ? safeJsonParse(uData.activeStaging.orders, []) : uData.activeStaging.orders;
-            }
+            else if (uData.activeStaging?.orders) stagingBay = safeJsonParse(uData.activeStaging.orders, []);
             
             let rState = getField(uData, ['Route State', 'routeState', 'Status']);
             if (rState === undefined) rState = uData.activeStaging?.status || 'Pending';
@@ -574,10 +577,7 @@ app.post('/', async (req, res) => {
             const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
             let existingBay = [];
             if (rawBay) existingBay = safeJsonParse(rawBay, []);
-            else if (driverDoc.data().activeStaging?.orders) {
-                // Safely parse stringified payloads
-                existingBay = typeof driverDoc.data().activeStaging.orders === 'string' ? safeJsonParse(driverDoc.data().activeStaging.orders, []) : driverDoc.data().activeStaging.orders;
-            }
+            else if (driverDoc.data().activeStaging?.orders) existingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
             
             let maxSeq = 0;
             existingBay.forEach(s => {
@@ -658,7 +658,7 @@ app.post('/', async (req, res) => {
             let rStateFieldKey = driverDoc.data()['Route State'] !== undefined ? 'Route State' : (driverDoc.data().activeStaging ? 'activeStaging.status' : 'routeState');
             let lockedFieldKey = driverDoc.data()['Locked By'] !== undefined ? 'Locked By' : 'lockedBy';
 
-            // FORCE STRINGIFICATION TO EMULATE SINGLE-CELL STORAGE
+            // Forced Stringification
             let bayToSave = JSON.stringify(updatedBay);
 
             batch.update(driverRef, {
@@ -687,10 +687,7 @@ app.post('/', async (req, res) => {
             const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
             let stagingBay = [];
             if (rawBay) stagingBay = safeJsonParse(rawBay, []);
-            else if (driverDoc.data().activeStaging?.orders) {
-                // Safely parse stringified payloads
-                stagingBay = typeof driverDoc.data().activeStaging.orders === 'string' ? safeJsonParse(driverDoc.data().activeStaging.orders, []) : driverDoc.data().activeStaging.orders;
-            }
+            else if (driverDoc.data().activeStaging?.orders) stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
             
             let endpoints = { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
             let sLat = getField(driverDoc.data(), ['Start Lat', 'startLat']);
@@ -755,7 +752,7 @@ app.post('/', async (req, res) => {
             let jsonFieldKey = driverDoc.data().JSON !== undefined ? 'JSON' : (driverDoc.data().activeStaging ? 'activeStaging.orders' : 'stagingBay');
             let rStateFieldKey = driverDoc.data()['Route State'] !== undefined ? 'Route State' : (driverDoc.data().activeStaging ? 'activeStaging.status' : 'routeState');
 
-            // FORCE STRINGIFICATION TO EMULATE SINGLE-CELL STORAGE
+            // Forced Stringification
             let bayToSave = JSON.stringify(finalStops);
 
             batch.update(driverRef, { 
@@ -788,10 +785,7 @@ app.post('/', async (req, res) => {
             const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
             let stagingBay = [];
             if (rawBay) stagingBay = safeJsonParse(rawBay, []);
-            else if (driverDoc.data().activeStaging?.orders) {
-                // Safely parse stringified payloads
-                stagingBay = typeof driverDoc.data().activeStaging.orders === 'string' ? safeJsonParse(driverDoc.data().activeStaging.orders, []) : driverDoc.data().activeStaging.orders;
-            }
+            else if (driverDoc.data().activeStaging?.orders) stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
 
             let endpoints = { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
             let sLat = getField(driverDoc.data(), ['Start Lat', 'startLat']);
@@ -873,7 +867,7 @@ app.post('/', async (req, res) => {
             let jsonFieldKey = driverDoc.data().JSON !== undefined ? 'JSON' : (driverDoc.data().activeStaging ? 'activeStaging.orders' : 'stagingBay');
             let rStateFieldKey = driverDoc.data()['Route State'] !== undefined ? 'Route State' : (driverDoc.data().activeStaging ? 'activeStaging.status' : 'routeState');
 
-            // FORCE STRINGIFICATION TO EMULATE SINGLE-CELL STORAGE
+            // Forced Stringification
             let bayToSave = JSON.stringify(finalStops);
 
             batch.update(driverRef, { 
@@ -899,10 +893,7 @@ app.post('/', async (req, res) => {
             const rawBay = getField(driverDoc.data(), ['JSON', 'stagingBay']) || [];
             let bay = [];
             if (rawBay) bay = safeJsonParse(rawBay, []);
-            else if (driverDoc.data().activeStaging?.orders) {
-                // Safely parse stringified payloads
-                bay = typeof driverDoc.data().activeStaging.orders === 'string' ? safeJsonParse(driverDoc.data().activeStaging.orders, []) : driverDoc.data().activeStaging.orders;
-            }
+            else if (driverDoc.data().activeStaging?.orders) bay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
             
             let changed = false;
 
@@ -921,7 +912,7 @@ app.post('/', async (req, res) => {
             if (changed) {
                 let jsonFieldKey = driverDoc.data().JSON !== undefined ? 'JSON' : (driverDoc.data().activeStaging ? 'activeStaging.orders' : 'stagingBay');
                 
-                // FORCE STRINGIFICATION TO EMULATE SINGLE-CELL STORAGE
+                // Forced Stringification
                 let bayToSave = JSON.stringify(bay);
                 
                 await driverRef.update({ [jsonFieldKey]: bayToSave });
@@ -945,10 +936,7 @@ app.post('/', async (req, res) => {
                 let jsonFieldKey = d.data().JSON !== undefined ? 'JSON' : (d.data().activeStaging ? 'activeStaging.orders' : 'stagingBay');
                 
                 if (rawBay) bay = safeJsonParse(rawBay, []);
-                else if (d.data().activeStaging?.orders) {
-                    // Safely parse stringified payloads
-                    bay = typeof d.data().activeStaging.orders === 'string' ? safeJsonParse(d.data().activeStaging.orders, []) : d.data().activeStaging.orders;
-                }
+                else if (d.data().activeStaging?.orders) bay = safeJsonParse(d.data().activeStaging.orders, []);
                 
                 usersData[d.id] = { ref: d.ref, bay: bay, changed: false, fieldKey: jsonFieldKey };
             });
@@ -1002,7 +990,7 @@ app.post('/', async (req, res) => {
 
             for (let uid in usersData) {
                 if (usersData[uid].changed) {
-                    // FORCE STRINGIFICATION TO EMULATE SINGLE-CELL STORAGE
+                    // Forced Stringification
                     let bayToSave = JSON.stringify(usersData[uid].bay);
                     batch.update(usersData[uid].ref, { [usersData[uid].fieldKey]: bayToSave });
                 }
@@ -1026,10 +1014,7 @@ app.post('/', async (req, res) => {
                 let jsonFieldKey = doc.data().JSON !== undefined ? 'JSON' : (doc.data().activeStaging ? 'activeStaging.orders' : 'stagingBay');
                 
                 if (rawBay) bay = safeJsonParse(rawBay, []);
-                else if (doc.data().activeStaging?.orders) {
-                    // Safely parse stringified payloads
-                    bay = typeof doc.data().activeStaging.orders === 'string' ? safeJsonParse(doc.data().activeStaging.orders, []) : doc.data().activeStaging.orders;
-                }
+                else if (doc.data().activeStaging?.orders) bay = safeJsonParse(doc.data().activeStaging.orders, []);
                 
                 let originalLength = bay.length;
                 
@@ -1039,7 +1024,7 @@ app.post('/', async (req, res) => {
                 });
                 
                 if (newBay.length !== originalLength) {
-                    // FORCE STRINGIFICATION TO EMULATE SINGLE-CELL STORAGE
+                    // Forced Stringification
                     let bayToSave = JSON.stringify(newBay);
                     batch.update(doc.ref, { [jsonFieldKey]: bayToSave });
                     deletedCount += (originalLength - newBay.length);
