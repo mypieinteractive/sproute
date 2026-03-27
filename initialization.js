@@ -1,3 +1,12 @@
+/**
+ * initialization.js
+ * VERSION: V1.34
+ * * CHANGES:
+ * V1.34 - Schema Cleanup. Stripped out expensive fallback queries for locating 
+ * companies and settings now that the database relies strictly on document names 
+ * and standard 'companyId' foreign keys.
+ */
+
 const { getField, safeJsonParse, formatStopForManager } = require('./helpers');
 
 async function getDashboardInit(req, res, db) {
@@ -17,7 +26,8 @@ async function getDashboardInit(req, res, db) {
             if (lookupId) {
                 const userDoc = await db.collection('Users').doc(String(lookupId)).get();
                 if (userDoc.exists) {
-                    resolvedCompanyId = getField(userDoc.data(), ['Company ID', 'companyId', 'CompanyId']);
+                    // Strictly reference companyId
+                    resolvedCompanyId = userDoc.data().companyId;
                 }
             }
         }
@@ -26,27 +36,9 @@ async function getDashboardInit(req, res, db) {
             return res.status(400).json({ error: "Could not resolve Company ID from provided parameters." });
         }
 
-        let compDoc = null;
-        let companyData = {};
-        
-        const compRef = db.collection('Companies').doc(String(resolvedCompanyId));
-        let directDoc = await compRef.get();
-        
-        if (directDoc.exists) {
-            compDoc = directDoc;
-        } else {
-            const compQuery = await db.collection('Companies').where('Company ID', '==', String(resolvedCompanyId)).limit(1).get();
-            if (!compQuery.empty) {
-                compDoc = compQuery.docs[0];
-            } else {
-                const compQuery2 = await db.collection('Companies').where('Row ID', '==', String(resolvedCompanyId)).limit(1).get();
-                if (!compQuery2.empty) compDoc = compQuery2.docs[0];
-            }
-        }
-
-        if (compDoc && compDoc.exists) {
-            companyData = compDoc.data();
-        }
+        // Cleaned up Company Fetch - Just grab the document!
+        const compDoc = await db.collection('Companies').doc(String(resolvedCompanyId)).get();
+        let companyData = compDoc.exists ? compDoc.data() : {};
 
         let rawAccountType = String(companyData['Subscription Status'] || companyData['Account Type'] || companyData.accountType || "Individual").trim();
         let accountType = rawAccountType.charAt(0).toUpperCase() + rawAccountType.slice(1).toLowerCase();
@@ -64,8 +56,8 @@ async function getDashboardInit(req, res, db) {
         let rawCc = companyData.ccCompanyDefault;
         let ccCompanyDefault = rawCc === undefined ? false : (String(rawCc).toLowerCase() === 'true' || rawCc === true);
 
-        let queryField = companyData['Company ID'] !== undefined ? 'Company ID' : 'companyId';
-        const usersSnap = await db.collection('Users').where(queryField, '==', String(resolvedCompanyId)).get();
+        // Cleaned up Users Query
+        const usersSnap = await db.collection('Users').where('companyId', '==', String(resolvedCompanyId)).get();
         
         const inspectors = [];
         let globalRouteStart = null, globalRouteEnd = null, globalRouteState = 'Pending', foundDriverName = '';
@@ -123,11 +115,8 @@ async function getDashboardInit(req, res, db) {
             }
         });
 
-        let csvSettingsSnap = await db.collection('CSV_Settings').where(queryField, '==', String(resolvedCompanyId)).get();
-        if (csvSettingsSnap.empty && queryField === 'Company ID') {
-            csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
-        }
-
+        // Cleaned up CSV Settings Query
+        const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
             let t = doc.data().csvType || doc.data().Type || doc.data().type;
