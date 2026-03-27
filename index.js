@@ -1,7 +1,10 @@
 /**
  * index.js
- * VERSION: V1.29
+ * VERSION: V1.30
  * * CHANGES:
+ * V1.30 - Date Parsing Fix. Expanded the substring extraction on the due date field 
+ * during CSV ingestion from 8 characters to 10 characters to properly capture and 
+ * preserve the full 4-digit year format (e.g., MM/DD/YYYY).
  * V1.29 - Forced Stringification. All Firestore writes to activeStaging.orders (or JSON)
  * are now explicitly stringified to emulate Google Sheet single-cell storage logic, 
  * bypassing Firestore's strict nested entity validation. Reads automatically parse 
@@ -10,9 +13,6 @@
  * limits to '50mb' to prevent silent drops of large CSV payloads. Implemented a manual 
  * fallback parser inside the POST route to securely catch and convert raw text/plain 
  * strings or buffers sent by the Apps Script frontend.
- * V1.27 - Relaxed JSON Parsing. 
- * V1.26 - Payload Variable Alignment.
- * V1.25 - Expanded Webhook Auto-Detection. 
  */
 
 const express = require('express');
@@ -640,7 +640,7 @@ app.post('/', async (req, res) => {
                     let clientVal = settingsMap.client > -1 ? row[settingsMap.client] : "";
                     let displayClient = String(clientVal).substring(0, 3);
                     let dueDateRaw = settingsMap.dueDate > -1 ? row[settingsMap.dueDate] : "";
-                    let shortDate = dueDateRaw ? String(dueDateRaw).substring(0,8) : "";
+                    let shortDate = dueDateRaw ? String(dueDateRaw).substring(0,10) : "";
                     let orderTypeVal = settingsMap.orderType > -1 ? row[settingsMap.orderType] : "";
 
                     newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, csvType, shortDate, orderTypeVal, "", 0, lat, lng, initialStatus, 0 ]);
@@ -1049,5 +1049,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.29) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.30) listening on port ${port}`);
 });
