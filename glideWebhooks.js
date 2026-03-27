@@ -1,11 +1,12 @@
 /**
  * glideWebhooks.js
- * VERSION: V1.35
+ * VERSION: V1.36
  * * CHANGES:
- * V1.35 - Pure CamelCase Harmonization. Stripped out all legacy Title Case 
- * translations. The backend now trusts the Glide payload's camelCase keys 
- * completely and writes them directly to Firestore to ensure clean, 1:1 parity 
- * without code bloat. Added safe boolean parsing for 'isInspector'.
+ * V1.36 - Decoupled Billing Logic. Replaced the generic subscription mapping with 
+ * four explicit, dedicated billing fields (accountType, subscriptionStatus, 
+ * subscriptionId, subscriptionExpiry) to support future Stripe integrations while 
+ * maintaining clean frontend UI rendering.
+ * V1.35 - Pure CamelCase Harmonization. 
  */
 
 const { parseCoordsString } = require('./helpers');
@@ -70,7 +71,11 @@ async function updateUserFromGlide(payload, res, db) {
 }
 
 async function updateCompanyFromGlide(payload, res, db) {
-    const { companyId, name, address, email, logoUrl, startHour, serviceDelayMins, defaultEmailMessage, ccCompanyDefault, useExactApi, subscriptionStatus } = payload;
+    const { 
+        companyId, name, address, email, logoUrl, startHour, serviceDelayMins, 
+        defaultEmailMessage, ccCompanyDefault, useExactApi,
+        accountType, subscriptionStatus, subscriptionId, subscriptionExpiry
+    } = payload;
     
     if (!companyId) return res.status(400).json({ error: "Missing companyId." });
 
@@ -86,7 +91,12 @@ async function updateCompanyFromGlide(payload, res, db) {
     if (defaultEmailMessage !== undefined) updates.defaultEmailMessage = defaultEmailMessage;
     if (ccCompanyDefault !== undefined) updates.ccCompanyDefault = ccCompanyDefault;
     if (useExactApi !== undefined) updates.useExactApi = useExactApi;
+    
+    // Dedicated Billing Fields
+    if (accountType !== undefined) updates.accountType = accountType;
     if (subscriptionStatus !== undefined) updates.subscriptionStatus = subscriptionStatus;
+    if (subscriptionId !== undefined) updates.subscriptionId = subscriptionId;
+    if (subscriptionExpiry !== undefined) updates.subscriptionExpiry = subscriptionExpiry;
 
     await compRef.set(updates, { merge: true });
     return res.status(200).json({ success: true });
