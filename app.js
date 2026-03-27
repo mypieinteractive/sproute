@@ -1,9 +1,9 @@
 // *
-// * Dashboard - V12.5
+// * Dashboard - V12.6
 // * FILE: app.js
 // * Changes: 
-// * 1. Hardened inspector filtering logic in `showUploadModal` and `showAddOrderModal` 
-// * to strictly evaluate boolean values and strip out explicitly `false` users.
+// * 1. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
+// * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
 // *
 
 function updateShiftCursor(isShiftDown) {
@@ -86,7 +86,17 @@ async function apiFetch(payload) {
     logToVisualConsole('REQ', `POST ${payload.action}`, payload);
     
     try {
-        const response = await fetch(targetUrl, { method: 'POST', body: JSON.stringify(payload) });
+        let fetchOptions = {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        };
+        
+        // Conditionally add Content-Type for Express backend only to avoid Apps Script preflight issues
+        if (activeBackend === 'firestore') {
+            fetchOptions.headers = { 'Content-Type': 'application/json' };
+        }
+        
+        const response = await fetch(targetUrl, fetchOptions);
         const clonedRes = response.clone();
         clonedRes.json()
             .then(data => logToVisualConsole('RES', `POST ${payload.action}`, data))
