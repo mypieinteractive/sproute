@@ -1,10 +1,11 @@
 /**
  * initialization.js
- * VERSION: V1.35
+ * VERSION: V1.36
  * * CHANGES:
- * V1.35 - Pure CamelCase Harmonization. Stripped out legacy Title Case 'getField()' 
- * fallbacks. The query and property reads now strictly target the clean camelCase 
- * schema written by the updated glideWebhooks.js file.
+ * V1.36 - Decoupled Billing Logic. Removed the hardcoded "Individual" fallback mask. 
+ * The dashboard initialization now strictly reads the exact accountType and 
+ * subscription fields from the database, returning empty strings if the data is absent.
+ * V1.35 - Pure CamelCase Harmonization. 
  */
 
 const { safeJsonParse, formatStopForManager } = require('./helpers');
@@ -38,8 +39,12 @@ async function getDashboardInit(req, res, db) {
         const compDoc = await db.collection('Companies').doc(String(resolvedCompanyId)).get();
         let companyData = compDoc.exists ? compDoc.data() : {};
 
-        let rawAccountType = String(companyData.subscriptionStatus || companyData.accountType || "Individual").trim();
-        let accountType = rawAccountType.charAt(0).toUpperCase() + rawAccountType.slice(1).toLowerCase();
+        // Explicit Billing & Tier variables without hardcoded fallbacks
+        let accountType = companyData.accountType || "";
+        let subscriptionStatus = companyData.subscriptionStatus || "";
+        let subscriptionId = companyData.subscriptionId || "";
+        let subscriptionExpiry = companyData.subscriptionExpiry || "";
+
         let displayName = String(companyData.name || "Dashboard").trim();
         
         let permissions = { modify: true, reoptimize: true }; 
@@ -52,7 +57,6 @@ async function getDashboardInit(req, res, db) {
         let companyLogo = companyData.logoUrl || "";
         let ccCompanyDefault = companyData.ccCompanyDefault === true || String(companyData.ccCompanyDefault).toLowerCase() === 'true';
 
-        // Read strictly by camelCase companyId
         const usersSnap = await db.collection('Users').where('companyId', '==', String(resolvedCompanyId)).get();
         
         const inspectors = [];
@@ -61,7 +65,6 @@ async function getDashboardInit(req, res, db) {
         usersSnap.forEach(doc => {
             const uData = doc.data();
             
-            // Clean camelCase reads
             const isInsp = uData.isInspector === true || String(uData.isInspector).toLowerCase() === 'true';
             let startAddr = uData.startAddress || "";
             let startLat = uData.startLat || null;
@@ -108,7 +111,6 @@ async function getDashboardInit(req, res, db) {
             }
         });
 
-        // Read CSV Settings by clean companyId
         const csvSettingsSnap = await db.collection('CSV_Settings').where('companyId', '==', String(resolvedCompanyId)).get();
         const csvTypes = [];
         csvSettingsSnap.forEach(doc => {
@@ -123,7 +125,11 @@ async function getDashboardInit(req, res, db) {
             inspectors: inspectors,
             serviceDelay: serviceDelay,
             companyLogo: companyLogo,
-            tier: accountType,
+            tier: accountType, // Kept for backwards compatibility with legacy frontend if needed
+            accountType: accountType,
+            subscriptionStatus: subscriptionStatus,
+            subscriptionId: subscriptionId,
+            subscriptionExpiry: subscriptionExpiry,
             companyAddress: companyAddress,
             companyEmail: companyEmail,
             defaultEmailMessage: defaultEmailMessage,
@@ -131,7 +137,6 @@ async function getDashboardInit(req, res, db) {
             displayName: displayName,
             adminEmail: "",
             csvTypes: csvTypes,
-            accountType: accountType,
             ccCompanyDefault: ccCompanyDefault
         };
         
