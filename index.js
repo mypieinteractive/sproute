@@ -1,11 +1,12 @@
 /**
  * SPROUTE BACKEND - NODE.JS CLOUD FUNCTION
- * VERSION: V1.27
+ * VERSION: V1.28
  * * CHANGES:
- * V1.27 - Relaxed JSON Parsing. Updated `express.json({ type: '*/*' })` to parse all 
- * incoming requests as JSON regardless of the Content-Type header. This allows the 
- * backend to natively accept the `text/plain` webhook payloads sent from the frontend 
- * without requiring any CORS-breaking changes to `app.js`.
+ * V1.28 - Bulletproof Payload Parsing & Size Expansion. Increased the Express JSON and Text
+ * limits to '50mb' to prevent silent drops of large CSV payloads. Implemented a manual 
+ * fallback parser inside the POST route to securely catch and convert raw text/plain 
+ * strings or buffers sent by the Apps Script frontend.
+ * V1.27 - Relaxed JSON Parsing. 
  * V1.26 - Payload Variable Alignment.
  * V1.25 - Expanded Webhook Auto-Detection. 
  */
@@ -26,8 +27,9 @@ const db = getFirestore(firebaseApp, 'sproute');
 
 const app = express();
 
-// Parse all incoming payloads as JSON to accept text/plain from the frontend
-app.use(express.json({ type: '*/*' }));
+// Force high limits and explicit text parsing to natively catch Apps Script text/plain requests
+app.use(express.json({ limit: '50mb' }));
+app.use(express.text({ type: '*/*', limit: '50mb' }));
 
 app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', '*');
@@ -356,7 +358,25 @@ app.get('/', async (req, res) => {
 // ==========================================
 app.post('/', async (req, res) => {
     try {
-        const payload = req.body;
+        let payload = req.body;
+
+        // Failsafe Parser for raw string/buffer payloads (e.g. from Apps Script)
+        if (Buffer.isBuffer(payload)) {
+            payload = payload.toString('utf8');
+        }
+        if (typeof payload === 'string') {
+            try {
+                payload = JSON.parse(payload);
+            } catch (e) {
+                console.error("[POST ERROR] Failed to parse raw string payload:", e);
+                return res.status(400).json({ error: "Invalid JSON format in payload." });
+            }
+        }
+
+        if (!payload || Object.keys(payload).length === 0) {
+            return res.status(400).json({ error: "Empty payload or missing Content-Type header." });
+        }
+
         let action = payload.action;
 
         if (!action) {
@@ -1017,5 +1037,5 @@ app.all('*', (req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.27) listening on port ${port}`);
+    console.log(`[SERVER BOOT] Sproute Backend (V1.28) listening on port ${port}`);
 });
