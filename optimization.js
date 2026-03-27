@@ -1,3 +1,11 @@
+/**
+ * optimization.js
+ * VERSION: V1.34
+ * * CHANGES:
+ * V1.34 - Schema Cleanup. Stripped out expensive fallback queries. 
+ * Replaced getField() lookups with strict references to 'companyId'.
+ */
+
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
 
@@ -70,7 +78,8 @@ async function generateRoute(payload, res, db) {
     const driverDoc = await driverRef.get();
     if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
 
-    const compId = getField(driverDoc.data(), ['Company ID', 'companyId']);
+    // Cleaned up Company Query
+    const compId = driverDoc.data().companyId;
     const compRef = db.collection('Companies').doc(String(compId));
     const compDoc = await compRef.get();
     const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
@@ -159,7 +168,8 @@ async function calculate(payload, res, db) {
     const driverDoc = await driverRef.get();
     if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
 
-    const compId = getField(driverDoc.data(), ['Company ID', 'companyId']);
+    // Cleaned up Company Query
+    const compId = driverDoc.data().companyId;
     const compRef = db.collection('Companies').doc(String(compId));
     const compDoc = await compRef.get();
     
