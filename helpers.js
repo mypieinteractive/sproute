@@ -1,3 +1,12 @@
+/**
+ * helpers.js
+ * VERSION: V1.37
+ * * CHANGES:
+ * V1.37 - Amnesia Formatting Fix. Updated formatStopForManager to correctly 
+ * extract and preserve the cluster, eta, dist, and durationSecs properties 
+ * from the raw tuples so the frontend doesn't lose routing calculations on refresh.
+ */
+
 const admin = require('firebase-admin');
 
 function getDistMi(lat1, lon1, lat2, lon2) {
@@ -50,7 +59,7 @@ function parseCoordsString(coordsStr) {
     return null;
 }
 
-function formatStopForManager(obj, driverId, companyId, routeState) {
+function formatStopForManager(obj, driverId, companyId, routeState, routeTargetId = null) {
     let sId = Array.isArray(obj) ? obj[0] : (obj.r || obj.rowId);
     let sLat = Array.isArray(obj) ? obj[9] : (obj.l || obj.lat || obj[5]);
     let sLng = Array.isArray(obj) ? obj[10] : (obj.g || obj.lng || obj[6]);
@@ -61,11 +70,18 @@ function formatStopForManager(obj, driverId, companyId, routeState) {
     let sDue = Array.isArray(obj) ? obj[5] : (obj.dueDate || obj.d || obj[3]);
     let sType = Array.isArray(obj) ? obj[6] : (obj.type || obj.t || obj[4]);
 
+    // THE FIX: Properly mapping the routing metadata so it survives a page refresh
+    let sCluster = Array.isArray(obj) ? obj[1] : (obj.R || obj.routeNum || obj.cluster || 'X');
+    let sEta = Array.isArray(obj) ? obj[7] : (obj.e || obj.eta || '');
+    let sDist = Array.isArray(obj) ? obj[8] : (obj.D || obj.dist || 0);
+    let sDuration = Array.isArray(obj) ? obj[12] : (obj.u || obj.durationSecs || 0);
+
     return {
         rowId: sId, lat: sLat, lng: sLng, status: sStat,
         address: sAddr, client: sClient, app: sApp, dueDate: sDue, type: sType,
+        cluster: sCluster, eta: sEta, dist: sDist, durationSecs: sDuration,
         driverId: driverId, companyId: companyId,
-        routeState: routeState, routeTargetId: driverId,
+        routeState: routeState, routeTargetId: routeTargetId || driverId,
         rawTuple: Array.isArray(obj) ? obj : null
     };
 }
