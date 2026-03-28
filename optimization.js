@@ -1,15 +1,26 @@
 /**
  * optimization.js
- * VERSION: V1.35
+ * VERSION: V1.37
  * * CHANGES:
- * V1.35 - Multi-Day Rollover & Endpoint Geocoding. Hoisted the time variable outside the cluster 
- * loop to advance the date by 24 hours between routes. Added on-the-fly geocoding fallback for 
- * missing start/end coordinates before defaulting to the Dallas, TX fallback.
- * V1.34 - Schema Cleanup. Stripped out expensive fallback queries. 
+ * V1.37 - Hard Overwrite Refactor. Stripped out the backend array combination logic. 
+ * The engine now strictly honors the frontend payload, performing a pure hard overwrite 
+ * of the database to support the dirty route re-optimization workflow without pulling 
+ * omitted 'P' orders back into the active array.
+ * V1.36 - Payload & Status Sync Fix. 
  */
 
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
+
+function evaluateRouteState(arr, currState) {
+    if (!arr || arr.length === 0) return "Pending";
+    const hasRouted = arr.some(s => {
+        let stat = Array.isArray(s) ? s[11] : (s.status || s.s);
+        return String(stat).trim() === 'R';
+    });
+    if (!hasRouted) return "Pending";
+    return currState === "Ready" ? "Staging" : currState;
+}
 
 async function geocodeEndpoint(address, apiKey) {
     if (!address || !apiKey) return null;
@@ -47,6 +58,7 @@ async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequen
 }
 
 async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, projectId) {
+    if (!projectId) return null; 
     try {
         const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
         const client = await auth.getClient();
@@ -98,15 +110,9 @@ async function generateRoute(payload, res, db) {
     const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
     const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
-    let stagingBay = [];
-    if (driverDoc.data().activeStaging?.orders) {
-        stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
-    }
-    
     const mapsApiKey = process.env.MAPS_API_KEY;
     const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 
-    // --- Geocoding Fallback ---
     let sLat = parseFloat(getField(driverDoc.data(), ['Start Lat', 'startLat']));
     let sLng = parseFloat(getField(driverDoc.data(), ['Start Lng', 'startLng']));
     let eLat = parseFloat(getField(driverDoc.data(), ['End Lat', 'endLat']));
@@ -128,25 +134,36 @@ async function generateRoute(payload, res, db) {
         start: { lat: isNaN(sLat) ? 32.776 : sLat, lng: isNaN(sLng) ? -96.797 : sLng }, 
         end: { lat: isNaN(eLat) ? 32.776 : eLat, lng: isNaN(eLng) ? -96.797 : eLng } 
     };
-    // --------------------------
+
+    // --- Strictly use the payload provided by the frontend ---
+    const inputStops = payload.stops || [];
+    if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to optimize."});
 
     let clusters = {};
-    stagingBay.forEach(s => {
-        let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1);
-        if (!clusters[rLabel]) clusters[rLabel] = [];
-        clusters[rLabel].push({ orig: s, lat: parseFloat(Array.isArray(s) ? s[9] : s.lat), lng: parseFloat(Array.isArray(s) ? s[10] : s.lng) });
+    let unroutedStops = [];
+
+    inputStops.forEach(s => {
+        let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 'X');
+        if (String(rLabel) === 'X') {
+            unroutedStops.push(s);
+        } else {
+            if (!clusters[rLabel]) clusters[rLabel] = [];
+            clusters[rLabel].push({ orig: s, lat: parseFloat(Array.isArray(s) ? s[9] : (s.lat || s.l)), lng: parseFloat(Array.isArray(s) ? s[10] : (s.lng || s.g)) });
+        }
     });
 
-    let finalStops = [];
+    let finalRoutedStops = [];
     let stdCalls = 0, entCalls = 0;
     
-    // --- Hoisted Time Variable ---
     let time = new Date(); 
     time.setHours(startHour, 0, 0, 0);
 
     for (let routeNum in clusters) {
-        let cStops = clusters[routeNum].filter(s => s && s.lat && s.lng);
-        if (cStops.length === 0) continue;
+        let cStops = clusters[routeNum].filter(s => s && !isNaN(s.lat) && !isNaN(s.lng));
+        if (cStops.length === 0) {
+            clusters[routeNum].forEach(s => unroutedStops.push(s.orig));
+            continue;
+        }
 
         const routeInput = cStops.map(s => ({ lat: s.lat, lng: s.lng }));
         let optimized = null;
@@ -168,36 +185,51 @@ async function generateRoute(payload, res, db) {
 
                 let numDist = Number(parseFloat(visit.distance).toFixed(1));
                 let isTuple = Array.isArray(s);
-                finalStops.push([
+                
+                finalRoutedStops.push([
                     isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
-                    isTuple ? s[2] : s.address, isTuple ? s[3] : s.client, 
-                    isTuple ? s[4] : s.app, isTuple ? s[5] : s.dueDate, 
-                    isTuple ? s[6] : s.type, etaTimeOnly, numDist, 
-                    isTuple ? s[9] : s.lat, isTuple ? s[10] : s.lng, "R", visit.durationSecs
+                    isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
+                    isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
+                    isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
+                    isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs
                 ]);
             });
             
-            // --- Multi-Day Rollover ---
             time.setDate(time.getDate() + 1);
             time.setHours(startHour, 0, 0, 0);
         } else {
-            cStops.forEach(s => finalStops.push(s.orig));
+            cStops.forEach(s => unroutedStops.push(s.orig));
         }
     }
 
-    const batch = db.batch();
-    let bayToSave = JSON.stringify(finalStops);
+    let cleanedUnrouted = unroutedStops.map(s => {
+        let isTuple = Array.isArray(s);
+        let sId = isTuple ? s[0] : (s.rowId || s.r);
+        return [
+            sId, 'X', 
+            isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
+            isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
+            isTuple ? s[6] : (s.type || s.t), "", 0, 
+            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0
+        ];
+    });
 
+    let finalBay = finalRoutedStops.concat(cleanedUnrouted);
+    let nextState = evaluateRouteState(finalBay, 'Ready');
+
+    const batch = db.batch();
     batch.update(driverRef, { 
-        'activeStaging.orders': bayToSave, 
-        'activeStaging.status': 'Ready' 
+        'activeStaging.orders': JSON.stringify(finalBay), 
+        'activeStaging.status': nextState 
     });
     
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
     if (entCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_EnterpriseRouting', entCalls);
     
     await batch.commit();
-    return res.status(200).json({ success: true, updatedStops: finalStops });
+
+    // Returns standard 'queued' flag to allow frontend polling loop to safely close the overlay
+    return res.status(200).json({ success: true, status: 'queued', updatedStops: finalBay });
 }
 
 async function calculate(payload, res, db) {
@@ -214,14 +246,8 @@ async function calculate(payload, res, db) {
     const useExactApi = rawExact === undefined ? false : (String(rawExact).toUpperCase() === 'TRUE' || rawExact === true);
     const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
 
-    let stagingBay = [];
-    if (driverDoc.data().activeStaging?.orders) {
-        stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
-    }
-
     const mapsApiKey = process.env.MAPS_API_KEY;
 
-    // --- Geocoding Fallback ---
     let sLat = parseFloat(getField(driverDoc.data(), ['Start Lat', 'startLat']));
     let sLng = parseFloat(getField(driverDoc.data(), ['Start Lng', 'startLng']));
     let eLat = parseFloat(getField(driverDoc.data(), ['End Lat', 'endLat']));
@@ -243,25 +269,35 @@ async function calculate(payload, res, db) {
         start: { lat: isNaN(sLat) ? 32.776 : sLat, lng: isNaN(sLng) ? -96.797 : sLng }, 
         end: { lat: isNaN(eLat) ? 32.776 : eLat, lng: isNaN(eLng) ? -96.797 : eLng } 
     };
-    // --------------------------
+
+    const inputStops = payload.stops || [];
+    if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to calculate."});
 
     let clusters = {};
-    stagingBay.forEach(s => {
-        let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1);
-        if (!clusters[rLabel]) clusters[rLabel] = [];
-        clusters[rLabel].push({ orig: s, lat: parseFloat(Array.isArray(s) ? s[9] : s.lat), lng: parseFloat(Array.isArray(s) ? s[10] : s.lng) });
+    let unroutedStops = [];
+
+    inputStops.forEach(s => {
+        let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 'X');
+        if (String(rLabel) === 'X') {
+            unroutedStops.push(s);
+        } else {
+            if (!clusters[rLabel]) clusters[rLabel] = [];
+            clusters[rLabel].push({ orig: s, lat: parseFloat(Array.isArray(s) ? s[9] : (s.lat || s.l)), lng: parseFloat(Array.isArray(s) ? s[10] : (s.lng || s.g)) });
+        }
     });
 
-    let finalStops = [];
+    let finalRoutedStops = [];
     let stdCalls = 0;
 
-    // --- Hoisted Time Variable ---
     let baseTime = new Date(); 
     baseTime.setHours(startHour, 0, 0, 0);
 
     for (let routeNum in clusters) {
-        let routeStops = clusters[routeNum].filter(s => s && s.lat && s.lng);
-        if (routeStops.length === 0) continue;
+        let routeStops = clusters[routeNum].filter(s => s && !isNaN(s.lat) && !isNaN(s.lng));
+        if (routeStops.length === 0) {
+            clusters[routeNum].forEach(s => unroutedStops.push(s.orig));
+            continue;
+        }
 
         let finalResults = [];
         let apiSuccess = false;
@@ -303,31 +339,44 @@ async function calculate(payload, res, db) {
             let numDist = Number(parseFloat(res.distance).toFixed(1));
             let isTuple = Array.isArray(s);
 
-            finalStops.push([
+            finalRoutedStops.push([
                 isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
-                isTuple ? s[2] : s.address, isTuple ? s[3] : s.client, 
-                isTuple ? s[4] : s.app, isTuple ? s[5] : s.dueDate, 
-                isTuple ? s[6] : s.type, etaTimeOnly, numDist, 
-                isTuple ? s[9] : s.lat, isTuple ? s[10] : s.lng, "R", res.durationSecs
+                isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
+                isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
+                isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
+                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", res.durationSecs
             ]);
         });
         
-        // --- Multi-Day Rollover ---
         baseTime.setDate(baseTime.getDate() + 1);
         baseTime.setHours(startHour, 0, 0, 0);
     }
 
-    const batch = db.batch();
-    let bayToSave = JSON.stringify(finalStops);
-
-    batch.update(driverRef, { 
-        'activeStaging.orders': bayToSave, 
-        'activeStaging.status': 'Ready' 
+    let cleanedUnrouted = unroutedStops.map(s => {
+        let isTuple = Array.isArray(s);
+        let sId = isTuple ? s[0] : (s.rowId || s.r);
+        return [
+            sId, 'X', 
+            isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
+            isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
+            isTuple ? s[6] : (s.type || s.t), "", 0, 
+            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0
+        ];
     });
+
+    let finalBay = finalRoutedStops.concat(cleanedUnrouted);
+    let nextState = evaluateRouteState(finalBay, 'Ready');
+
+    const batch = db.batch();
+    batch.update(driverRef, { 
+        'activeStaging.orders': JSON.stringify(finalBay), 
+        'activeStaging.status': nextState 
+    });
+    
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
     
     await batch.commit();
-    return res.status(200).json({ success: true, updatedStops: finalStops });
+    return res.status(200).json({ success: true, updatedStops: finalBay });
 }
 
 module.exports = { generateRoute, calculate };
