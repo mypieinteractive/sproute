@@ -1,12 +1,12 @@
 /**
  * optimization.js
- * VERSION: V1.38
+ * VERSION: V1.39
  * * CHANGES:
- * V1.38 - API Failure Safe Abort. Replaced the destructive fallback that wiped 
- * route assignments on API failure. Now, if the Google Maps API returns null 
- * (due to missing keys or quota limits), the backend aborts the database overwrite 
- * entirely and returns a 500 error to safely close the UI polling loop.
- * V1.37 - Hard Overwrite Refactor. 
+ * V1.39 - Google Rejection Logging. Added explicit console.error outputs inside 
+ * the routing API calls so that if Google replies with a REQUEST_DENIED or 
+ * INVALID_REQUEST, the exact error message provided by Google is printed to 
+ * the Cloud Run logs instead of being silently swallowed.
+ * V1.38 - API Failure Safe Abort. 
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -35,7 +35,10 @@ async function geocodeEndpoint(address, apiKey) {
 }
 
 async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, apiKey) {
-    if (!apiKey) return null; // Failsafe for missing env var
+    if (!apiKey) {
+        console.error("[GOOGLE MAPS REJECTION] MAPS_API_KEY environment variable is missing.");
+        return null;
+    }
     try {
         const waypoints = stopsGeo.map(s => `${s.lat},${s.lng}`).join('|');
         const opt = preserveSequence ? '' : 'optimize:true|';
@@ -44,7 +47,12 @@ async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequen
         const res = await fetch(encodeURI(url));
         const data = await res.json();
         
-        if (data.status !== "OK" || !data.routes || data.routes.length === 0) return null;
+        // V1.39 Logging: Catch Google's specific rejection reason
+        if (data.status !== "OK" || !data.routes || data.routes.length === 0) {
+            console.error(`[GOOGLE MAPS REJECTION] Status: ${data.status || 'UNKNOWN'}, Error: ${data.error_message || 'No specific error message provided by Google.'}`);
+            return null;
+        }
+
         const waypointOrder = (data.routes[0].waypoint_order && data.routes[0].waypoint_order.length > 0) ? data.routes[0].waypoint_order : stopsGeo.map((_, i) => i);
         
         return waypointOrder.map((origIdx, i) => ({
@@ -59,7 +67,10 @@ async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequen
 }
 
 async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, projectId) {
-    if (!projectId) return null; 
+    if (!projectId) {
+        console.error("[ENTERPRISE REJECTION] GOOGLE_CLOUD_PROJECT environment variable is missing.");
+        return null; 
+    }
     try {
         const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
         const client = await auth.getClient();
@@ -87,7 +98,12 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
         });
         
         const data = await res.json();
-        if (data.error || !data.routes || data.routes.length === 0) return null;
+
+        // V1.39 Logging: Catch Google's specific rejection reason
+        if (data.error || !data.routes || data.routes.length === 0) {
+            console.error(`[ENTERPRISE REJECTION] Error: ${JSON.stringify(data.error || data)}`);
+            return null;
+        }
 
         return data.routes[0].visits.map((v, i) => ({
             index: parseInt(v.shipmentLabel),
@@ -176,10 +192,8 @@ async function generateRoute(payload, res, db) {
             if (optimized) entCalls += routeInput.length;
         }
 
-        // --- THE V1.38 SAFE ABORT FIX ---
         if (!optimized) {
             console.error(`[OPTIMIZATION FAILED] Google API returned null for Route ${routeNum}`);
-            // Return an error to the frontend, aborting the database save so assignments aren't wiped.
             return res.status(500).json({ error: "Routing APIs failed to return a sequence. Please check your Google Cloud API keys and Environment Variables." });
         }
 
@@ -322,7 +336,6 @@ async function calculate(payload, res, db) {
             }
         }
 
-        // --- THE V1.38 SAFE ABORT FIX ---
         if (useExactApi && !apiSuccess) {
             console.error(`[CALCULATE FAILED] Standard API Exact Match failed for Route ${routeNum}`);
             return res.status(500).json({ error: "Routing APIs failed to calculate sequence. Please check your Maps API Key." });
