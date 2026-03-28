@@ -1,24 +1,69 @@
 /**
  * initialization.js
- * VERSION: V1.36
+ * VERSION: V1.37
  * * CHANGES:
- * V1.36 - Decoupled Billing Logic. Removed the hardcoded "Individual" fallback mask. 
- * The dashboard initialization now strictly reads the exact accountType and 
- * subscription fields from the database, returning empty strings if the data is absent.
- * V1.35 - Pure CamelCase Harmonization. 
+ * V1.37 - Inspector "Dead Link" Fix. Added support for 'req.query.id' to intercept 
+ * dispatched route links. It now queries the Dispatch collection, retrieves the 
+ * frozen currentRoute array, and returns the immutable snapshot payload for the Inspector UI.
+ * V1.36 - Decoupled Billing Logic. 
  */
 
 const { safeJsonParse, formatStopForManager } = require('./helpers');
 
 async function getDashboardInit(req, res, db) {
     try {
+        let explicitRouteId = req.query.id;
         let explicitCompanyId = req.query.companyId || req.query.company;
         if (Array.isArray(explicitCompanyId)) explicitCompanyId = explicitCompanyId[0];
         
         const driverId = req.query.driverId || req.query.driver;
         const adminId = req.query.adminId || req.query.admin;
         const isManager = req.query.isManager === 'true';
-        
+
+        // --- 1. INSPECTOR DISPATCH LINK INTERCEPT ---
+        // If an ID is present but no Company ID, it is a direct link from a dispatch email
+        if (explicitRouteId && !explicitCompanyId) {
+            const dispatchDoc = await db.collection('Dispatch').doc(String(explicitRouteId)).get();
+            if (!dispatchDoc.exists) return res.status(404).json({ error: "Route not found.", id: explicitRouteId });
+            
+            const dData = dispatchDoc.data();
+            const resolvedCompanyId = dData.companyId;
+            const dispatchDriverId = dData.driverId;
+            const currentRoute = safeJsonParse(dData.currentRoute, []);
+            const originalRoute = dData.originalRoute || "[]";
+            
+            const compDoc = await db.collection('Companies').doc(String(resolvedCompanyId)).get();
+            let companyData = compDoc.exists ? compDoc.data() : {};
+            
+            const driverDoc = await db.collection('Users').doc(String(dispatchDriverId)).get();
+            let driverData = driverDoc.exists ? driverDoc.data() : {};
+            
+            let activeStops = currentRoute.map(obj => formatStopForManager(obj, dispatchDriverId, resolvedCompanyId, 'Dispatched', explicitRouteId));
+            let isAlteredRoute = dData.currentRoute !== originalRoute;
+
+            return res.status(200).json({
+                routeId: explicitRouteId,
+                stops: activeStops,
+                routeStart: driverData.startAddress ? { address: driverData.startAddress, lat: driverData.startLat, lng: driverData.startLng } : null,
+                routeEnd: driverData.endAddress ? { address: driverData.endAddress, lat: driverData.endLat, lng: driverData.endLng } : null,
+                serviceDelay: parseInt(companyData.serviceDelayMins) || 0,
+                companyLogo: companyData.logoUrl || "",
+                tier: companyData.accountType || "",
+                accountType: companyData.accountType || "",
+                companyAddress: companyData.address || "",
+                companyEmail: companyData.email || "",
+                defaultEmailMessage: companyData.defaultEmailMessage || "",
+                // Treat this as an immutable snapshot for the inspector
+                permissions: { modify: false, reoptimize: false, useExactApi: companyData.useExactApi }, 
+                displayName: driverData.name || "Inspector",
+                isAlteredRoute: isAlteredRoute,
+                needsRecalculation: false,
+                csvTypes: [], 
+                ccCompanyDefault: companyData.ccCompanyDefault === true || String(companyData.ccCompanyDefault).toLowerCase() === 'true'
+            });
+        }
+
+        // --- 2. STANDARD MANAGER / INSPECTOR LOAD ---
         let resolvedCompanyId = explicitCompanyId ? String(explicitCompanyId).trim() : null;
         let activeStops = [];
 
@@ -39,7 +84,6 @@ async function getDashboardInit(req, res, db) {
         const compDoc = await db.collection('Companies').doc(String(resolvedCompanyId)).get();
         let companyData = compDoc.exists ? compDoc.data() : {};
 
-        // Explicit Billing & Tier variables without hardcoded fallbacks
         let accountType = companyData.accountType || "";
         let subscriptionStatus = companyData.subscriptionStatus || "";
         let subscriptionId = companyData.subscriptionId || "";
@@ -94,7 +138,8 @@ async function getDashboardInit(req, res, db) {
                 });
             } else {
                 if (driverId && doc.id === String(driverId)) {
-                    activeStops = stagingBay;
+                    // Safe mapping using the updated helper formatting
+                    activeStops = stagingBay.map(obj => formatStopForManager(obj, doc.id, resolvedCompanyId, rState));
                     globalRouteState = rState;
                     foundDriverName = driverName;
                     
@@ -125,7 +170,7 @@ async function getDashboardInit(req, res, db) {
             inspectors: inspectors,
             serviceDelay: serviceDelay,
             companyLogo: companyLogo,
-            tier: accountType, // Kept for backwards compatibility with legacy frontend if needed
+            tier: accountType, 
             accountType: accountType,
             subscriptionStatus: subscriptionStatus,
             subscriptionId: subscriptionId,
