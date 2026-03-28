@@ -1,12 +1,14 @@
 /**
  * preOptimization.js
- * VERSION: V1.38
+ * VERSION: V1.39
  * * CHANGES:
- * V1.38 - Unmatched Resolution 'Skip' Handling. Added support for the payload.skip 
- * flag in the resolveUnmatchedAddress endpoint. If triggered, it deletes the 
- * unmatched document from the database and removes the bad order from the driver's 
- * staging bay entirely.
- * V1.37 - Geocoding Waterfall & Unmatched Resolution.
+ * V1.39 - Live Route & Cross-Driver ID Fix. Modified updateOrder, updateMultipleOrders, 
+ * and deleteMultipleOrders to properly check for a payload.routeId. If present, mutations 
+ * are applied to the Dispatch collection's 'currentRoute' array, and 'Completed' statuses 
+ * are synced to the 'originalRoute' array. Added cross-driver ID recalculation logic 
+ * to dynamically overwrite the rowId with the destination driver's max sequence number 
+ * to prevent database corruption.
+ * V1.38 - Unmatched Resolution 'Skip' Handling.
  */
 
 const { parse } = require('csv-parse/sync');
@@ -223,7 +225,6 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
     let finalLng = parseFloat(lng);
     let geocodeCallCount = 0;
 
-    // Validation overlay logic check
     if (correctedAddress && (isNaN(finalLat) || isNaN(finalLng))) {
         let geoResult = await performGeocodingWaterfall(correctedAddress, db, mapsApiKey);
         if (geoResult) {
@@ -242,15 +243,12 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
     finalLat = Number(finalLat.toFixed(5));
     finalLng = Number(finalLng.toFixed(5));
 
-    // 1. Train the Database using original address
     const cacheRef = db.collection('GeocodeCache').doc(cleanOrigAddr);
     batch.set(cacheRef, { lat: finalLat, lng: finalLng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
 
-    // 2. Clear from Unmatched
     const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
     batch.delete(unmatchedRef);
 
-    // 3. Update the Driver's Staging Bay
     const driverRef = db.collection('Users').doc(String(driverId));
     const driverDoc = await driverRef.get();
     if (driverDoc.exists) {
@@ -295,9 +293,62 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
 }
 
 async function updateOrder(payload, res, db) {
-    const { rowId, driverId, updates } = payload;
-    if (!rowId || !driverId || !updates) return res.status(400).json({error: "Missing parameters"});
+    const { rowId, driverId, updates, routeId } = payload;
+    if (!rowId || !updates) return res.status(400).json({error: "Missing parameters"});
 
+    if (routeId) {
+        const dispatchRef = db.collection('Dispatch').doc(String(routeId));
+        const dispatchDoc = await dispatchRef.get();
+        if (!dispatchDoc.exists) return res.status(404).json({error: "Dispatch record not found"});
+
+        let currentRoute = safeJsonParse(dispatchDoc.data().currentRoute, []);
+        let originalRoute = safeJsonParse(dispatchDoc.data().originalRoute, []);
+        let changed = false;
+        let syncToMaster = false;
+
+        for (let i = 0; i < currentRoute.length; i++) {
+            let s = currentRoute[i];
+            if (String(Array.isArray(s) ? s[0] : (s.rowId || s.id)) === String(rowId)) {
+                if (updates.status !== undefined) {
+                    let stat = String(updates.status).substring(0,1).toUpperCase();
+                    if (Array.isArray(s)) currentRoute[i][11] = stat;
+                    else { currentRoute[i].status = stat; currentRoute[i].s = stat; }
+                    if (stat === 'C') syncToMaster = true;
+                }
+                if (updates.eta !== undefined) {
+                    if (Array.isArray(s)) currentRoute[i][7] = updates.eta; else currentRoute[i].eta = updates.eta;
+                }
+                if (updates.dist !== undefined) {
+                    if (Array.isArray(s)) currentRoute[i][8] = updates.dist; else currentRoute[i].dist = updates.dist;
+                }
+                if (updates.routeNum !== undefined) {
+                    if (Array.isArray(s)) currentRoute[i][1] = updates.routeNum; else { currentRoute[i].R = updates.routeNum; currentRoute[i].routeNum = updates.routeNum; }
+                }
+                changed = true;
+                break;
+            }
+        }
+
+        if (changed) {
+            let dispatchUpdates = { currentRoute: JSON.stringify(currentRoute) };
+            if (syncToMaster) {
+                for (let i = 0; i < originalRoute.length; i++) {
+                    let s = originalRoute[i];
+                    if (String(Array.isArray(s) ? s[0] : (s.rowId || s.id)) === String(rowId)) {
+                        if (Array.isArray(s)) originalRoute[i][11] = 'C';
+                        else { originalRoute[i].status = 'C'; originalRoute[i].s = 'C'; }
+                        break;
+                    }
+                }
+                dispatchUpdates.originalRoute = JSON.stringify(originalRoute);
+            }
+            await dispatchRef.update(dispatchUpdates);
+            return res.status(200).json({ success: true });
+        }
+        return res.status(404).json({ error: "Order not found in dispatched route" });
+    }
+
+    // Default to staging bay if no routeId is provided
     const driverRef = db.collection('Users').doc(String(driverId));
     const driverDoc = await driverRef.get();
     if (!driverDoc.exists) return res.status(404).json({error: "Driver not found"});
@@ -311,19 +362,27 @@ async function updateOrder(payload, res, db) {
 
     for (let i = 0; i < bay.length; i++) {
         let s = bay[i];
-        if (String(Array.isArray(s) ? s[0] : s.rowId) === String(rowId)) {
-            if (updates.status !== undefined) bay[i][11] = updates.status;
-            if (updates.eta !== undefined) bay[i][7] = updates.eta;
-            if (updates.dist !== undefined) bay[i][8] = updates.dist;
-            if (updates.routeNum !== undefined) bay[i][1] = updates.routeNum;
+        if (String(Array.isArray(s) ? s[0] : (s.rowId || s.id)) === String(rowId)) {
+            if (updates.status !== undefined) {
+                let stat = String(updates.status).substring(0,1).toUpperCase();
+                if (Array.isArray(s)) bay[i][11] = stat; else { bay[i].status = stat; bay[i].s = stat; }
+            }
+            if (updates.eta !== undefined) {
+                if (Array.isArray(s)) bay[i][7] = updates.eta; else bay[i].eta = updates.eta;
+            }
+            if (updates.dist !== undefined) {
+                if (Array.isArray(s)) bay[i][8] = updates.dist; else bay[i].dist = updates.dist;
+            }
+            if (updates.routeNum !== undefined) {
+                if (Array.isArray(s)) bay[i][1] = updates.routeNum; else { bay[i].R = updates.routeNum; bay[i].routeNum = updates.routeNum; }
+            }
             changed = true;
             break;
         }
     }
 
     if (changed) {
-        let bayToSave = JSON.stringify(bay);
-        await driverRef.update({ 'activeStaging.orders': bayToSave });
+        await driverRef.update({ 'activeStaging.orders': JSON.stringify(bay) });
         return res.status(200).json({ success: true });
     } else {
         return res.status(404).json({ error: "Order not found in staging bay" });
@@ -331,9 +390,66 @@ async function updateOrder(payload, res, db) {
 }
 
 async function updateMultipleOrders(payload, res, db) {
-    const { updatesList, sharedUpdates } = payload;
+    const { updatesList, sharedUpdates, routeId } = payload;
     if (!updatesList || !Array.isArray(updatesList)) return res.status(400).json({error: "Missing updatesList"});
 
+    if (routeId) {
+        const dispatchRef = db.collection('Dispatch').doc(String(routeId));
+        const dispatchDoc = await dispatchRef.get();
+        if (!dispatchDoc.exists) return res.status(404).json({error: "Dispatch record not found"});
+
+        let currentRoute = safeJsonParse(dispatchDoc.data().currentRoute, []);
+        let originalRoute = safeJsonParse(dispatchDoc.data().originalRoute, []);
+        let changed = false;
+        let syncToMaster = (sharedUpdates && sharedUpdates.status && String(sharedUpdates.status).substring(0,1).toUpperCase() === 'C');
+
+        const updateMap = new Map();
+        updatesList.forEach(u => updateMap.set(String(u.rowId), u));
+
+        for (let i = 0; i < currentRoute.length; i++) {
+            let s = currentRoute[i];
+            let sId = String(Array.isArray(s) ? s[0] : (s.rowId || s.id));
+            if (updateMap.has(sId)) {
+                if (sharedUpdates.routeNum !== undefined || sharedUpdates.cluster !== undefined) {
+                    if (Array.isArray(s)) s[1] = sharedUpdates.routeNum || sharedUpdates.cluster;
+                    else { s.R = sharedUpdates.routeNum || sharedUpdates.cluster; s.routeNum = sharedUpdates.routeNum || sharedUpdates.cluster; }
+                }
+                if (sharedUpdates.eta !== undefined) {
+                    if (Array.isArray(s)) s[7] = sharedUpdates.eta; else s.eta = sharedUpdates.eta;
+                }
+                if (sharedUpdates.dist !== undefined) {
+                    if (Array.isArray(s)) s[8] = sharedUpdates.dist; else s.dist = sharedUpdates.dist;
+                }
+                if (sharedUpdates.status !== undefined) {
+                    let stat = String(sharedUpdates.status).substring(0,1).toUpperCase();
+                    if (Array.isArray(s)) s[11] = stat; else { s.status = stat; s.s = stat; }
+                }
+                if (sharedUpdates.durationSecs !== undefined) {
+                    if (Array.isArray(s)) s[12] = sharedUpdates.durationSecs; else s.durationSecs = sharedUpdates.durationSecs;
+                }
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            let dispatchUpdates = { currentRoute: JSON.stringify(currentRoute) };
+            if (syncToMaster) {
+                for (let i = 0; i < originalRoute.length; i++) {
+                    let s = originalRoute[i];
+                    let sId = String(Array.isArray(s) ? s[0] : (s.rowId || s.id));
+                    if (updateMap.has(sId)) {
+                        if (Array.isArray(s)) s[11] = 'C';
+                        else { s.status = 'C'; s.s = 'C'; }
+                    }
+                }
+                dispatchUpdates.originalRoute = JSON.stringify(originalRoute);
+            }
+            await dispatchRef.update(dispatchUpdates);
+        }
+        return res.status(200).json({ success: true });
+    }
+
+    // Default to staging bay if no routeId is provided
     const batch = db.batch();
     const usersSnap = await db.collection('Users').get();
     let usersData = {};
@@ -355,7 +471,7 @@ async function updateMultipleOrders(payload, res, db) {
         let orderTuple = null;
 
         if (currentDriverId && usersData[currentDriverId]) {
-            let idx = usersData[currentDriverId].bay.findIndex(s => String(Array.isArray(s) ? s[0] : s.rowId) === targetRowId);
+            let idx = usersData[currentDriverId].bay.findIndex(s => String(Array.isArray(s) ? s[0] : (s.rowId || s.id)) === targetRowId);
             if (idx > -1) {
                 foundSourceId = currentDriverId;
                 orderTuple = usersData[currentDriverId].bay[idx];
@@ -364,7 +480,7 @@ async function updateMultipleOrders(payload, res, db) {
             }
         } else {
             for (let uid in usersData) {
-                let idx = usersData[uid].bay.findIndex(s => String(Array.isArray(s) ? s[0] : s.rowId) === targetRowId);
+                let idx = usersData[uid].bay.findIndex(s => String(Array.isArray(s) ? s[0] : (s.rowId || s.id)) === targetRowId);
                 if (idx > -1) {
                     foundSourceId = uid;
                     orderTuple = usersData[uid].bay[idx];
@@ -377,15 +493,48 @@ async function updateMultipleOrders(payload, res, db) {
 
         if (orderTuple) {
             if (sharedUpdates) {
-                if (sharedUpdates.routeNum !== undefined || sharedUpdates.cluster !== undefined) orderTuple[1] = sharedUpdates.routeNum || sharedUpdates.cluster;
-                if (sharedUpdates.eta !== undefined) orderTuple[7] = sharedUpdates.eta;
-                if (sharedUpdates.dist !== undefined) orderTuple[8] = sharedUpdates.dist;
-                if (sharedUpdates.status !== undefined) orderTuple[11] = sharedUpdates.status;
-                if (sharedUpdates.durationSecs !== undefined) orderTuple[12] = sharedUpdates.durationSecs;
+                if (sharedUpdates.routeNum !== undefined || sharedUpdates.cluster !== undefined) {
+                    if (Array.isArray(orderTuple)) orderTuple[1] = sharedUpdates.routeNum || sharedUpdates.cluster;
+                    else { orderTuple.R = sharedUpdates.routeNum || sharedUpdates.cluster; orderTuple.routeNum = sharedUpdates.routeNum || sharedUpdates.cluster; }
+                }
+                if (sharedUpdates.eta !== undefined) {
+                    if (Array.isArray(orderTuple)) orderTuple[7] = sharedUpdates.eta; else orderTuple.eta = sharedUpdates.eta;
+                }
+                if (sharedUpdates.dist !== undefined) {
+                    if (Array.isArray(orderTuple)) orderTuple[8] = sharedUpdates.dist; else orderTuple.dist = sharedUpdates.dist;
+                }
+                if (sharedUpdates.status !== undefined) {
+                    let stat = String(sharedUpdates.status).substring(0,1).toUpperCase();
+                    if (Array.isArray(orderTuple)) orderTuple[11] = stat; else { orderTuple.status = stat; orderTuple.s = stat; }
+                }
+                if (sharedUpdates.durationSecs !== undefined) {
+                    if (Array.isArray(orderTuple)) orderTuple[12] = sharedUpdates.durationSecs; else orderTuple.durationSecs = sharedUpdates.durationSecs;
+                }
             }
 
             let destDriverId = newDriverId || foundSourceId;
             if (destDriverId && usersData[destDriverId]) {
+                // Cross-Driver ID Recalculation Fix
+                if (destDriverId !== foundSourceId) {
+                    let maxSeq = 0;
+                    usersData[destDriverId].bay.forEach(s => {
+                        let idStr = String(Array.isArray(s) ? s[0] : (s.rowId || s.id));
+                        let parts = idStr.split('-');
+                        if(parts.length === 2) {
+                            let seq = parseInt(parts[1]);
+                            if(!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+                        }
+                    });
+                    let newRowId = `${destDriverId}-${maxSeq + 1}`;
+                    if (Array.isArray(orderTuple)) {
+                        orderTuple[0] = newRowId;
+                    } else {
+                        orderTuple.rowId = newRowId;
+                        orderTuple.r = newRowId;
+                        orderTuple.id = newRowId;
+                    }
+                }
+                
                 usersData[destDriverId].bay.push(orderTuple);
                 usersData[destDriverId].changed = true;
             }
@@ -410,9 +559,29 @@ async function updateMultipleOrders(payload, res, db) {
 }
 
 async function deleteMultipleOrders(payload, res, db) {
-    const { rowIds } = payload;
+    const { rowIds, routeId } = payload;
     if (!rowIds || !Array.isArray(rowIds)) return res.status(400).json({ error: "Missing rowIds payload" });
 
+    if (routeId) {
+        const dispatchRef = db.collection('Dispatch').doc(String(routeId));
+        const dispatchDoc = await dispatchRef.get();
+        if (!dispatchDoc.exists) return res.status(404).json({error: "Dispatch record not found"});
+
+        let currentRoute = safeJsonParse(dispatchDoc.data().currentRoute, []);
+        let originalRoute = safeJsonParse(dispatchDoc.data().originalRoute, []);
+
+        let newCurrent = currentRoute.filter(s => !rowIds.includes(String(Array.isArray(s) ? s[0] : (s.rowId || s.id))));
+        let newOriginal = originalRoute.filter(s => !rowIds.includes(String(Array.isArray(s) ? s[0] : (s.rowId || s.id))));
+
+        await dispatchRef.update({
+            currentRoute: JSON.stringify(newCurrent),
+            originalRoute: JSON.stringify(newOriginal)
+        });
+        
+        return res.status(200).json({ success: true, deleted: currentRoute.length - newCurrent.length });
+    }
+
+    // Default to staging bay if no routeId is provided
     const batch = db.batch();
     const usersSnap = await db.collection('Users').get();
     let deletedCount = 0;
