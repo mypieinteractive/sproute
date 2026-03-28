@@ -1,20 +1,17 @@
 /**
  * preOptimization.js
- * VERSION: V1.37
+ * VERSION: V1.38
  * * CHANGES:
- * V1.37 - Geocoding Waterfall & Unmatched Resolution. Abstracted geocoding into a 
- * waterfall that checks the Cache, Standard API, and Address Validation API. 
- * Orders that fail validation are now flagged with status 'V' and pushed to an 
- * 'Unmatched' Firestore collection. Added 'resolveUnmatchedAddress' endpoint to 
- * process UI modal corrections, update the staging bay, and train the GeocodeCache 
- * using the original address.
- * V1.34 - Schema Cleanup.
+ * V1.38 - Unmatched Resolution 'Skip' Handling. Added support for the payload.skip 
+ * flag in the resolveUnmatchedAddress endpoint. If triggered, it deletes the 
+ * unmatched document from the database and removes the bad order from the driver's 
+ * staging bay entirely.
+ * V1.37 - Geocoding Waterfall & Unmatched Resolution.
  */
 
 const { parse } = require('csv-parse/sync');
 const { colIdx, safeJsonParse, incrementApiUsage } = require('./helpers');
 
-// --- NEW HELPER: Geocoding Waterfall ---
 async function performGeocodingWaterfall(address, db, mapsApiKey) {
     const cleanAddr = address.replace(/\//g, '');
     const cacheRef = db.collection('GeocodeCache').doc(cleanAddr);
@@ -26,7 +23,6 @@ async function performGeocodingWaterfall(address, db, mapsApiKey) {
 
     if (!mapsApiKey) return null;
 
-    // Standard Geocoding API
     try {
         const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${mapsApiKey}`);
         const geoData = await geoRes.json();
@@ -35,7 +31,6 @@ async function performGeocodingWaterfall(address, db, mapsApiKey) {
         }
     } catch(e) { console.error("Standard Geocode Error:", e.message); }
 
-    // Address Validation API Fallback
     try {
         const valRes = await fetch(`https://addressvalidation.googleapis.com/v1:validateAddress?key=${mapsApiKey}`, {
             method: 'POST',
@@ -186,16 +181,49 @@ async function uploadCsv(payload, res, db, admin) {
     return res.status(200).json(responsePayload);
 }
 
-// --- NEW ENDPOINT: Resolve Unmatched Addresses ---
 async function resolveUnmatchedAddress(payload, res, db, admin) {
-    const { driverId, companyId, originalAddress, lat, lng, correctedAddress } = payload;
+    const { driverId, companyId, originalAddress, lat, lng, correctedAddress, skip } = payload;
     if (!originalAddress || !driverId) return res.status(400).json({ error: "Missing parameters" });
+
+    const batch = db.batch();
+    const cleanOrigAddr = originalAddress.replace(/\//g, '');
+
+    // Skip Logic: Delete from Unmatched collection and remove from Staging Array
+    if (skip) {
+        const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
+        batch.delete(unmatchedRef);
+
+        const driverRef = db.collection('Users').doc(String(driverId));
+        const driverDoc = await driverRef.get();
+        if (driverDoc.exists) {
+            let bay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
+            let changed = false;
+            let newBay = bay.filter(s => {
+                let isTuple = Array.isArray(s);
+                let sStat = isTuple ? s[11] : (s.status || s.s);
+                let sAddr = isTuple ? s[2] : (s.address || s.a);
+                let tupleDisplayAddr = String(sAddr).split(',')[0].trim().toLowerCase();
+                
+                if (sStat === 'V' && originalAddress.toLowerCase().includes(tupleDisplayAddr)) {
+                    changed = true;
+                    return false; 
+                }
+                return true;
+            });
+            if (changed) {
+                batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(newBay) });
+            }
+        }
+        await batch.commit();
+        return res.status(200).json({ success: true, skipped: true });
+    }
 
     const mapsApiKey = process.env.MAPS_API_KEY;
     let finalLat = parseFloat(lat);
     let finalLng = parseFloat(lng);
     let geocodeCallCount = 0;
 
+    // Validation overlay logic check
     if (correctedAddress && (isNaN(finalLat) || isNaN(finalLng))) {
         let geoResult = await performGeocodingWaterfall(correctedAddress, db, mapsApiKey);
         if (geoResult) {
@@ -203,7 +231,7 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
             finalLng = geoResult.lng;
             if (!geoResult.cached) geocodeCallCount++;
         } else {
-            return res.status(400).json({ error: "Could not geocode the corrected address.", unresolvable: true });
+            return res.status(400).json({ error: "Address not found.", unresolvable: true });
         }
     }
 
@@ -214,14 +242,11 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
     finalLat = Number(finalLat.toFixed(5));
     finalLng = Number(finalLng.toFixed(5));
 
-    const batch = db.batch();
-    const cleanOrigAddr = originalAddress.replace(/\//g, '');
-
-    // 1. Save to GeocodeCache using the ORIGINAL bad address to train the database
+    // 1. Train the Database using original address
     const cacheRef = db.collection('GeocodeCache').doc(cleanOrigAddr);
     batch.set(cacheRef, { lat: finalLat, lng: finalLng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
 
-    // 2. Clear from Unmatched collection
+    // 2. Clear from Unmatched
     const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
     batch.delete(unmatchedRef);
 
@@ -268,8 +293,6 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
     await batch.commit();
     return res.status(200).json({ success: true, lat: finalLat, lng: finalLng });
 }
-
-// ... (Existing updateOrder, updateMultipleOrders, deleteMultipleOrders remain identical)
 
 async function updateOrder(payload, res, db) {
     const { rowId, driverId, updates } = payload;
