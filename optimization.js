@@ -1,26 +1,19 @@
 /**
  * optimization.js
- * VERSION: V1.39
+ * VERSION: V1.40
  * * CHANGES:
- * V1.39 - Google Rejection Logging. Added explicit console.error outputs inside 
- * the routing API calls so that if Google replies with a REQUEST_DENIED or 
- * INVALID_REQUEST, the exact error message provided by Google is printed to 
- * the Cloud Run logs instead of being silently swallowed.
- * V1.38 - API Failure Safe Abort. 
+ * V1.40 - State Machine Alignment. Removed the evaluateRouteState helper from the 
+ * optimization engine. generateRoute and calculate now perform a hard-overwrite 
+ * of the document status to "Ready" upon successful API completion, aligning perfectly 
+ * with the frontend's dirtyRoutes tracking and legacy Apps Script behavior.
+ * V1.39 - Google Rejection Logging.
  */
 
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
 
-function evaluateRouteState(arr, currState) {
-    if (!arr || arr.length === 0) return "Pending";
-    const hasRouted = arr.some(s => {
-        let stat = Array.isArray(s) ? s[11] : (s.status || s.s);
-        return String(stat).trim() === 'R';
-    });
-    if (!hasRouted) return "Pending";
-    return currState === "Ready" ? "Staging" : currState;
-}
+// Helper removed: The optimization engine only creates clean "Ready" states. 
+// Downgrades to "Staging" are strictly handled by pre/postOptimization mutation endpoints.
 
 async function geocodeEndpoint(address, apiKey) {
     if (!address || !apiKey) return null;
@@ -47,7 +40,6 @@ async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequen
         const res = await fetch(encodeURI(url));
         const data = await res.json();
         
-        // V1.39 Logging: Catch Google's specific rejection reason
         if (data.status !== "OK" || !data.routes || data.routes.length === 0) {
             console.error(`[GOOGLE MAPS REJECTION] Status: ${data.status || 'UNKNOWN'}, Error: ${data.error_message || 'No specific error message provided by Google.'}`);
             return null;
@@ -99,7 +91,6 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
         
         const data = await res.json();
 
-        // V1.39 Logging: Catch Google's specific rejection reason
         if (data.error || !data.routes || data.routes.length === 0) {
             console.error(`[ENTERPRISE REJECTION] Error: ${JSON.stringify(data.error || data)}`);
             return null;
@@ -232,7 +223,9 @@ async function generateRoute(payload, res, db) {
     });
 
     let finalBay = finalRoutedStops.concat(cleanedUnrouted);
-    let nextState = evaluateRouteState(finalBay, 'Ready');
+    
+    // V1.40 FIX: Hardcode to "Ready" upon successful optimization
+    let nextState = finalRoutedStops.length > 0 ? 'Ready' : 'Pending';
 
     const batch = db.batch();
     batch.update(driverRef, { 
@@ -386,7 +379,9 @@ async function calculate(payload, res, db) {
     });
 
     let finalBay = finalRoutedStops.concat(cleanedUnrouted);
-    let nextState = evaluateRouteState(finalBay, 'Ready');
+    
+    // V1.40 FIX: Hardcode to "Ready" upon successful recalculation
+    let nextState = finalRoutedStops.length > 0 ? 'Ready' : 'Pending';
 
     const batch = db.batch();
     batch.update(driverRef, { 
