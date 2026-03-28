@@ -1,19 +1,60 @@
 /**
  * preOptimization.js
- * VERSION: V1.34
+ * VERSION: V1.37
  * * CHANGES:
- * V1.34 - Schema Cleanup. Stripped out expensive fallback queries for locating 
- * CSV settings during upload. Exclusively queries by 'companyId' and 'csvType'.
+ * V1.37 - Geocoding Waterfall & Unmatched Resolution. Abstracted geocoding into a 
+ * waterfall that checks the Cache, Standard API, and Address Validation API. 
+ * Orders that fail validation are now flagged with status 'V' and pushed to an 
+ * 'Unmatched' Firestore collection. Added 'resolveUnmatchedAddress' endpoint to 
+ * process UI modal corrections, update the staging bay, and train the GeocodeCache 
+ * using the original address.
+ * V1.34 - Schema Cleanup.
  */
 
 const { parse } = require('csv-parse/sync');
-const { colIdx, getField, safeJsonParse, incrementApiUsage } = require('./helpers');
+const { colIdx, safeJsonParse, incrementApiUsage } = require('./helpers');
+
+// --- NEW HELPER: Geocoding Waterfall ---
+async function performGeocodingWaterfall(address, db, mapsApiKey) {
+    const cleanAddr = address.replace(/\//g, '');
+    const cacheRef = db.collection('GeocodeCache').doc(cleanAddr);
+    const cacheDoc = await cacheRef.get();
+
+    if (cacheDoc.exists) {
+        return { lat: cacheDoc.data().lat, lng: cacheDoc.data().lng, cached: true };
+    }
+
+    if (!mapsApiKey) return null;
+
+    // Standard Geocoding API
+    try {
+        const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${mapsApiKey}`);
+        const geoData = await geoRes.json();
+        if (geoData.status === "OK" && geoData.results.length > 0) {
+            return { lat: geoData.results[0].geometry.location.lat, lng: geoData.results[0].geometry.location.lng, cached: false };
+        }
+    } catch(e) { console.error("Standard Geocode Error:", e.message); }
+
+    // Address Validation API Fallback
+    try {
+        const valRes = await fetch(`https://addressvalidation.googleapis.com/v1:validateAddress?key=${mapsApiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: { addressLines: [address] } })
+        });
+        const valData = await valRes.json();
+        if (valData.result && valData.result.geocode && valData.result.geocode.location) {
+            return { lat: valData.result.geocode.location.latitude, lng: valData.result.geocode.location.longitude, cached: false };
+        }
+    } catch(e) { console.error("Validation API Error:", e.message); }
+
+    return null;
+}
 
 async function uploadCsv(payload, res, db, admin) {
     const { csvData, driverId, companyId, csvType, adminId, overrideLock } = payload;
     if (!csvData || !driverId || !companyId || !csvType) return res.status(400).json({ error: "Missing required upload parameters." });
 
-    // Cleaned up CSV Settings Query
     const settingsSnapshot = await db.collection('CSV_Settings')
         .where('companyId', '==', String(companyId))
         .where('csvType', '==', String(csvType))
@@ -33,7 +74,7 @@ async function uploadCsv(payload, res, db, admin) {
     const driverDoc = await driverRef.get();
     if (!driverDoc.exists) return res.status(404).json({ error: `Driver ID ${driverId} not found.` });
 
-    const currentLock = getField(driverDoc.data(), ['lockedBy', 'Locked By']);
+    const currentLock = driverDoc.data().lockedBy;
     const uId = String(adminId || "").trim();
 
     if (!overrideLock && currentLock && currentLock !== uId) {
@@ -45,9 +86,7 @@ async function uploadCsv(payload, res, db, admin) {
         existingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
     }
 
-    if (overrideLock) {
-        existingBay = []; 
-    }
+    if (overrideLock) existingBay = []; 
 
     let maxSeq = 0;
     existingBay.forEach(s => {
@@ -63,7 +102,8 @@ async function uploadCsv(payload, res, db, admin) {
     const fallbackState = 'TX';
     const mapsApiKey = process.env.MAPS_API_KEY;
     
-    let newOrders = [], geocodeCallCount = 0;
+    const batch = db.batch();
+    let newOrders = [], unmatchedList = [], geocodeCallCount = 0;
 
     for (let j = 1; j < records.length; j++) {
         const row = records[j];
@@ -81,28 +121,33 @@ async function uploadCsv(payload, res, db, admin) {
             let hasCsvCoords = !isNaN(parsedCsvLat) && !isNaN(parsedCsvLng) && parsedCsvLat !== 0 && parsedCsvLng !== 0;
             
             let lat = null, lng = null;
+            let isUnmatched = false;
+
             if (hasCsvCoords) {
                 lat = parsedCsvLat; lng = parsedCsvLng;
             } else {
-                const cacheRef = db.collection('GeocodeCache').doc(fullAddr.replace(/\//g, ''));
-                const cacheDoc = await cacheRef.get();
-
-                if (cacheDoc.exists) {
-                    lat = cacheDoc.data().lat; lng = cacheDoc.data().lng;
-                } else if (mapsApiKey) {
-                    const geoRes = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddr)}&key=${mapsApiKey}`);
-                    const geoData = await geoRes.json();
-                    geocodeCallCount++;
-                    if (geoData.status === "OK" && geoData.results.length > 0) {
-                        lat = geoData.results[0].geometry.location.lat; lng = geoData.results[0].geometry.location.lng;
-                        await cacheRef.set({ lat: lat, lng: lng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
+                let geoResult = await performGeocodingWaterfall(fullAddr, db, mapsApiKey);
+                if (geoResult) {
+                    lat = geoResult.lat; lng = geoResult.lng;
+                    if (!geoResult.cached) {
+                        const cacheRef = db.collection('GeocodeCache').doc(fullAddr.replace(/\//g, ''));
+                        batch.set(cacheRef, { lat: lat, lng: lng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
+                        geocodeCallCount++;
                     }
+                } else {
+                    isUnmatched = true;
                 }
             }
 
-            let initialStatus = (!lat || !lng || (lat === 32.776 && lng === -96.797)) ? "V" : "P"; 
-            if (initialStatus === "V") { lat = 32.776; lng = -96.797; } 
-            else { lat = Number(parseFloat(lat).toFixed(5)); lng = Number(parseFloat(lng).toFixed(5)); }
+            let initialStatus = isUnmatched ? "V" : "P"; 
+            if (isUnmatched) { 
+                lat = 0; lng = 0; 
+                unmatchedList.push(fullAddr);
+                const unRef = db.collection('Unmatched').doc(fullAddr.replace(/\//g, ''));
+                batch.set(unRef, { originalAddress: fullAddr, lat: null, lng: null, correctedAddress: "", timestamp: admin.firestore.FieldValue.serverTimestamp() });
+            } else { 
+                lat = Number(parseFloat(lat).toFixed(5)); lng = Number(parseFloat(lng).toFixed(5)); 
+            }
 
             maxSeq++;
             let displayAddress = street.split(',')[0].trim(); if (zip) displayAddress += ", " + zip.trim();
@@ -118,9 +163,7 @@ async function uploadCsv(payload, res, db, admin) {
 
     if (newOrders.length === 0) return res.status(200).json({ success: true, message: "No valid orders found." });
 
-    const batch = db.batch();
     const compRef = db.collection('Companies').doc(String(companyId));
-    
     const updatedBay = existingBay.concat(newOrders);
     let bayToSave = JSON.stringify(updatedBay);
 
@@ -129,18 +172,104 @@ async function uploadCsv(payload, res, db, admin) {
         'activeStaging.status': 'Pending'
     };
 
-    if (updatedBay.length === 0) {
-        updates['lockedBy'] = null;
-    } else if (uId) {
-        updates['lockedBy'] = uId;
-    }
+    if (updatedBay.length === 0) updates['lockedBy'] = null;
+    else if (uId) updates['lockedBy'] = uId;
 
     batch.update(driverRef, updates);
-    incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
+    if (geocodeCallCount > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
     
     await batch.commit();
-    return res.status(200).json({ success: true, count: newOrders.length });
+    
+    let responsePayload = { success: true, count: newOrders.length };
+    if (unmatchedList.length > 0) responsePayload.unmatchedAddresses = [...new Set(unmatchedList)];
+    
+    return res.status(200).json(responsePayload);
 }
+
+// --- NEW ENDPOINT: Resolve Unmatched Addresses ---
+async function resolveUnmatchedAddress(payload, res, db, admin) {
+    const { driverId, companyId, originalAddress, lat, lng, correctedAddress } = payload;
+    if (!originalAddress || !driverId) return res.status(400).json({ error: "Missing parameters" });
+
+    const mapsApiKey = process.env.MAPS_API_KEY;
+    let finalLat = parseFloat(lat);
+    let finalLng = parseFloat(lng);
+    let geocodeCallCount = 0;
+
+    if (correctedAddress && (isNaN(finalLat) || isNaN(finalLng))) {
+        let geoResult = await performGeocodingWaterfall(correctedAddress, db, mapsApiKey);
+        if (geoResult) {
+            finalLat = geoResult.lat;
+            finalLng = geoResult.lng;
+            if (!geoResult.cached) geocodeCallCount++;
+        } else {
+            return res.status(400).json({ error: "Could not geocode the corrected address.", unresolvable: true });
+        }
+    }
+
+    if (isNaN(finalLat) || isNaN(finalLng) || (finalLat === 0 && finalLng === 0)) {
+        return res.status(400).json({ error: "Valid coordinates or a verifiable address are required." });
+    }
+
+    finalLat = Number(finalLat.toFixed(5));
+    finalLng = Number(finalLng.toFixed(5));
+
+    const batch = db.batch();
+    const cleanOrigAddr = originalAddress.replace(/\//g, '');
+
+    // 1. Save to GeocodeCache using the ORIGINAL bad address to train the database
+    const cacheRef = db.collection('GeocodeCache').doc(cleanOrigAddr);
+    batch.set(cacheRef, { lat: finalLat, lng: finalLng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
+
+    // 2. Clear from Unmatched collection
+    const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
+    batch.delete(unmatchedRef);
+
+    // 3. Update the Driver's Staging Bay
+    const driverRef = db.collection('Users').doc(String(driverId));
+    const driverDoc = await driverRef.get();
+    if (driverDoc.exists) {
+        let bay = [];
+        if (driverDoc.data().activeStaging?.orders) {
+            bay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
+        }
+        
+        let changed = false;
+        for (let i = 0; i < bay.length; i++) {
+            let s = bay[i];
+            let isTuple = Array.isArray(s);
+            let sStat = isTuple ? s[11] : (s.status || s.s);
+            let sAddr = isTuple ? s[2] : (s.address || s.a);
+            
+            let tupleDisplayAddr = String(sAddr).split(',')[0].trim().toLowerCase();
+            if (sStat === 'V' && originalAddress.toLowerCase().includes(tupleDisplayAddr)) {
+                if (isTuple) {
+                    bay[i][9] = finalLat;
+                    bay[i][10] = finalLng;
+                    bay[i][11] = "P";
+                } else {
+                    bay[i].lat = finalLat;
+                    bay[i].lng = finalLng;
+                    bay[i].status = "P";
+                }
+                changed = true;
+            }
+        }
+        if (changed) {
+            batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(bay) });
+        }
+    }
+
+    if (geocodeCallCount > 0 && companyId) {
+        const compRef = db.collection('Companies').doc(String(companyId));
+        incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
+    }
+
+    await batch.commit();
+    return res.status(200).json({ success: true, lat: finalLat, lng: finalLng });
+}
+
+// ... (Existing updateOrder, updateMultipleOrders, deleteMultipleOrders remain identical)
 
 async function updateOrder(payload, res, db) {
     const { rowId, driverId, updates } = payload;
@@ -296,5 +425,5 @@ async function deleteMultipleOrders(payload, res, db) {
 }
 
 module.exports = {
-    uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders
+    uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress
 };
