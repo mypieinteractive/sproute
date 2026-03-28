@@ -1,10 +1,14 @@
-// *
-// * Dashboard - V12.6
-// * FILE: app.js
-// * Changes: 
-// * 1. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
-// * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
-// *
+/**
+ * Dashboard - V12.7
+ * FILE: app.js
+ * Changes: 
+ * 1. Added Unmatched Address Resolution flow. Intercepts the uploadCsv response 
+ * and triggers a paginated modal if unmatched addresses are found, rather than immediately 
+ * reloading the board. Supports validation state, dynamic buttons, and skip logic utilizing 
+ * existing customConfirm functionality.
+ * 2. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
+ * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
+ */
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -75,6 +79,11 @@ function logToVisualConsole(type, endpoint, data) {
 // Global API Usage Tracker
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
 
+// Global Variables for Unmatched Resolution Modal
+let unmatchedAddressesQueue = [];
+let currentUnmatchedIndex = 0;
+let currentUploadDriverId = null;
+
 // Central Wrapper to inject tracking counts into all backend POST requests
 async function apiFetch(payload) {
     payload.frontEndApiUsage = { geocode: frontEndApiUsage.geocode, mapLoads: frontEndApiUsage.mapLoads };
@@ -114,7 +123,6 @@ const companyParam = params.get('company');
 const adminParam = params.get('admin');
 
 const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
-// Include managermobilesplit in manager views
 const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile' || viewMode === 'managermobilesplit'); 
 
 // Global Keyboard Listeners
@@ -124,9 +132,7 @@ document.addEventListener('keydown', (e) => {
     // Physical Delete Shortcut for Manager View
     if (viewMode === 'manager' && (e.key === 'Delete' || e.key === 'Backspace')) {
         const tag = e.target.tagName.toUpperCase();
-        // Prevent deleting orders when the user is simply typing in the search bar or endpoint inputs
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-        // Prevent stacking alerts if a modal is already open
         if (document.getElementById('modal-overlay').style.display === 'flex') return;
         
         if (selectedIds.size > 0 && PERMISSION_MODIFY) {
@@ -172,8 +178,6 @@ let sortableUnrouted = null;
 let currentRouteCount = 1; 
 
 let availableCsvTypes = [];
-
-// Retrieve the last active inspector view, default to 'all'
 let currentInspectorFilter = sessionStorage.getItem('sproute_inspector_filter') || 'all';
 
 // --- GLIDE REFRESH TRACKING (Front-End Upload Detection) ---
@@ -215,10 +219,8 @@ let isFirstMapRender = true;
 
 let latestSuggestions = { start: null, end: null };
 
-// Safe casting helper for inspector booleans
 const isTrueInspector = (val) => val === true || String(val).trim().toLowerCase() === 'true';
 
-// --- CORE VISIBILITY FILTER ---
 function isStopVisible(s, applyRouteFilter = true) {
     if (!isActiveStop(s)) return false;
     
@@ -236,7 +238,6 @@ function isStopVisible(s, applyRouteFilter = true) {
     
     return true;
 }
-// ------------------------------
 
 window.setRouteViewFilter = function(val) {
     currentRouteViewFilter = val;
@@ -2565,7 +2566,15 @@ async function performUpload(file, inspectorId, csvType, overrideLock = false) {
             const data = await res.json();
             
             if (data.success) {
-                await loadData(); 
+                if (data.unmatchedAddresses && data.unmatchedAddresses.length > 0) {
+                    overlay.style.display = 'none';
+                    unmatchedAddressesQueue = data.unmatchedAddresses;
+                    currentUnmatchedIndex = 0;
+                    currentUploadDriverId = inspectorId;
+                    openUnmatchedModal();
+                } else {
+                    await loadData(); 
+                }
             } else if (data.status === 'size_limit') {
                 overlay.style.display = 'none';
                 await customAlert("The uploaded file is too large. Please reduce the number of rows and try again.");
@@ -3521,5 +3530,146 @@ if (headerDropzone && headerInput) {
         }
     };
 }
+
+
+// --- ADD THE UNMATCHED MODAL LOGIC ---
+
+function openUnmatchedModal() {
+    const modal = document.getElementById('unmatched-modal');
+    const title = document.getElementById('unmatched-modal-title');
+    const origAddr = document.getElementById('unmatched-original-address');
+    const latInput = document.getElementById('unmatched-lat');
+    const lngInput = document.getElementById('unmatched-lng');
+    const correctedInput = document.getElementById('unmatched-corrected');
+    const submitBtn = document.getElementById('btn-unmatched-submit');
+    const errorMsg = document.getElementById('unmatched-error');
+
+    const currentAddr = unmatchedAddressesQueue[currentUnmatchedIndex];
+
+    title.textContent = `Match Addresses (${currentUnmatchedIndex + 1} of ${unmatchedAddressesQueue.length})`;
+    origAddr.textContent = currentAddr;
+
+    // Reset Inputs
+    latInput.value = '';
+    lngInput.value = '';
+    correctedInput.value = '';
+    errorMsg.style.display = 'none';
+    submitBtn.textContent = 'Match Coordinates';
+
+    modal.style.display = 'flex';
+}
+
+async function nextUnmatchedAddress() {
+    currentUnmatchedIndex++;
+    if (currentUnmatchedIndex < unmatchedAddressesQueue.length) {
+        openUnmatchedModal();
+    } else {
+        document.getElementById('unmatched-modal').style.display = 'none';
+        
+        // Show success toast
+        const toast = document.createElement('div');
+        toast.innerText = 'Address matching complete.';
+        toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 2000);
+
+        await loadData(); // Refresh the board when the queue is finished
+    }
+}
+
+// Event Listeners for the Unmatched Modal
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // Dynamic Button Text Swap
+    const correctedInput = document.getElementById('unmatched-corrected');
+    if (correctedInput) {
+        correctedInput.addEventListener('input', (e) => {
+            const submitBtn = document.getElementById('btn-unmatched-submit');
+            if (e.target.value.trim() !== '') {
+                submitBtn.textContent = 'Update Address';
+            } else {
+                submitBtn.textContent = 'Match Coordinates';
+            }
+        });
+    }
+
+    // Submit Logic (Validating Overlay)
+    const unmatchedSubmitBtn = document.getElementById('btn-unmatched-submit');
+    if (unmatchedSubmitBtn) {
+        unmatchedSubmitBtn.addEventListener('click', async () => {
+            const currentAddr = unmatchedAddressesQueue[currentUnmatchedIndex];
+            const lat = document.getElementById('unmatched-lat').value;
+            const lng = document.getElementById('unmatched-lng').value;
+            const corrected = document.getElementById('unmatched-corrected').value;
+            const errorMsg = document.getElementById('unmatched-error');
+            const loadingOverlay = document.getElementById('unmatched-loading-overlay');
+
+            errorMsg.style.display = 'none';
+            loadingOverlay.style.display = 'flex';
+
+            try {
+                const response = await apiFetch({
+                    action: 'resolveUnmatchedAddress',
+                    driverId: currentUploadDriverId,
+                    companyId: companyParam || '',
+                    originalAddress: currentAddr,
+                    lat: lat,
+                    lng: lng,
+                    correctedAddress: corrected
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    loadingOverlay.style.display = 'none';
+                    nextUnmatchedAddress();
+                } else {
+                    loadingOverlay.style.display = 'none';
+                    if (result.unresolvable) {
+                        errorMsg.textContent = 'Address not found. Please try again or enter coordinates.';
+                        errorMsg.style.display = 'block';
+                    } else {
+                        errorMsg.textContent = result.error || 'Invalid coordinates provided.';
+                        errorMsg.style.display = 'block';
+                    }
+                }
+            } catch (err) {
+                loadingOverlay.style.display = 'none';
+                errorMsg.textContent = 'Network error. Please try again.';
+                errorMsg.style.display = 'block';
+            }
+        });
+    }
+
+    // Skip Logic
+    const unmatchedSkipBtn = document.getElementById('btn-unmatched-skip');
+    if (unmatchedSkipBtn) {
+        unmatchedSkipBtn.addEventListener('click', async () => {
+            if (await customConfirm("This order will be removed from the list.\n\nPress OK to delete.")) {
+                const currentAddr = unmatchedAddressesQueue[currentUnmatchedIndex];
+                const loadingOverlay = document.getElementById('unmatched-loading-overlay');
+                loadingOverlay.style.display = 'flex';
+
+                try {
+                    await apiFetch({
+                        action: 'resolveUnmatchedAddress',
+                        skip: true,
+                        driverId: currentUploadDriverId,
+                        originalAddress: currentAddr
+                    });
+                } catch(e) {
+                    console.error("Skip error:", e);
+                }
+
+                loadingOverlay.style.display = 'none';
+                nextUnmatchedAddress();
+            }
+        });
+    }
+});
 
 loadData();
