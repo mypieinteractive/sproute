@@ -1,18 +1,28 @@
 /**
  * preOptimization.js
- * VERSION: V1.41
+ * VERSION: V1.42
  * * CHANGES:
- * V1.41 - Zero-Order Clearing. Added explicit overrides to all mutation endpoints 
- * (uploadCsv, resolveUnmatchedAddress, updateOrder, updateMultipleOrders, deleteMultipleOrders). 
- * If a mutation results in a completely empty staging array, the backend strictly 
- * forces activeStaging.status and lockedBy to null, preventing orphaned "Staging" 
- * statuses when boards are cleared.
- * V1.39 - Live Route & Cross-Driver ID Fix. 
- * V1.38 - Unmatched Resolution 'Skip' Handling.
+ * V1.42 - Active Array Evaluation. Re-introduced evaluateRouteState into the 
+ * mutation endpoints. If a manager removes all routed ('R') orders but 'P' 
+ * orders remain, the backend will now catch the array change and revert the 
+ * macro status to 'Pending' automatically, fixing the bug where the board 
+ * would get stuck in 'Staging'.
+ * V1.41 - Zero-Order Clearing. 
  */
 
 const { parse } = require('csv-parse/sync');
 const { colIdx, safeJsonParse, incrementApiUsage } = require('./helpers');
+
+// --- HELPER: State Evaluator ---
+function evaluateRouteState(arr, currState) {
+    if (!arr || arr.length === 0) return "Pending";
+    const hasRouted = arr.some(s => {
+        let stat = Array.isArray(s) ? s[11] : (s.status || s.s);
+        return String(stat).trim() === 'R';
+    });
+    if (!hasRouted) return "Pending";
+    return currState === "Ready" ? "Staging" : currState;
+}
 
 async function performGeocodingWaterfall(address, db, mapsApiKey) {
     const cleanAddr = address.replace(/\//g, '');
@@ -166,10 +176,9 @@ async function uploadCsv(payload, res, db, admin) {
 
     let updates = {
         'activeStaging.orders': bayToSave,
-        'activeStaging.status': 'Pending'
+        'activeStaging.status': 'Pending' // Uploads always reset to Pending
     };
 
-    // V1.41 ZERO-ORDER OVERRIDE
     if (updatedBay.length === 0) {
         updates['lockedBy'] = null;
         updates['activeStaging.status'] = null;
@@ -217,8 +226,13 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
                 return true;
             });
             if (changed) {
-                let updates = { 'activeStaging.orders': JSON.stringify(newBay) };
-                // V1.41 ZERO-ORDER OVERRIDE
+                let currState = driverDoc.data().activeStaging?.status || 'Pending';
+                let nextState = evaluateRouteState(newBay, currState);
+
+                let updates = { 
+                    'activeStaging.orders': JSON.stringify(newBay),
+                    'activeStaging.status': nextState
+                };
                 if (newBay.length === 0) {
                     updates['lockedBy'] = null;
                     updates['activeStaging.status'] = null;
@@ -289,8 +303,13 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
             }
         }
         if (changed) {
-            let updates = { 'activeStaging.orders': JSON.stringify(bay) };
-            // V1.41 ZERO-ORDER OVERRIDE
+            let currState = driverDoc.data().activeStaging?.status || 'Pending';
+            let nextState = evaluateRouteState(bay, currState);
+
+            let updates = { 
+                'activeStaging.orders': JSON.stringify(bay),
+                'activeStaging.status': nextState 
+            };
             if (bay.length === 0) {
                 updates['lockedBy'] = null;
                 updates['activeStaging.status'] = null;
@@ -397,13 +416,18 @@ async function updateOrder(payload, res, db) {
     }
 
     if (changed) {
-        let updates = { 'activeStaging.orders': JSON.stringify(bay) };
-        // V1.41 ZERO-ORDER OVERRIDE
+        let currState = driverDoc.data().activeStaging?.status || 'Pending';
+        let nextState = evaluateRouteState(bay, currState);
+
+        let updatesParams = { 
+            'activeStaging.orders': JSON.stringify(bay),
+            'activeStaging.status': nextState
+        };
         if (bay.length === 0) {
-            updates['lockedBy'] = null;
-            updates['activeStaging.status'] = null;
+            updatesParams['lockedBy'] = null;
+            updatesParams['activeStaging.status'] = null;
         }
-        await driverRef.update(updates);
+        await driverRef.update(updatesParams);
         return res.status(200).json({ success: true });
     } else {
         return res.status(404).json({ error: "Order not found in staging bay" });
@@ -479,7 +503,12 @@ async function updateMultipleOrders(payload, res, db) {
         if (d.data().activeStaging?.orders) {
             bay = safeJsonParse(d.data().activeStaging.orders, []);
         }
-        usersData[d.id] = { ref: d.ref, bay: bay, changed: false };
+        usersData[d.id] = { 
+            ref: d.ref, 
+            bay: bay, 
+            changed: false,
+            currState: d.data().activeStaging?.status || 'Pending'
+        };
     });
 
     const newDriverId = sharedUpdates && sharedUpdates.driverId ? String(sharedUpdates.driverId) : null;
@@ -563,9 +592,13 @@ async function updateMultipleOrders(payload, res, db) {
     for (let uid in usersData) {
         if (usersData[uid].changed) {
             let bayToSave = JSON.stringify(usersData[uid].bay);
-            let updates = { 'activeStaging.orders': bayToSave };
+            let nextState = evaluateRouteState(usersData[uid].bay, usersData[uid].currState);
             
-            // V1.41 ZERO-ORDER OVERRIDE
+            let updates = { 
+                'activeStaging.orders': bayToSave,
+                'activeStaging.status': nextState
+            };
+            
             if (usersData[uid].bay.length === 0) {
                 updates['lockedBy'] = null;
                 updates['activeStaging.status'] = null;
@@ -621,9 +654,14 @@ async function deleteMultipleOrders(payload, res, db) {
         
         if (newBay.length !== originalLength) {
             let bayToSave = JSON.stringify(newBay);
-            let updates = { 'activeStaging.orders': bayToSave };
+            let currState = doc.data().activeStaging?.status || 'Pending';
+            let nextState = evaluateRouteState(newBay, currState);
+
+            let updates = { 
+                'activeStaging.orders': bayToSave,
+                'activeStaging.status': nextState
+            };
             
-            // V1.41 ZERO-ORDER OVERRIDE
             if (newBay.length === 0) {
                 updates['lockedBy'] = null;
                 updates['activeStaging.status'] = null;
