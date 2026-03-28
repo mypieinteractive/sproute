@@ -1,13 +1,27 @@
 /**
  * optimization.js
- * VERSION: V1.34
+ * VERSION: V1.35
  * * CHANGES:
+ * V1.35 - Multi-Day Rollover & Endpoint Geocoding. Hoisted the time variable outside the cluster 
+ * loop to advance the date by 24 hours between routes. Added on-the-fly geocoding fallback for 
+ * missing start/end coordinates before defaulting to the Dallas, TX fallback.
  * V1.34 - Schema Cleanup. Stripped out expensive fallback queries. 
- * Replaced getField() lookups with strict references to 'companyId'.
  */
 
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
+
+async function geocodeEndpoint(address, apiKey) {
+    if (!address || !apiKey) return null;
+    try {
+        const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`);
+        const data = await res.json();
+        if (data.status === "OK" && data.results.length > 0) {
+            return { lat: data.results[0].geometry.location.lat, lng: data.results[0].geometry.location.lng };
+        }
+    } catch(e) { console.error(`Endpoint Geocode Error: ${e.message}`); }
+    return null;
+}
 
 async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, apiKey) {
     try {
@@ -78,7 +92,6 @@ async function generateRoute(payload, res, db) {
     const driverDoc = await driverRef.get();
     if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
 
-    // Cleaned up Company Query
     const compId = driverDoc.data().companyId;
     const compRef = db.collection('Companies').doc(String(compId));
     const compDoc = await compRef.get();
@@ -90,15 +103,33 @@ async function generateRoute(payload, res, db) {
         stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
     }
     
-    let endpoints = { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
-    let sLat = getField(driverDoc.data(), ['Start Lat', 'startLat']);
-    let sLng = getField(driverDoc.data(), ['Start Lng', 'startLng']);
-    let eLat = getField(driverDoc.data(), ['End Lat', 'endLat']);
-    let eLng = getField(driverDoc.data(), ['End Lng', 'endLng']);
-    
-    if (sLat && sLng) endpoints.start = { lat: sLat, lng: sLng };
-    if (eLat && eLng) endpoints.end = { lat: eLat, lng: eLng };
-    
+    const mapsApiKey = process.env.MAPS_API_KEY;
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+
+    // --- Geocoding Fallback ---
+    let sLat = parseFloat(getField(driverDoc.data(), ['Start Lat', 'startLat']));
+    let sLng = parseFloat(getField(driverDoc.data(), ['Start Lng', 'startLng']));
+    let eLat = parseFloat(getField(driverDoc.data(), ['End Lat', 'endLat']));
+    let eLng = parseFloat(getField(driverDoc.data(), ['End Lng', 'endLng']));
+
+    if (isNaN(sLat) || isNaN(sLng)) {
+        let sAddr = payload.startAddr || getField(driverDoc.data(), ['Start Address', 'startAddress', 'start']);
+        let geo = await geocodeEndpoint(sAddr, mapsApiKey);
+        if (geo) { sLat = geo.lat; sLng = geo.lng; }
+    }
+
+    if (isNaN(eLat) || isNaN(eLng)) {
+        let eAddr = payload.endAddr || getField(driverDoc.data(), ['End Address', 'endAddress', 'end']);
+        let geo = await geocodeEndpoint(eAddr, mapsApiKey);
+        if (geo) { eLat = geo.lat; eLng = geo.lng; }
+    }
+
+    let endpoints = { 
+        start: { lat: isNaN(sLat) ? 32.776 : sLat, lng: isNaN(sLng) ? -96.797 : sLng }, 
+        end: { lat: isNaN(eLat) ? 32.776 : eLat, lng: isNaN(eLng) ? -96.797 : eLng } 
+    };
+    // --------------------------
+
     let clusters = {};
     stagingBay.forEach(s => {
         let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1);
@@ -108,8 +139,10 @@ async function generateRoute(payload, res, db) {
 
     let finalStops = [];
     let stdCalls = 0, entCalls = 0;
-    const mapsApiKey = process.env.MAPS_API_KEY;
-    const projectId = process.env.GOOGLE_CLOUD_PROJECT;
+    
+    // --- Hoisted Time Variable ---
+    let time = new Date(); 
+    time.setHours(startHour, 0, 0, 0);
 
     for (let routeNum in clusters) {
         let cStops = clusters[routeNum].filter(s => s && s.lat && s.lng);
@@ -117,7 +150,6 @@ async function generateRoute(payload, res, db) {
 
         const routeInput = cStops.map(s => ({ lat: s.lat, lng: s.lng }));
         let optimized = null;
-        let time = new Date(); time.setHours(startHour, 0, 0, 0);
 
         if (routeInput.length <= 25) {
             optimized = await callStandardRoutingAPI(endpoints.start, routeInput, endpoints.end, false, mapsApiKey);
@@ -144,6 +176,10 @@ async function generateRoute(payload, res, db) {
                     isTuple ? s[9] : s.lat, isTuple ? s[10] : s.lng, "R", visit.durationSecs
                 ]);
             });
+            
+            // --- Multi-Day Rollover ---
+            time.setDate(time.getDate() + 1);
+            time.setHours(startHour, 0, 0, 0);
         } else {
             cStops.forEach(s => finalStops.push(s.orig));
         }
@@ -156,8 +192,9 @@ async function generateRoute(payload, res, db) {
         'activeStaging.orders': bayToSave, 
         'activeStaging.status': 'Ready' 
     });
-    incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
-    incrementApiUsage(batch, driverRef, compRef, 'apiUsage_EnterpriseRouting', entCalls);
+    
+    if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
+    if (entCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_EnterpriseRouting', entCalls);
     
     await batch.commit();
     return res.status(200).json({ success: true, updatedStops: finalStops });
@@ -168,7 +205,6 @@ async function calculate(payload, res, db) {
     const driverDoc = await driverRef.get();
     if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found." });
 
-    // Cleaned up Company Query
     const compId = driverDoc.data().companyId;
     const compRef = db.collection('Companies').doc(String(compId));
     const compDoc = await compRef.get();
@@ -183,16 +219,31 @@ async function calculate(payload, res, db) {
         stagingBay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
     }
 
-    let endpoints = { start: { lat: 32.776, lng: -96.797 }, end: { lat: 32.776, lng: -96.797 } };
-    let sLat = getField(driverDoc.data(), ['Start Lat', 'startLat']);
-    let sLng = getField(driverDoc.data(), ['Start Lng', 'startLng']);
-    let eLat = getField(driverDoc.data(), ['End Lat', 'endLat']);
-    let eLng = getField(driverDoc.data(), ['End Lng', 'endLng']);
-    
-    if (sLat && sLng) endpoints.start = { lat: sLat, lng: sLng };
-    if (eLat && eLng) endpoints.end = { lat: eLat, lng: eLng };
-
     const mapsApiKey = process.env.MAPS_API_KEY;
+
+    // --- Geocoding Fallback ---
+    let sLat = parseFloat(getField(driverDoc.data(), ['Start Lat', 'startLat']));
+    let sLng = parseFloat(getField(driverDoc.data(), ['Start Lng', 'startLng']));
+    let eLat = parseFloat(getField(driverDoc.data(), ['End Lat', 'endLat']));
+    let eLng = parseFloat(getField(driverDoc.data(), ['End Lng', 'endLng']));
+
+    if (isNaN(sLat) || isNaN(sLng)) {
+        let sAddr = payload.startAddr || getField(driverDoc.data(), ['Start Address', 'startAddress', 'start']);
+        let geo = await geocodeEndpoint(sAddr, mapsApiKey);
+        if (geo) { sLat = geo.lat; sLng = geo.lng; }
+    }
+
+    if (isNaN(eLat) || isNaN(eLng)) {
+        let eAddr = payload.endAddr || getField(driverDoc.data(), ['End Address', 'endAddress', 'end']);
+        let geo = await geocodeEndpoint(eAddr, mapsApiKey);
+        if (geo) { eLat = geo.lat; eLng = geo.lng; }
+    }
+
+    let endpoints = { 
+        start: { lat: isNaN(sLat) ? 32.776 : sLat, lng: isNaN(sLng) ? -96.797 : sLng }, 
+        end: { lat: isNaN(eLat) ? 32.776 : eLat, lng: isNaN(eLng) ? -96.797 : eLng } 
+    };
+    // --------------------------
 
     let clusters = {};
     stagingBay.forEach(s => {
@@ -204,11 +255,14 @@ async function calculate(payload, res, db) {
     let finalStops = [];
     let stdCalls = 0;
 
+    // --- Hoisted Time Variable ---
+    let baseTime = new Date(); 
+    baseTime.setHours(startHour, 0, 0, 0);
+
     for (let routeNum in clusters) {
         let routeStops = clusters[routeNum].filter(s => s && s.lat && s.lng);
         if (routeStops.length === 0) continue;
 
-        let baseTime = new Date(); baseTime.setHours(startHour, 0, 0, 0);
         let finalResults = [];
         let apiSuccess = false;
 
@@ -257,6 +311,10 @@ async function calculate(payload, res, db) {
                 isTuple ? s[9] : s.lat, isTuple ? s[10] : s.lng, "R", res.durationSecs
             ]);
         });
+        
+        // --- Multi-Day Rollover ---
+        baseTime.setDate(baseTime.getDate() + 1);
+        baseTime.setHours(startHour, 0, 0, 0);
     }
 
     const batch = db.batch();
@@ -266,7 +324,7 @@ async function calculate(payload, res, db) {
         'activeStaging.orders': bayToSave, 
         'activeStaging.status': 'Ready' 
     });
-    incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
+    if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
     
     await batch.commit();
     return res.status(200).json({ success: true, updatedStops: finalStops });
