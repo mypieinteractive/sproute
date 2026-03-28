@@ -1,12 +1,12 @@
 /**
  * optimization.js
- * VERSION: V1.37
+ * VERSION: V1.38
  * * CHANGES:
- * V1.37 - Hard Overwrite Refactor. Stripped out the backend array combination logic. 
- * The engine now strictly honors the frontend payload, performing a pure hard overwrite 
- * of the database to support the dirty route re-optimization workflow without pulling 
- * omitted 'P' orders back into the active array.
- * V1.36 - Payload & Status Sync Fix. 
+ * V1.38 - API Failure Safe Abort. Replaced the destructive fallback that wiped 
+ * route assignments on API failure. Now, if the Google Maps API returns null 
+ * (due to missing keys or quota limits), the backend aborts the database overwrite 
+ * entirely and returns a 500 error to safely close the UI polling loop.
+ * V1.37 - Hard Overwrite Refactor. 
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -35,6 +35,7 @@ async function geocodeEndpoint(address, apiKey) {
 }
 
 async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequence, apiKey) {
+    if (!apiKey) return null; // Failsafe for missing env var
     try {
         const waypoints = stopsGeo.map(s => `${s.lat},${s.lng}`).join('|');
         const opt = preserveSequence ? '' : 'optimize:true|';
@@ -135,7 +136,6 @@ async function generateRoute(payload, res, db) {
         end: { lat: isNaN(eLat) ? 32.776 : eLat, lng: isNaN(eLng) ? -96.797 : eLng } 
     };
 
-    // --- Strictly use the payload provided by the frontend ---
     const inputStops = payload.stops || [];
     if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to optimize."});
 
@@ -176,30 +176,33 @@ async function generateRoute(payload, res, db) {
             if (optimized) entCalls += routeInput.length;
         }
 
-        if (optimized) {
-            optimized.forEach((visit) => {
-                let s = cStops[visit.index].orig;
-                time = new Date(time.getTime() + (visit.durationSecs * 1000));
-                let etaTimeOnly = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
-                time = new Date(time.getTime() + (serviceDelay * 60 * 1000));
-
-                let numDist = Number(parseFloat(visit.distance).toFixed(1));
-                let isTuple = Array.isArray(s);
-                
-                finalRoutedStops.push([
-                    isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
-                    isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
-                    isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
-                    isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
-                    isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs
-                ]);
-            });
-            
-            time.setDate(time.getDate() + 1);
-            time.setHours(startHour, 0, 0, 0);
-        } else {
-            cStops.forEach(s => unroutedStops.push(s.orig));
+        // --- THE V1.38 SAFE ABORT FIX ---
+        if (!optimized) {
+            console.error(`[OPTIMIZATION FAILED] Google API returned null for Route ${routeNum}`);
+            // Return an error to the frontend, aborting the database save so assignments aren't wiped.
+            return res.status(500).json({ error: "Routing APIs failed to return a sequence. Please check your Google Cloud API keys and Environment Variables." });
         }
+
+        optimized.forEach((visit) => {
+            let s = cStops[visit.index].orig;
+            time = new Date(time.getTime() + (visit.durationSecs * 1000));
+            let etaTimeOnly = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+            time = new Date(time.getTime() + (serviceDelay * 60 * 1000));
+
+            let numDist = Number(parseFloat(visit.distance).toFixed(1));
+            let isTuple = Array.isArray(s);
+            
+            finalRoutedStops.push([
+                isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
+                isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
+                isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
+                isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
+                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs
+            ]);
+        });
+        
+        time.setDate(time.getDate() + 1);
+        time.setHours(startHour, 0, 0, 0);
     }
 
     let cleanedUnrouted = unroutedStops.map(s => {
@@ -228,8 +231,7 @@ async function generateRoute(payload, res, db) {
     
     await batch.commit();
 
-    // Returns standard 'queued' flag to allow frontend polling loop to safely close the overlay
-    return res.status(200).json({ success: true, status: 'queued', updatedStops: finalBay });
+    return res.status(200).json({ success: true, status: 'queued' });
 }
 
 async function calculate(payload, res, db) {
@@ -320,6 +322,12 @@ async function calculate(payload, res, db) {
             }
         }
 
+        // --- THE V1.38 SAFE ABORT FIX ---
+        if (useExactApi && !apiSuccess) {
+            console.error(`[CALCULATE FAILED] Standard API Exact Match failed for Route ${routeNum}`);
+            return res.status(500).json({ error: "Routing APIs failed to calculate sequence. Please check your Maps API Key." });
+        }
+
         if (!useExactApi || !apiSuccess) {
             finalResults = [];
             let prevGeo = endpoints.start;
@@ -376,7 +384,7 @@ async function calculate(payload, res, db) {
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
     
     await batch.commit();
-    return res.status(200).json({ success: true, updatedStops: finalBay });
+    return res.status(200).json({ success: true, status: 'queued' });
 }
 
 module.exports = { generateRoute, calculate };
