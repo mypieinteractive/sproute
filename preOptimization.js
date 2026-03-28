@@ -1,13 +1,13 @@
 /**
  * preOptimization.js
- * VERSION: V1.39
+ * VERSION: V1.41
  * * CHANGES:
- * V1.39 - Live Route & Cross-Driver ID Fix. Modified updateOrder, updateMultipleOrders, 
- * and deleteMultipleOrders to properly check for a payload.routeId. If present, mutations 
- * are applied to the Dispatch collection's 'currentRoute' array, and 'Completed' statuses 
- * are synced to the 'originalRoute' array. Added cross-driver ID recalculation logic 
- * to dynamically overwrite the rowId with the destination driver's max sequence number 
- * to prevent database corruption.
+ * V1.41 - Zero-Order Clearing. Added explicit overrides to all mutation endpoints 
+ * (uploadCsv, resolveUnmatchedAddress, updateOrder, updateMultipleOrders, deleteMultipleOrders). 
+ * If a mutation results in a completely empty staging array, the backend strictly 
+ * forces activeStaging.status and lockedBy to null, preventing orphaned "Staging" 
+ * statuses when boards are cleared.
+ * V1.39 - Live Route & Cross-Driver ID Fix. 
  * V1.38 - Unmatched Resolution 'Skip' Handling.
  */
 
@@ -169,8 +169,13 @@ async function uploadCsv(payload, res, db, admin) {
         'activeStaging.status': 'Pending'
     };
 
-    if (updatedBay.length === 0) updates['lockedBy'] = null;
-    else if (uId) updates['lockedBy'] = uId;
+    // V1.41 ZERO-ORDER OVERRIDE
+    if (updatedBay.length === 0) {
+        updates['lockedBy'] = null;
+        updates['activeStaging.status'] = null;
+    } else if (uId) {
+        updates['lockedBy'] = uId;
+    }
 
     batch.update(driverRef, updates);
     if (geocodeCallCount > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
@@ -190,7 +195,6 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
     const batch = db.batch();
     const cleanOrigAddr = originalAddress.replace(/\//g, '');
 
-    // Skip Logic: Delete from Unmatched collection and remove from Staging Array
     if (skip) {
         const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
         batch.delete(unmatchedRef);
@@ -213,7 +217,13 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
                 return true;
             });
             if (changed) {
-                batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(newBay) });
+                let updates = { 'activeStaging.orders': JSON.stringify(newBay) };
+                // V1.41 ZERO-ORDER OVERRIDE
+                if (newBay.length === 0) {
+                    updates['lockedBy'] = null;
+                    updates['activeStaging.status'] = null;
+                }
+                batch.update(driverRef, updates);
             }
         }
         await batch.commit();
@@ -279,7 +289,13 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
             }
         }
         if (changed) {
-            batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(bay) });
+            let updates = { 'activeStaging.orders': JSON.stringify(bay) };
+            // V1.41 ZERO-ORDER OVERRIDE
+            if (bay.length === 0) {
+                updates['lockedBy'] = null;
+                updates['activeStaging.status'] = null;
+            }
+            batch.update(driverRef, updates);
         }
     }
 
@@ -348,7 +364,6 @@ async function updateOrder(payload, res, db) {
         return res.status(404).json({ error: "Order not found in dispatched route" });
     }
 
-    // Default to staging bay if no routeId is provided
     const driverRef = db.collection('Users').doc(String(driverId));
     const driverDoc = await driverRef.get();
     if (!driverDoc.exists) return res.status(404).json({error: "Driver not found"});
@@ -382,7 +397,13 @@ async function updateOrder(payload, res, db) {
     }
 
     if (changed) {
-        await driverRef.update({ 'activeStaging.orders': JSON.stringify(bay) });
+        let updates = { 'activeStaging.orders': JSON.stringify(bay) };
+        // V1.41 ZERO-ORDER OVERRIDE
+        if (bay.length === 0) {
+            updates['lockedBy'] = null;
+            updates['activeStaging.status'] = null;
+        }
+        await driverRef.update(updates);
         return res.status(200).json({ success: true });
     } else {
         return res.status(404).json({ error: "Order not found in staging bay" });
@@ -449,7 +470,6 @@ async function updateMultipleOrders(payload, res, db) {
         return res.status(200).json({ success: true });
     }
 
-    // Default to staging bay if no routeId is provided
     const batch = db.batch();
     const usersSnap = await db.collection('Users').get();
     let usersData = {};
@@ -514,7 +534,6 @@ async function updateMultipleOrders(payload, res, db) {
 
             let destDriverId = newDriverId || foundSourceId;
             if (destDriverId && usersData[destDriverId]) {
-                // Cross-Driver ID Recalculation Fix
                 if (destDriverId !== foundSourceId) {
                     let maxSeq = 0;
                     usersData[destDriverId].bay.forEach(s => {
@@ -546,8 +565,10 @@ async function updateMultipleOrders(payload, res, db) {
             let bayToSave = JSON.stringify(usersData[uid].bay);
             let updates = { 'activeStaging.orders': bayToSave };
             
+            // V1.41 ZERO-ORDER OVERRIDE
             if (usersData[uid].bay.length === 0) {
                 updates['lockedBy'] = null;
+                updates['activeStaging.status'] = null;
             }
             
             batch.update(usersData[uid].ref, updates);
@@ -581,7 +602,6 @@ async function deleteMultipleOrders(payload, res, db) {
         return res.status(200).json({ success: true, deleted: currentRoute.length - newCurrent.length });
     }
 
-    // Default to staging bay if no routeId is provided
     const batch = db.batch();
     const usersSnap = await db.collection('Users').get();
     let deletedCount = 0;
@@ -603,8 +623,10 @@ async function deleteMultipleOrders(payload, res, db) {
             let bayToSave = JSON.stringify(newBay);
             let updates = { 'activeStaging.orders': bayToSave };
             
+            // V1.41 ZERO-ORDER OVERRIDE
             if (newBay.length === 0) {
                 updates['lockedBy'] = null;
+                updates['activeStaging.status'] = null;
             }
 
             batch.update(doc.ref, updates);
