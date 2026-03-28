@@ -1,94 +1,117 @@
 /**
  * index.js
- * VERSION: V1.33
+ * VERSION: V1.34
  * * CHANGES:
- * V1.33 - Architecture Restructure. Separated the monolithic index.js file into 
- * modular controller logic (helpers.js, initialization.js, glideWebhooks.js, 
- * preOptimization.js, and optimization.js) to improve readability and 
- * establish clean paths for future feature expansion.
- * V1.32 - Lock Logic Parity. 
+ * V1.34 - Router Expansion. Wired up the missing endpoints for post-optimization 
+ * (saveRoute, resetRoute, recreateOrders, restoreOriginalRoute, dispatchRoute) 
+ * and pre-optimization (resolveUnmatchedAddress). Added explicit admin variable 
+ * passing to dispatchRoute and resolveUnmatchedAddress for server timestamping.
+ * Included detailed execution logging to match the legacy console format.
+ * V1.33 - Initial modular routing setup.
  */
 
+require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const admin = require('firebase-admin');
-const { getFirestore } = require('firebase-admin/firestore');
 
-// Initialize Firebase Admin globally
-const firebaseApp = admin.initializeApp({
-    projectId: process.env.GOOGLE_CLOUD_PROJECT
-});
-const db = getFirestore(firebaseApp, 'sproute');
+// Initialize Firebase Admin (uses default service account credentials in Cloud Run)
+if (!admin.apps.length) {
+    admin.initializeApp();
+}
+const db = admin.firestore();
 
-// Import Modular Controllers
+// Import Modules
 const { getDashboardInit } = require('./initialization');
-const { updateUserFromGlide, updateCompanyFromGlide, updateCsvSettingsFromGlide, updateEndpoint } = require('./glideWebhooks');
-const { uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders } = require('./preOptimization');
+const { uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress } = require('./preOptimization');
 const { generateRoute, calculate } = require('./optimization');
+const { saveRoute, resetRoute, recreateOrders, restoreOriginalRoute, dispatchRoute } = require('./postOptimization');
 
 const app = express();
 
 // Middleware
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: '50mb' }));
-app.use(express.text({ type: '*/*', limit: '50mb' }));
-app.use((req, res, next) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') return res.status(204).send('');
-    next();
-});
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// GET Route (Dashboard Initialization)
-app.get('/', (req, res) => getDashboardInit(req, res, db));
+// Utility for detailed execution timestamp logs
+function getLogTime() {
+    return new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago' });
+}
 
-// POST Route (Action Hub)
-app.post('/', async (req, res) => {
+// --- GET ROUTER (Initialization) ---
+app.get('/', async (req, res) => {
+    const action = req.query.action || 'getDashboardInit';
+    console.log(`[${getLogTime()}] REQ - GET ${action}`);
+    
     try {
-        let payload = req.body;
-
-        if (Buffer.isBuffer(payload)) payload = payload.toString('utf8');
-        if (typeof payload === 'string') {
-            try { payload = JSON.parse(payload); } 
-            catch (e) { return res.status(400).json({ error: "Invalid JSON format in payload." }); }
+        if (action === 'getDashboardInit') {
+            return await getDashboardInit(req, res, db);
         }
-
-        if (!payload || Object.keys(payload).length === 0) return res.status(400).json({ error: "Empty payload." });
-
-        let action = payload.action;
-
-        // Fallbacks for direct Glide row webhooks
-        if (!action) {
-            if (payload._collection === "Users" && payload.driverId) action = 'updateUserFromGlide';
-            else if (payload._collection === "Companies" && payload.companyId) action = 'updateCompanyFromGlide';
-            else if (payload._collection === "CSV_Settings" && payload.rowId) action = 'updateCsvSettingsFromGlide';
-        }
-
-        // Action Router
-        switch (action) {
-            case 'updateUserFromGlide': return updateUserFromGlide(payload, res, db);
-            case 'updateCompanyFromGlide': return updateCompanyFromGlide(payload, res, db);
-            case 'updateCsvSettingsFromGlide': return updateCsvSettingsFromGlide(payload, res, db);
-            case 'updateEndpoint': return updateEndpoint(payload, res, db);
-            
-            case 'uploadCsv': return uploadCsv(payload, res, db, admin);
-            case 'updateOrder': return updateOrder(payload, res, db);
-            case 'updateMultipleOrders': return updateMultipleOrders(payload, res, db);
-            case 'deleteMultipleOrders': return deleteMultipleOrders(payload, res, db);
-            
-            case 'generateRoute': return generateRoute(payload, res, db);
-            case 'calculate': return calculate(payload, res, db);
-            
-            default: return res.status(400).json({ error: `Invalid or unhandled action provided: ${action}` });
-        }
+        console.error(`[${getLogTime()}] RES - GET ${action} (Invalid Action)`);
+        return res.status(400).json({ error: "Invalid GET action provided" });
     } catch (error) {
-        console.error(`[POST ERROR] ${error.message}`);
+        console.error(`[${getLogTime()}] ERROR - GET ${action}:`, error.message);
         return res.status(500).json({ error: error.message });
     }
 });
 
-app.all('*', (req, res) => res.status(405).json({ error: 'Method Not Allowed' }));
+// --- POST ROUTER (Mutations & Actions) ---
+app.post('/', async (req, res) => {
+    const action = req.body.action;
+    const payload = req.body.payload || req.body;
+    
+    console.log(`[${getLogTime()}] REQ - POST ${action || 'UNKNOWN'}`);
 
-const port = process.env.PORT || 8080;
-app.listen(port, '0.0.0.0', () => {
-    console.log(`[SERVER BOOT] Sproute Backend (V1.33) listening on port ${port}`);
+    if (!action) {
+        console.error(`[${getLogTime()}] RES - POST (Missing Action)`);
+        return res.status(400).json({ error: "Missing action in request body" });
+    }
+
+    try {
+        switch (action) {
+            // Pre-Optimization
+            case 'uploadCsv': 
+                return await uploadCsv(payload, res, db, admin);
+            case 'resolveUnmatchedAddress': 
+                return await resolveUnmatchedAddress(payload, res, db, admin);
+            case 'updateOrder': 
+                return await updateOrder(payload, res, db);
+            case 'updateMultipleOrders': 
+                return await updateMultipleOrders(payload, res, db);
+            case 'deleteMultipleOrders': 
+                return await deleteMultipleOrders(payload, res, db);
+            
+            // Optimization
+            case 'generateRoute': 
+                return await generateRoute(payload, res, db);
+            case 'calculate': 
+                return await calculate(payload, res, db);
+            
+            // Post-Optimization
+            case 'saveRoute': 
+                return await saveRoute(payload, res, db);
+            case 'resetRoute': 
+                return await resetRoute(payload, res, db);
+            case 'recreateOrders': 
+                return await recreateOrders(payload, res, db);
+            case 'restoreOriginalRoute': 
+                return await restoreOriginalRoute(payload, res, db);
+            case 'dispatchRoute': 
+                return await dispatchRoute(payload, res, db, admin);
+
+            default:
+                console.error(`[${getLogTime()}] RES - POST ${action} \n { "error": "Invalid or unhandled action provided: ${action}" }`);
+                return res.status(400).json({ error: `Invalid or unhandled action provided: ${action}` });
+        }
+    } catch (error) {
+        console.error(`[${getLogTime()}] ERROR - POST ${action}:`, error);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+// --- SERVER START ---
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+    console.log(`[${getLogTime()}] Enterprise Node.js Backend listening on port ${PORT}`);
 });
