@@ -1,12 +1,13 @@
 /**
  * optimization.js
- * VERSION: V1.40
+ * VERSION: V1.41
  * * CHANGES:
- * V1.40 - State Machine Alignment. Removed the evaluateRouteState helper from the 
- * optimization engine. generateRoute and calculate now perform a hard-overwrite 
- * of the document status to "Ready" upon successful API completion, aligning perfectly 
- * with the frontend's dirtyRoutes tracking and legacy Apps Script behavior.
- * V1.39 - Google Rejection Logging.
+ * V1.41 - Recalculate Alignment & Console Logging. Restored 'updatedStops' to the 
+ * calculate endpoint response, as the frontend handleCalculate function strictly 
+ * requires it to process synchronously. Added a 'processUsed' field to the JSON 
+ * responses of both endpoints so the frontend testing console explicitly displays 
+ * whether the Standard API, Enterprise API, or Local Math was utilized.
+ * V1.40 - State Machine Alignment (Hardcoded 'Ready').
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -70,14 +71,17 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
         
         const payload = {
             model: {
-                shipments: stopsGeo.map((s, i) => ({ deliveries: [{ arrivalLocation: { latitude: s.lat, longitude: s.lng } }], label: i.toString() })),
-                vehicles: [{
-                    startLocation: { latitude: startGeo.lat, longitude: startGeo.lng },
-                    endLocation: { latitude: endGeo.lat, longitude: endGeo.lng },
-                    label: "primary_vehicle"
-                }]
+                shipments: stopsGeo.map((s, i) => ({ deliveries: [{ arrivalLocation: { latitude: s.lat, longitude: s.lng } }], label: i.toString() }))
             }
         };
+
+        if (startGeo && endGeo) {
+            payload.model.vehicles = [{
+                startLocation: { latitude: startGeo.lat, longitude: startGeo.lng },
+                endLocation: { latitude: endGeo.lat, longitude: endGeo.lng },
+                label: "primary_vehicle"
+            }];
+        }
         
         if (preserveSequence) {
             payload.injectedFirstSolutionRoutes = [{ vehicleIndex: 0, visits: stopsGeo.map((s, i) => ({ shipmentIndex: i })) }];
@@ -223,8 +227,6 @@ async function generateRoute(payload, res, db) {
     });
 
     let finalBay = finalRoutedStops.concat(cleanedUnrouted);
-    
-    // V1.40 FIX: Hardcode to "Ready" upon successful optimization
     let nextState = finalRoutedStops.length > 0 ? 'Ready' : 'Pending';
 
     const batch = db.batch();
@@ -238,7 +240,13 @@ async function generateRoute(payload, res, db) {
     
     await batch.commit();
 
-    return res.status(200).json({ success: true, status: 'queued' });
+    let routingMethod = entCalls > 0 ? `Enterprise Route Optimization API (${entCalls} calls)` : `Standard Directions API (${stdCalls} calls)`;
+
+    return res.status(200).json({ 
+        success: true, 
+        status: 'queued',
+        processUsed: routingMethod
+    });
 }
 
 async function calculate(payload, res, db) {
@@ -379,8 +387,6 @@ async function calculate(payload, res, db) {
     });
 
     let finalBay = finalRoutedStops.concat(cleanedUnrouted);
-    
-    // V1.40 FIX: Hardcode to "Ready" upon successful recalculation
     let nextState = finalRoutedStops.length > 0 ? 'Ready' : 'Pending';
 
     const batch = db.batch();
@@ -392,7 +398,14 @@ async function calculate(payload, res, db) {
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
     
     await batch.commit();
-    return res.status(200).json({ success: true, status: 'queued' });
+
+    let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
+
+    return res.status(200).json({ 
+        success: true, 
+        updatedStops: finalBay,
+        processUsed: calcMethod
+    });
 }
 
 module.exports = { generateRoute, calculate };
