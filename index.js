@@ -1,21 +1,20 @@
 /**
  * index.js
- * VERSION: V1.34
+ * VERSION: V1.35
  * * CHANGES:
- * V1.34 - Router Expansion. Wired up the missing endpoints for post-optimization 
- * (saveRoute, resetRoute, recreateOrders, restoreOriginalRoute, dispatchRoute) 
- * and pre-optimization (resolveUnmatchedAddress). Added explicit admin variable 
- * passing to dispatchRoute and resolveUnmatchedAddress for server timestamping.
- * Included detailed execution logging to match the legacy console format.
- * V1.33 - Initial modular routing setup.
+ * V1.35 - Environment Overwrite Fix. Removed dotenv from initialization. Cloud Run 
+ * automatically handles native environment variables (like GOOGLE_CLOUD_PROJECT). 
+ * If a .env file with placeholder values was checked into GitHub, dotenv was 
+ * actively overwriting the live variables and causing Firebase to look for a 
+ * fake database, throwing the 5 NOT_FOUND gRPC error.
+ * V1.34 - Router Expansion. Wired up the missing endpoints for post-optimization.
  */
 
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 
-// Initialize Firebase Admin (uses default service account credentials in Cloud Run)
+// Initialize Firebase Admin (uses default Application Default Credentials in Cloud Run)
 if (!admin.apps.length) {
     admin.initializeApp();
 }
