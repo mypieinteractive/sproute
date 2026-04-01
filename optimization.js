@@ -1,13 +1,11 @@
 /**
  * optimization.js
- * VERSION: V1.43
+ * VERSION: V1.44
  * * CHANGES:
- * V1.43 - Clean Route Preservation & Instant Sync. The backend now retrieves the existing 
- * activeStaging array, preserves any routes that weren't sent in the payload, and merges 
- * them with the freshly calculated routes to prevent wiping out clean clusters. Also 
- * updated generateRoute to return 'updatedStops' directly, eliminating the need for 
- * the frontend to artificially poll the database.
- * V1.42 - Version Tracking. 
+ * V1.44 - Polling Restoration. Reverted the generateRoute response back to returning 
+ * 'status: "queued"'. The frontend's handleGenerateRoute function strictly requires this 
+ * keyword to correctly execute its polling loop and clear the "Processing..." overlay.
+ * V1.43 - Clean Route Preservation & Array Merging.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -147,7 +145,6 @@ async function generateRoute(payload, res, db) {
     const inputStops = payload.stops || [];
     if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to optimize."});
 
-    // Capture the clusters being touched
     let recalculatedRouteIds = new Set();
     let clusters = {};
     let unroutedStops = [];
@@ -227,7 +224,6 @@ async function generateRoute(payload, res, db) {
         ];
     });
 
-    // V1.43 Array Merge
     let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
     let preservedStops = existingBay.filter(s => {
         let sRoute = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 1));
@@ -255,11 +251,12 @@ async function generateRoute(payload, res, db) {
 
     let routingMethod = entCalls > 0 ? `Enterprise Route Optimization API (${entCalls} calls)` : `Standard Directions API (${stdCalls} calls)`;
 
+    // V1.44 FIX: Restored status: 'queued' so the frontend polling loop resolves.
     return res.status(200).json({ 
         success: true, 
-        updatedStops: finalBay,
+        status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.43'
+        backendVersion: 'V1.44'
     });
 }
 
@@ -304,7 +301,6 @@ async function calculate(payload, res, db) {
     const inputStops = payload.stops || [];
     if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to calculate."});
 
-    // Capture the clusters being touched
     let recalculatedRouteIds = new Set();
     let clusters = {};
     let unroutedStops = [];
@@ -404,7 +400,6 @@ async function calculate(payload, res, db) {
         ];
     });
 
-    // V1.43 Array Merge
     let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
     let preservedStops = existingBay.filter(s => {
         let sRoute = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 1));
@@ -435,7 +430,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: finalBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.43'
+        backendVersion: 'V1.44'
     });
 }
 
