@@ -1,13 +1,11 @@
 /**
  * optimization.js
- * VERSION: V1.41
+ * VERSION: V1.42
  * * CHANGES:
- * V1.41 - Recalculate Alignment & Console Logging. Restored 'updatedStops' to the 
- * calculate endpoint response, as the frontend handleCalculate function strictly 
- * requires it to process synchronously. Added a 'processUsed' field to the JSON 
- * responses of both endpoints so the frontend testing console explicitly displays 
- * whether the Standard API, Enterprise API, or Local Math was utilized.
- * V1.40 - State Machine Alignment (Hardcoded 'Ready').
+ * V1.42 - Version Tracking. Added a explicit 'backendVersion' stamp to the JSON 
+ * returns for both endpoints to allow the frontend visual console to strictly 
+ * verify which version of the code is actively running on Google Cloud Run.
+ * V1.41 - Recalculate Alignment & Console Logging.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -245,7 +243,8 @@ async function generateRoute(payload, res, db) {
     return res.status(200).json({ 
         success: true, 
         status: 'queued',
-        processUsed: routingMethod
+        processUsed: routingMethod,
+        backendVersion: 'V1.42'
     });
 }
 
@@ -404,7 +403,8 @@ async function calculate(payload, res, db) {
     return res.status(200).json({ 
         success: true, 
         updatedStops: finalBay,
-        processUsed: calcMethod
+        processUsed: calcMethod,
+        backendVersion: 'V1.42'
     });
 }
 
