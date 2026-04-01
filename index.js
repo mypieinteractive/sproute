@@ -1,27 +1,36 @@
 /**
  * index.js
- * VERSION: V1.35
+ * VERSION: V1.36
  * * CHANGES:
- * V1.35 - Environment Overwrite Fix. Removed dotenv from initialization. Cloud Run 
- * automatically handles native environment variables (like GOOGLE_CLOUD_PROJECT). 
- * If a .env file with placeholder values was checked into GitHub, dotenv was 
- * actively overwriting the live variables and causing Firebase to look for a 
- * fake database, throwing the 5 NOT_FOUND gRPC error.
- * V1.34 - Router Expansion. Wired up the missing endpoints for post-optimization.
+ * V1.36 - Firebase Auth & Webhook Restoration. Restored the specific named 
+ * database connection ('sproute') using getFirestore, which fixes the 5 NOT_FOUND 
+ * gRPC error caused by the server looking for a '(default)' database. Re-imported 
+ * the glideWebhooks controllers and wired them back into the POST switch statement 
+ * so Glide integrations function properly.
+ * V1.35 - Environment Overwrite Fix. 
  */
 
 const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
 
-// Initialize Firebase Admin (uses default Application Default Credentials in Cloud Run)
+// Initialize Firebase Admin globally
+let firebaseApp;
 if (!admin.apps.length) {
-    admin.initializeApp();
+    firebaseApp = admin.initializeApp({
+        projectId: process.env.GOOGLE_CLOUD_PROJECT
+    });
+} else {
+    firebaseApp = admin.app();
 }
-const db = admin.firestore();
 
-// Import Modules
+// Connect explicitly to the 'sproute' named database
+const db = getFirestore(firebaseApp, 'sproute');
+
+// Import Modular Controllers
 const { getDashboardInit } = require('./initialization');
+const { updateUserFromGlide, updateCompanyFromGlide, updateCsvSettingsFromGlide, updateEndpoint } = require('./glideWebhooks');
 const { uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress } = require('./preOptimization');
 const { generateRoute, calculate } = require('./optimization');
 const { saveRoute, resetRoute, recreateOrders, restoreOriginalRoute, dispatchRoute } = require('./postOptimization');
@@ -69,6 +78,16 @@ app.post('/', async (req, res) => {
 
     try {
         switch (action) {
+            // Glide Webhooks
+            case 'updateUserFromGlide':
+                return await updateUserFromGlide(payload, res, db);
+            case 'updateCompanyFromGlide':
+                return await updateCompanyFromGlide(payload, res, db);
+            case 'updateCsvSettingsFromGlide':
+                return await updateCsvSettingsFromGlide(payload, res, db);
+            case 'updateEndpoint':
+                return await updateEndpoint(payload, res, db);
+
             // Pre-Optimization
             case 'uploadCsv': 
                 return await uploadCsv(payload, res, db, admin);
