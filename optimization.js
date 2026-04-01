@@ -1,18 +1,17 @@
 /**
  * optimization.js
- * VERSION: V1.42
+ * VERSION: V1.43
  * * CHANGES:
- * V1.42 - Version Tracking. Added a explicit 'backendVersion' stamp to the JSON 
- * returns for both endpoints to allow the frontend visual console to strictly 
- * verify which version of the code is actively running on Google Cloud Run.
- * V1.41 - Recalculate Alignment & Console Logging.
+ * V1.43 - Clean Route Preservation & Instant Sync. The backend now retrieves the existing 
+ * activeStaging array, preserves any routes that weren't sent in the payload, and merges 
+ * them with the freshly calculated routes to prevent wiping out clean clusters. Also 
+ * updated generateRoute to return 'updatedStops' directly, eliminating the need for 
+ * the frontend to artificially poll the database.
+ * V1.42 - Version Tracking. 
  */
 
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
-
-// Helper removed: The optimization engine only creates clean "Ready" states. 
-// Downgrades to "Staging" are strictly handled by pre/postOptimization mutation endpoints.
 
 async function geocodeEndpoint(address, apiKey) {
     if (!address || !apiKey) return null;
@@ -148,11 +147,15 @@ async function generateRoute(payload, res, db) {
     const inputStops = payload.stops || [];
     if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to optimize."});
 
+    // Capture the clusters being touched
+    let recalculatedRouteIds = new Set();
     let clusters = {};
     let unroutedStops = [];
 
     inputStops.forEach(s => {
         let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 'X');
+        recalculatedRouteIds.add(String(rLabel));
+        
         if (String(rLabel) === 'X') {
             unroutedStops.push(s);
         } else {
@@ -224,8 +227,20 @@ async function generateRoute(payload, res, db) {
         ];
     });
 
-    let finalBay = finalRoutedStops.concat(cleanedUnrouted);
-    let nextState = finalRoutedStops.length > 0 ? 'Ready' : 'Pending';
+    // V1.43 Array Merge
+    let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
+    let preservedStops = existingBay.filter(s => {
+        let sRoute = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 1));
+        return !recalculatedRouteIds.has(sRoute);
+    });
+
+    let finalBay = preservedStops.concat(finalRoutedStops).concat(cleanedUnrouted);
+    
+    let hasRouted = finalBay.some(s => {
+        let stat = Array.isArray(s) ? s[11] : (s.status || s.s);
+        return String(stat).trim() === 'R';
+    });
+    let nextState = hasRouted ? 'Ready' : 'Pending';
 
     const batch = db.batch();
     batch.update(driverRef, { 
@@ -242,9 +257,9 @@ async function generateRoute(payload, res, db) {
 
     return res.status(200).json({ 
         success: true, 
-        status: 'queued',
+        updatedStops: finalBay,
         processUsed: routingMethod,
-        backendVersion: 'V1.42'
+        backendVersion: 'V1.43'
     });
 }
 
@@ -289,11 +304,15 @@ async function calculate(payload, res, db) {
     const inputStops = payload.stops || [];
     if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to calculate."});
 
+    // Capture the clusters being touched
+    let recalculatedRouteIds = new Set();
     let clusters = {};
     let unroutedStops = [];
 
     inputStops.forEach(s => {
         let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 'X');
+        recalculatedRouteIds.add(String(rLabel));
+
         if (String(rLabel) === 'X') {
             unroutedStops.push(s);
         } else {
@@ -385,8 +404,20 @@ async function calculate(payload, res, db) {
         ];
     });
 
-    let finalBay = finalRoutedStops.concat(cleanedUnrouted);
-    let nextState = finalRoutedStops.length > 0 ? 'Ready' : 'Pending';
+    // V1.43 Array Merge
+    let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
+    let preservedStops = existingBay.filter(s => {
+        let sRoute = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 1));
+        return !recalculatedRouteIds.has(sRoute);
+    });
+
+    let finalBay = preservedStops.concat(finalRoutedStops).concat(cleanedUnrouted);
+    
+    let hasRouted = finalBay.some(s => {
+        let stat = Array.isArray(s) ? s[11] : (s.status || s.s);
+        return String(stat).trim() === 'R';
+    });
+    let nextState = hasRouted ? 'Ready' : 'Pending';
 
     const batch = db.batch();
     batch.update(driverRef, { 
@@ -404,7 +435,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: finalBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.42'
+        backendVersion: 'V1.43'
     });
 }
 
