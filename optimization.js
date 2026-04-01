@@ -1,11 +1,12 @@
 /**
  * optimization.js
- * VERSION: V1.44
+ * VERSION: V1.46
  * * CHANGES:
- * V1.44 - Polling Restoration. Reverted the generateRoute response back to returning 
- * 'status: "queued"'. The frontend's handleGenerateRoute function strictly requires this 
- * keyword to correctly execute its polling loop and clear the "Processing..." overlay.
- * V1.43 - Clean Route Preservation & Array Merging.
+ * V1.46 - Ultimate Preservation Filter. Strengthened the array merge logic in 
+ * generateRoute and calculate. It now strictly isolates payload Row IDs and explicitly 
+ * preserves all 'P' and 'V' orders from the database that were omitted from the 
+ * frontend's payload, preventing recalculations from permanently deleting pending orders.
+ * V1.45 - Pending Order Preservation attempt.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -145,13 +146,17 @@ async function generateRoute(payload, res, db) {
     const inputStops = payload.stops || [];
     if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to optimize."});
 
+    let payloadRowIds = new Set();
     let recalculatedRouteIds = new Set();
     let clusters = {};
     let unroutedStops = [];
 
     inputStops.forEach(s => {
         let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 'X');
+        let sId = Array.isArray(s) ? s[0] : (s.rowId || s.r || s.id);
+        
         recalculatedRouteIds.add(String(rLabel));
+        payloadRowIds.add(String(sId));
         
         if (String(rLabel) === 'X') {
             unroutedStops.push(s);
@@ -225,9 +230,24 @@ async function generateRoute(payload, res, db) {
     });
 
     let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
+    
+    // V1.46 Extremely robust preservation filter
     let preservedStops = existingBay.filter(s => {
-        let sRoute = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 1));
-        return !recalculatedRouteIds.has(sRoute);
+        let isTuple = Array.isArray(s);
+        let sId = String(isTuple ? s[0] : (s.rowId || s.r || s.id));
+        let sRoute = String(isTuple ? s[1] : (s.R || s.routeNum || s.cluster || 1));
+        let sStat = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
+
+        // 1. If it was explicitly sent in the payload to be calculated, DO NOT preserve it.
+        if (payloadRowIds.has(sId)) return false;
+
+        // 2. Always preserve Pending and Validation Failed orders that weren't in the payload.
+        if (sStat === 'P' || sStat === 'V') return true;
+
+        // 3. Preserve any clean routes that were NOT sent to be recalculated.
+        if (!recalculatedRouteIds.has(sRoute)) return true;
+
+        return false;
     });
 
     let finalBay = preservedStops.concat(finalRoutedStops).concat(cleanedUnrouted);
@@ -251,12 +271,11 @@ async function generateRoute(payload, res, db) {
 
     let routingMethod = entCalls > 0 ? `Enterprise Route Optimization API (${entCalls} calls)` : `Standard Directions API (${stdCalls} calls)`;
 
-    // V1.44 FIX: Restored status: 'queued' so the frontend polling loop resolves.
     return res.status(200).json({ 
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.44'
+        backendVersion: 'V1.46'
     });
 }
 
@@ -301,13 +320,17 @@ async function calculate(payload, res, db) {
     const inputStops = payload.stops || [];
     if (inputStops.length === 0) return res.status(400).json({error: "No stops provided to calculate."});
 
+    let payloadRowIds = new Set();
     let recalculatedRouteIds = new Set();
     let clusters = {};
     let unroutedStops = [];
 
     inputStops.forEach(s => {
         let rLabel = Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 'X');
+        let sId = Array.isArray(s) ? s[0] : (s.rowId || s.r || s.id);
+        
         recalculatedRouteIds.add(String(rLabel));
+        payloadRowIds.add(String(sId));
 
         if (String(rLabel) === 'X') {
             unroutedStops.push(s);
@@ -401,9 +424,24 @@ async function calculate(payload, res, db) {
     });
 
     let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
+    
+    // V1.46 Extremely robust preservation filter
     let preservedStops = existingBay.filter(s => {
-        let sRoute = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || s.cluster || 1));
-        return !recalculatedRouteIds.has(sRoute);
+        let isTuple = Array.isArray(s);
+        let sId = String(isTuple ? s[0] : (s.rowId || s.r || s.id));
+        let sRoute = String(isTuple ? s[1] : (s.R || s.routeNum || s.cluster || 1));
+        let sStat = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
+
+        // 1. If it was explicitly sent in the payload to be calculated, DO NOT preserve it.
+        if (payloadRowIds.has(sId)) return false;
+
+        // 2. Always preserve Pending and Validation Failed orders that weren't in the payload.
+        if (sStat === 'P' || sStat === 'V') return true;
+
+        // 3. Preserve any clean routes that were NOT sent to be recalculated.
+        if (!recalculatedRouteIds.has(sRoute)) return true;
+
+        return false;
     });
 
     let finalBay = preservedStops.concat(finalRoutedStops).concat(cleanedUnrouted);
@@ -430,7 +468,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: finalBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.44'
+        backendVersion: 'V1.46'
     });
 }
 
