@@ -1,13 +1,12 @@
 /**
- * Dashboard - V12.7
+ * Dashboard - V12.8
  * FILE: app.js
  * Changes: 
- * 1. Added Unmatched Address Resolution flow. Intercepts the uploadCsv response 
- * and triggers a paginated modal if unmatched addresses are found, rather than immediately 
- * reloading the board. Supports validation state, dynamic buttons, and skip logic utilizing 
- * existing customConfirm functionality.
- * 2. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
- * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
+ * V12.8 - The Tandem Handshake (Frontend). Added explicit `driverId` and `routeState` injection 
+ * immediately following the `expandStop()` tuple unpacking inside `handleCalculate`. This prevents 
+ * newly calculated orders from turning invisible to the security filter when they are returned 
+ * from the backend as raw tuples.
+ * V12.7 - Added Unmatched Address Resolution flow.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -3100,6 +3099,8 @@ async function handleCalculate() {
         if (data.error) throw new Error(data.error);
 
         const returnedStopsMap = new Map();
+        let targetDriverId = isManagerView ? currentInspectorFilter : driverParam;
+
         data.updatedStops.forEach(s => {
             let exp = expandStop(s);
             let backendCluster = exp.cluster;
@@ -3115,7 +3116,15 @@ async function handleCalculate() {
                 }
             }
 
-            returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
+            // V12.8 FIX: Explicitly inject driverId and routeState so UI doesn't drop tuples
+            returnedStopsMap.set(exp.rowId || exp.id, {
+                ...exp,
+                id: exp.rowId || exp.id,
+                cluster: mappedCluster,
+                manualCluster: false,
+                driverId: targetDriverId,
+                routeState: 'Staging'
+            });
         });
 
         stops = stops.map(s => {
