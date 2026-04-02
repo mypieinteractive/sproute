@@ -14,6 +14,7 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
+const { dispatchRoute } = require('./dispatch');
 
 // Initialize Firebase Admin globally
 let firebaseApp;
@@ -70,6 +71,10 @@ app.post('/', async (req, res) => {
     const payload = req.body.payload || req.body;
     
     console.log(`[${getLogTime()}] REQ - POST ${action || 'UNKNOWN'}`);
+
+    if (action === 'dispatchRoute') {
+    return await dispatchRoute(payload, res, db);
+}
 
     if (!action) {
         console.error(`[${getLogTime()}] RES - POST (Missing Action)`);
