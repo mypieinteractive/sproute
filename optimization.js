@@ -1,13 +1,11 @@
 /**
  * optimization.js
- * VERSION: V1.54
+ * VERSION: V1.55
  * * CHANGES:
- * V1.54 - Tuple Reversion for Drag-and-Drop Integrity. Stripped object expansion 
- * from the calculate response. The backend now strictly returns minified tuples 
- * (matching the legacy Apps Script contract) so app.js properly processes expandStop(). 
- * This ensures local memory IDs align, allowing drag-and-drop actions to successfully 
- * trigger the "dirty" state, clear ETAs, turn route lines dashed, and preserve 
- * sequence integrity without criss-crossing.
+ * V1.55 - Reversion to V1.53. V1.54 attempted to return raw tuples to fix frontend 
+ * drag-and-drop state, but tuples lack 'driverId', causing the frontend's visibility 
+ * filter to hide the recalculated route entirely. Restored the fully fleshed-out 
+ * object mapping with Payload Isolation to ensure orders remain visible.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -229,9 +227,11 @@ async function generateRoute(payload, res, db) {
         optimized.forEach((visit) => {
             let s = cStops[visit.index].orig;
             
+            // Add drive time
             currentSeconds += visit.durationSecs;
             let etaTimeOnly = formatEtaString(currentSeconds);
             
+            // Add service delay
             currentSeconds += (serviceDelay * 60);
 
             let numDist = Number(parseFloat(visit.distance).toFixed(1));
@@ -299,7 +299,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.54'
+        backendVersion: 'V1.55'
     });
 }
 
@@ -480,10 +480,6 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    // V1.54 FIX: Tuple Reversion. 
-    // Stripped all custom object injection from this response. We are now strictly 
-    // honoring the legacy contract by returning a 13-index tuple array so app.js 
-    // correctly processes expandStop() and maintains its local memory IDs.
     let responseBay = finalBay
         .filter(s => {
             let isTuple = Array.isArray(s);
@@ -493,31 +489,49 @@ async function calculate(payload, res, db) {
         .map(s => {
             let isTuple = Array.isArray(s);
             let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
-            let fullStatus = statChar === 'R' ? 'R' : (statChar === 'P' ? 'P' : (statChar === 'V' ? 'V' : statChar));
+            let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
+            
             let rNum = isTuple ? s[1] : (s.routeNum || s.R || s.cluster);
 
-            return [
-                String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
-                parseInt(rNum) || 1,
-                String(isTuple ? s[2] : (s.address || s.a)),
-                String(isTuple ? s[3] : (s.client || s.c)),
-                String(isTuple ? s[4] : (s.app || s.p)),
-                String(isTuple ? s[5] : (s.dueDate || s.d)),
-                String(isTuple ? s[6] : (s.type || s.t)),
-                String(isTuple ? s[7] : s.eta),
-                Number(isTuple ? s[8] : (s.dist || s.D)),
-                Number(isTuple ? s[9] : (s.lat || s.l)),
-                Number(isTuple ? s[10] : (s.lng || s.g)),
-                fullStatus,
-                Number(isTuple ? s[12] : s.durationSecs)
-            ];
+            return {
+                rowId: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                id: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                r: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                routeNum: rNum,
+                R: rNum,
+                cluster: rNum,
+                address: String(isTuple ? s[2] : (s.address || s.a)),
+                a: String(isTuple ? s[2] : (s.address || s.a)),
+                client: String(isTuple ? s[3] : (s.client || s.c)),
+                c: String(isTuple ? s[3] : (s.client || s.c)),
+                app: String(isTuple ? s[4] : (s.app || s.p)),
+                p: String(isTuple ? s[4] : (s.app || s.p)),
+                dueDate: String(isTuple ? s[5] : (s.dueDate || s.d)),
+                d: String(isTuple ? s[5] : (s.dueDate || s.d)),
+                type: String(isTuple ? s[6] : (s.type || s.t)),
+                t: String(isTuple ? s[6] : (s.type || s.t)),
+                eta: String(isTuple ? s[7] : s.eta),
+                e: String(isTuple ? s[7] : s.eta),
+                dist: Number(isTuple ? s[8] : (s.dist || s.D)),
+                D: Number(isTuple ? s[8] : (s.dist || s.D)),
+                lat: Number(isTuple ? s[9] : (s.lat || s.l)),
+                l: Number(isTuple ? s[9] : (s.lat || s.l)),
+                lng: Number(isTuple ? s[10] : (s.lng || s.g)),
+                g: Number(isTuple ? s[10] : (s.lng || s.g)),
+                status: fullStatus,
+                s: fullStatus,
+                durationSecs: Number(isTuple ? s[12] : s.durationSecs),
+                driverId: String(payload.driverId),
+                routeState: nextState,
+                routeTargetId: String(payload.driverId)
+            };
         });
 
     return res.status(200).json({ 
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.54'
+        backendVersion: 'V1.55'
     });
 }
 
