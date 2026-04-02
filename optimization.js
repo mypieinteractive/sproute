@@ -1,11 +1,11 @@
 /**
  * optimization.js
- * VERSION: V1.55
+ * VERSION: V1.56
  * * CHANGES:
- * V1.55 - Reversion to V1.53. V1.54 attempted to return raw tuples to fix frontend 
- * drag-and-drop state, but tuples lack 'driverId', causing the frontend's visibility 
- * filter to hide the recalculated route entirely. Restored the fully fleshed-out 
- * object mapping with Payload Isolation to ensure orders remain visible.
+ * V1.56 - The Tandem Handshake (Backend). Reverted calculate to return raw tuples 
+ * to strictly honor the legacy contract. Because tuples are returned, app.js will 
+ * correctly run expandStop(), ensuring local memory IDs align perfectly with map IDs, 
+ * allowing drag-and-drop to trigger the dashed "dirty" lines and erase old ETAs.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -299,7 +299,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.55'
+        backendVersion: 'V1.56'
     });
 }
 
@@ -480,6 +480,9 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
+    // V1.56 FIX: Tuple Reversion. 
+    // Stripped object injection so the UI uses native unpacking, mapping IDs correctly for 
+    // the UI elements and preventing criss-crossed lines and failed "dirty" triggers.
     let responseBay = finalBay
         .filter(s => {
             let isTuple = Array.isArray(s);
@@ -489,49 +492,31 @@ async function calculate(payload, res, db) {
         .map(s => {
             let isTuple = Array.isArray(s);
             let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
-            let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
-            
+            let fullStatus = statChar === 'R' ? 'R' : (statChar === 'P' ? 'P' : (statChar === 'V' ? 'V' : statChar));
             let rNum = isTuple ? s[1] : (s.routeNum || s.R || s.cluster);
 
-            return {
-                rowId: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
-                id: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
-                r: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
-                routeNum: rNum,
-                R: rNum,
-                cluster: rNum,
-                address: String(isTuple ? s[2] : (s.address || s.a)),
-                a: String(isTuple ? s[2] : (s.address || s.a)),
-                client: String(isTuple ? s[3] : (s.client || s.c)),
-                c: String(isTuple ? s[3] : (s.client || s.c)),
-                app: String(isTuple ? s[4] : (s.app || s.p)),
-                p: String(isTuple ? s[4] : (s.app || s.p)),
-                dueDate: String(isTuple ? s[5] : (s.dueDate || s.d)),
-                d: String(isTuple ? s[5] : (s.dueDate || s.d)),
-                type: String(isTuple ? s[6] : (s.type || s.t)),
-                t: String(isTuple ? s[6] : (s.type || s.t)),
-                eta: String(isTuple ? s[7] : s.eta),
-                e: String(isTuple ? s[7] : s.eta),
-                dist: Number(isTuple ? s[8] : (s.dist || s.D)),
-                D: Number(isTuple ? s[8] : (s.dist || s.D)),
-                lat: Number(isTuple ? s[9] : (s.lat || s.l)),
-                l: Number(isTuple ? s[9] : (s.lat || s.l)),
-                lng: Number(isTuple ? s[10] : (s.lng || s.g)),
-                g: Number(isTuple ? s[10] : (s.lng || s.g)),
-                status: fullStatus,
-                s: fullStatus,
-                durationSecs: Number(isTuple ? s[12] : s.durationSecs),
-                driverId: String(payload.driverId),
-                routeState: nextState,
-                routeTargetId: String(payload.driverId)
-            };
+            return [
+                String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                parseInt(rNum) || 1,
+                String(isTuple ? s[2] : (s.address || s.a)),
+                String(isTuple ? s[3] : (s.client || s.c)),
+                String(isTuple ? s[4] : (s.app || s.p)),
+                String(isTuple ? s[5] : (s.dueDate || s.d)),
+                String(isTuple ? s[6] : (s.type || s.t)),
+                String(isTuple ? s[7] : s.eta),
+                Number(isTuple ? s[8] : (s.dist || s.D)),
+                Number(isTuple ? s[9] : (s.lat || s.l)),
+                Number(isTuple ? s[10] : (s.lng || s.g)),
+                fullStatus,
+                Number(isTuple ? s[12] : s.durationSecs)
+            ];
         });
 
     return res.status(200).json({ 
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.55'
+        backendVersion: 'V1.56'
     });
 }
 
