@@ -1,14 +1,14 @@
 /**
  * optimization.js
- * VERSION: V1.49
+ * VERSION: V1.50
  * * CHANGES:
- * V1.49 - Object Expansion for Recalculate. Fixed the bug where recalculating 
- * caused orders to vanish. The backend was returning minified tuples, causing the 
- * frontend app.js to lose the 'driverId' property and turn the stops invisible. 
- * calculate now formats the response as fully fleshed-out objects, preserving 
- * visibility and allowing the frontend to retain the dragged sequence without 
- * requiring a page refresh.
- * V1.48 - Polling Loop Restoration for Optimization.
+ * V1.50 - Payload Isolation. Fixed the bug where recalculating one route accidentally 
+ * overwrote the clusters of clean routes and pending orders. The backend still safely 
+ * merges and saves the entire board to Firestore, but the final JSON response is now 
+ * strictly filtered to ONLY return the specific stops that were sent in the payload. 
+ * This prevents the frontend's singular-cluster safety loop from forcefully reassigning 
+ * preserved orders.
+ * V1.49 - Object Expansion for Recalculate.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -271,7 +271,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.49'
+        backendVersion: 'V1.50'
     });
 }
 
@@ -442,6 +442,7 @@ async function calculate(payload, res, db) {
     });
     let nextState = hasRouted ? 'Ready' : 'Pending';
 
+    // 1. Save the full merged board to the database
     const batch = db.batch();
     batch.update(driverRef, { 
         'activeStaging.orders': JSON.stringify(finalBay), 
@@ -454,37 +455,44 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    // V1.49 FIX: Map response to fully fleshed-out objects so the frontend retains driverId and routeState
-    let responseBay = finalBay.map(s => {
-        let isTuple = Array.isArray(s);
-        let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
-        let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
+    // V1.50 FIX: Payload Isolation - Filter the returned objects to ONLY include 
+    // what was in the original request payload.
+    let responseBay = finalBay
+        .filter(s => {
+            let isTuple = Array.isArray(s);
+            let sId = String(isTuple ? s[0] : (s.rowId || s.id));
+            return payloadRowIds.has(sId);
+        })
+        .map(s => {
+            let isTuple = Array.isArray(s);
+            let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
+            let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
 
-        return {
-            rowId: String(isTuple ? s[0] : (s.rowId || s.id)),
-            id: String(isTuple ? s[0] : (s.rowId || s.id)),
-            cluster: isTuple ? s[1] : (s.cluster || s.routeNum),
-            address: String(isTuple ? s[2] : s.address),
-            client: String(isTuple ? s[3] : s.client),
-            app: String(isTuple ? s[4] : s.app),
-            dueDate: String(isTuple ? s[5] : s.dueDate),
-            type: String(isTuple ? s[6] : s.type),
-            eta: String(isTuple ? s[7] : s.eta),
-            dist: Number(isTuple ? s[8] : s.dist),
-            lat: Number(isTuple ? s[9] : s.lat),
-            lng: Number(isTuple ? s[10] : s.lng),
-            status: fullStatus,
-            durationSecs: Number(isTuple ? s[12] : s.durationSecs),
-            driverId: String(payload.driverId),
-            routeState: nextState
-        };
-    });
+            return {
+                rowId: String(isTuple ? s[0] : (s.rowId || s.id)),
+                id: String(isTuple ? s[0] : (s.rowId || s.id)),
+                cluster: isTuple ? s[1] : (s.cluster || s.routeNum),
+                address: String(isTuple ? s[2] : s.address),
+                client: String(isTuple ? s[3] : s.client),
+                app: String(isTuple ? s[4] : s.app),
+                dueDate: String(isTuple ? s[5] : s.dueDate),
+                type: String(isTuple ? s[6] : s.type),
+                eta: String(isTuple ? s[7] : s.eta),
+                dist: Number(isTuple ? s[8] : s.dist),
+                lat: Number(isTuple ? s[9] : s.lat),
+                lng: Number(isTuple ? s[10] : s.lng),
+                status: fullStatus,
+                durationSecs: Number(isTuple ? s[12] : s.durationSecs),
+                driverId: String(payload.driverId),
+                routeState: nextState
+            };
+        });
 
     return res.status(200).json({ 
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.49'
+        backendVersion: 'V1.50'
     });
 }
 
