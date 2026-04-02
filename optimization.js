@@ -1,15 +1,13 @@
 /**
  * optimization.js
- * VERSION: V1.47
+ * VERSION: V1.48
  * * CHANGES:
- * V1.47 - Frontend Array Rendering Fix. When calculate returned synchronous 
- * updatedStops, the backend was passing the minified 'R' status instead of the 
- * full 'Routed' text. The frontend app.js failed to recognize 'R' as an active 
- * stop, causing all orders to turn invisible (0 orders). Added a formatting 
- * interceptor to expand the statuses in the JSON response so the frontend 
- * renders them immediately, preventing the need for a manual refresh (which 
- * previously triggered an unwanted ETA re-sort).
- * V1.46 - Ultimate Preservation Filter.
+ * V1.48 - Polling Loop Restoration for Optimization. Removed the synchronous 
+ * 'updatedStops' array return from the generateRoute endpoint. This forces the 
+ * frontend app.js to fall back to its expected 'queued' polling loop, which 
+ * properly triggers loadData() and successfully hides the "Processing..." 
+ * overlay when the route is ready. The calculate endpoint remains synchronous.
+ * V1.47 - Frontend Array Rendering Fix (Status Expansion).
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -287,15 +285,12 @@ async function generateRoute(payload, res, db) {
 
     let routingMethod = entCalls > 0 ? `Enterprise Route Optimization API (${entCalls} calls)` : `Standard Directions API (${stdCalls} calls)`;
     
-    // Format response so frontend instantly recognizes "Routed" instead of hidden "R"
-    let responseBay = formatStopsForFrontend(finalBay);
-
+    // V1.48 FIX: Removed updatedStops to force frontend into polling loop
     return res.status(200).json({ 
         success: true, 
         status: 'queued',
-        updatedStops: responseBay,
         processUsed: routingMethod,
-        backendVersion: 'V1.47'
+        backendVersion: 'V1.48'
     });
 }
 
@@ -478,14 +473,13 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    // Format response so frontend instantly recognizes "Routed" instead of hidden "R"
     let responseBay = formatStopsForFrontend(finalBay);
 
     return res.status(200).json({ 
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.47'
+        backendVersion: 'V1.48'
     });
 }
 
