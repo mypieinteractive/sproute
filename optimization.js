@@ -1,36 +1,18 @@
 /**
  * optimization.js
- * VERSION: V1.48
+ * VERSION: V1.49
  * * CHANGES:
- * V1.48 - Polling Loop Restoration for Optimization. Removed the synchronous 
- * 'updatedStops' array return from the generateRoute endpoint. This forces the 
- * frontend app.js to fall back to its expected 'queued' polling loop, which 
- * properly triggers loadData() and successfully hides the "Processing..." 
- * overlay when the route is ready. The calculate endpoint remains synchronous.
- * V1.47 - Frontend Array Rendering Fix (Status Expansion).
+ * V1.49 - Object Expansion for Recalculate. Fixed the bug where recalculating 
+ * caused orders to vanish. The backend was returning minified tuples, causing the 
+ * frontend app.js to lose the 'driverId' property and turn the stops invisible. 
+ * calculate now formats the response as fully fleshed-out objects, preserving 
+ * visibility and allowing the frontend to retain the dragged sequence without 
+ * requiring a page refresh.
+ * V1.48 - Polling Loop Restoration for Optimization.
  */
 
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
-
-function formatStopsForFrontend(bay) {
-    return bay.map(s => {
-        if (Array.isArray(s)) {
-            let copy = [...s];
-            if (copy[11] === 'R') copy[11] = 'Routed';
-            else if (copy[11] === 'P') copy[11] = 'Pending';
-            else if (copy[11] === 'V') copy[11] = 'Validation Failed';
-            return copy;
-        } else {
-            let copy = { ...s };
-            let stat = copy.status || copy.s;
-            if (stat === 'R') { copy.status = 'Routed'; copy.s = 'Routed'; }
-            else if (stat === 'P') { copy.status = 'Pending'; copy.s = 'Pending'; }
-            else if (stat === 'V') { copy.status = 'Validation Failed'; copy.s = 'Validation Failed'; }
-            return copy;
-        }
-    });
-}
 
 async function geocodeEndpoint(address, apiKey) {
     if (!address || !apiKey) return null;
@@ -285,12 +267,11 @@ async function generateRoute(payload, res, db) {
 
     let routingMethod = entCalls > 0 ? `Enterprise Route Optimization API (${entCalls} calls)` : `Standard Directions API (${stdCalls} calls)`;
     
-    // V1.48 FIX: Removed updatedStops to force frontend into polling loop
     return res.status(200).json({ 
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.48'
+        backendVersion: 'V1.49'
     });
 }
 
@@ -473,13 +454,37 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    let responseBay = formatStopsForFrontend(finalBay);
+    // V1.49 FIX: Map response to fully fleshed-out objects so the frontend retains driverId and routeState
+    let responseBay = finalBay.map(s => {
+        let isTuple = Array.isArray(s);
+        let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
+        let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
+
+        return {
+            rowId: String(isTuple ? s[0] : (s.rowId || s.id)),
+            id: String(isTuple ? s[0] : (s.rowId || s.id)),
+            cluster: isTuple ? s[1] : (s.cluster || s.routeNum),
+            address: String(isTuple ? s[2] : s.address),
+            client: String(isTuple ? s[3] : s.client),
+            app: String(isTuple ? s[4] : s.app),
+            dueDate: String(isTuple ? s[5] : s.dueDate),
+            type: String(isTuple ? s[6] : s.type),
+            eta: String(isTuple ? s[7] : s.eta),
+            dist: Number(isTuple ? s[8] : s.dist),
+            lat: Number(isTuple ? s[9] : s.lat),
+            lng: Number(isTuple ? s[10] : s.lng),
+            status: fullStatus,
+            durationSecs: Number(isTuple ? s[12] : s.durationSecs),
+            driverId: String(payload.driverId),
+            routeState: nextState
+        };
+    });
 
     return res.status(200).json({ 
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.48'
+        backendVersion: 'V1.49'
     });
 }
 
