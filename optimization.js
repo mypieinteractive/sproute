@@ -1,17 +1,46 @@
 /**
  * optimization.js
- * VERSION: V1.51
+ * VERSION: V1.52
  * * CHANGES:
- * V1.51 - Full-Board Alias Synchronization. Reverted the Payload Isolation from V1.50 
- * because returning a partial array prevented the frontend from overwriting its internal 
- * array, causing map lines to cross. calculate now returns the entire board, but the 
- * object mapping has been expanded to include all legacy data aliases (routeNum, R, l, g, s) 
- * so the frontend accurately recognizes clean routes and does not forcefully overwrite 
- * them to Route 2.
+ * V1.52 - The UTC Timezone Fix. Replaced Node's native Date object manipulation with 
+ * an absolute-seconds mathematical formatter. Because Cloud Run operates in UTC, 
+ * setting hours locally caused the ETAs to drift across midnight, tricking the frontend's 
+ * auto-sorter into breaking the array sequence when orders were removed. ETAs are now 
+ * strictly chronological, preserving frontend sequence and map line integrity.
  */
 
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
+
+// Manually format ETA strings based on absolute seconds to prevent UTC timezone drift
+function formatEtaString(totalSeconds) {
+    let h = Math.floor(totalSeconds / 3600) % 24;
+    let m = Math.floor((totalSeconds % 3600) / 60);
+    let ampm = h >= 12 ? 'PM' : 'AM';
+    let displayH = h % 12;
+    if (displayH === 0) displayH = 12;
+    let displayM = m.toString().padStart(2, '0');
+    return `${displayH}:${displayM} ${ampm}`;
+}
+
+// Parse user string to get starting seconds
+function parseStartTimeToSeconds(timeStr) {
+    let startH = 8;
+    let startM = 0;
+    if (timeStr) {
+        let match = String(timeStr).match(/(\d+):(\d+)\s*(AM|PM|am|pm)/i);
+        if (match) {
+            startH = parseInt(match[1], 10);
+            startM = parseInt(match[2], 10);
+            let ampm = match[3].toUpperCase();
+            if (ampm === 'PM' && startH < 12) startH += 12;
+            if (ampm === 'AM' && startH === 12) startH = 0;
+        } else {
+            startH = parseInt(String(timeStr).split(':')[0]) || 8;
+        }
+    }
+    return (startH * 3600) + (startM * 60);
+}
 
 async function geocodeEndpoint(address, apiKey) {
     if (!address || !apiKey) return null;
@@ -117,7 +146,9 @@ async function generateRoute(payload, res, db) {
     const compRef = db.collection('Companies').doc(String(compId));
     const compDoc = await compRef.get();
     const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
-    const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
+    
+    // V1.52 Time parsing
+    const baseStartSeconds = parseStartTimeToSeconds(payload.startTime);
 
     const mapsApiKey = process.env.MAPS_API_KEY;
     const projectId = process.env.GOOGLE_CLOUD_PROJECT;
@@ -170,9 +201,6 @@ async function generateRoute(payload, res, db) {
     let finalRoutedStops = [];
     let stdCalls = 0, entCalls = 0;
     
-    let time = new Date(); 
-    time.setHours(startHour, 0, 0, 0);
-
     for (let routeNum in clusters) {
         let cStops = clusters[routeNum].filter(s => s && !isNaN(s.lat) && !isNaN(s.lng));
         if (cStops.length === 0) {
@@ -196,11 +224,17 @@ async function generateRoute(payload, res, db) {
             return res.status(500).json({ error: "Routing APIs failed to return a sequence. Please check your Google Cloud API keys and Environment Variables." });
         }
 
+        let currentSeconds = baseStartSeconds;
+
         optimized.forEach((visit) => {
             let s = cStops[visit.index].orig;
-            time = new Date(time.getTime() + (visit.durationSecs * 1000));
-            let etaTimeOnly = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
-            time = new Date(time.getTime() + (serviceDelay * 60 * 1000));
+            
+            // Add drive time
+            currentSeconds += visit.durationSecs;
+            let etaTimeOnly = formatEtaString(currentSeconds);
+            
+            // Add service delay
+            currentSeconds += (serviceDelay * 60);
 
             let numDist = Number(parseFloat(visit.distance).toFixed(1));
             let isTuple = Array.isArray(s);
@@ -213,9 +247,6 @@ async function generateRoute(payload, res, db) {
                 isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs
             ]);
         });
-        
-        time.setDate(time.getDate() + 1);
-        time.setHours(startHour, 0, 0, 0);
     }
 
     let cleanedUnrouted = unroutedStops.map(s => {
@@ -270,7 +301,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.51'
+        backendVersion: 'V1.52'
     });
 }
 
@@ -286,7 +317,9 @@ async function calculate(payload, res, db) {
     const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
     let rawExact = getField(compDoc.data(), ['useExactApi', 'Use Exact API']);
     const useExactApi = rawExact === undefined ? false : (String(rawExact).toUpperCase() === 'TRUE' || rawExact === true);
-    const startHour = payload.startTime ? parseInt(payload.startTime.split(':')[0]) : 8;
+    
+    // V1.52 Time parsing
+    const baseStartSeconds = parseStartTimeToSeconds(payload.startTime);
 
     const mapsApiKey = process.env.MAPS_API_KEY;
 
@@ -338,9 +371,6 @@ async function calculate(payload, res, db) {
     let finalRoutedStops = [];
     let stdCalls = 0;
 
-    let baseTime = new Date(); 
-    baseTime.setHours(startHour, 0, 0, 0);
-
     for (let routeNum in clusters) {
         let routeStops = clusters[routeNum].filter(s => s && !isNaN(s.lat) && !isNaN(s.lng));
         if (routeStops.length === 0) {
@@ -384,10 +414,15 @@ async function calculate(payload, res, db) {
             }
         }
 
+        let currentSeconds = baseStartSeconds;
+
         finalResults.forEach((res, i) => {
-            baseTime = new Date(baseTime.getTime() + (res.durationSecs * 1000));
-            let etaTimeOnly = baseTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
-            baseTime = new Date(baseTime.getTime() + (serviceDelay * 60 * 1000));
+            // Add drive time
+            currentSeconds += res.durationSecs;
+            let etaTimeOnly = formatEtaString(currentSeconds);
+            
+            // Add service delay
+            currentSeconds += (serviceDelay * 60);
 
             let s = routeStops[i].orig;
             let numDist = Number(parseFloat(res.distance).toFixed(1));
@@ -401,9 +436,6 @@ async function calculate(payload, res, db) {
                 isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", res.durationSecs
             ]);
         });
-        
-        baseTime.setDate(baseTime.getDate() + 1);
-        baseTime.setHours(startHour, 0, 0, 0);
     }
 
     let cleanedUnrouted = unroutedStops.map(s => {
@@ -453,9 +485,7 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    // V1.51 FIX: Full-Board Alias Synchronization
-    // Returning the entire array to force the frontend to replace its internal array, 
-    // but mapping EVERY property alias so the frontend's safety loop recognizes clean routes.
+    // V1.52 Fully Fleshed-out Object Mapping 
     let responseBay = finalBay.map(s => {
         let isTuple = Array.isArray(s);
         let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
@@ -501,7 +531,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.51'
+        backendVersion: 'V1.52'
     });
 }
 
