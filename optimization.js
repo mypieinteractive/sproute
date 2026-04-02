@@ -1,12 +1,13 @@
 /**
  * optimization.js
- * VERSION: V1.52
+ * VERSION: V1.53
  * * CHANGES:
- * V1.52 - The UTC Timezone Fix. Replaced Node's native Date object manipulation with 
- * an absolute-seconds mathematical formatter. Because Cloud Run operates in UTC, 
- * setting hours locally caused the ETAs to drift across midnight, tricking the frontend's 
- * auto-sorter into breaking the array sequence when orders were removed. ETAs are now 
- * strictly chronological, preserving frontend sequence and map line integrity.
+ * V1.53 - Payload Isolation Restored. Because the UTC ETA drift was fixed in V1.52, 
+ * we can safely re-introduce Payload Isolation to the calculate endpoint without map 
+ * lines crossing. calculate now returns ONLY the requested stops, preventing the 
+ * frontend's singular-cluster trapdoor from overwriting the clusters of Pending orders 
+ * in local memory, which previously caused them to be erroneously saved to the DB and 
+ * sucked back into future generateRoute optimizations.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -147,7 +148,6 @@ async function generateRoute(payload, res, db) {
     const compDoc = await compRef.get();
     const serviceDelay = compDoc.exists ? (parseInt(getField(compDoc.data(), ['serviceDelayMins', 'Service Delay'])) || 0) : 0;
     
-    // V1.52 Time parsing
     const baseStartSeconds = parseStartTimeToSeconds(payload.startTime);
 
     const mapsApiKey = process.env.MAPS_API_KEY;
@@ -301,7 +301,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V1.52'
+        backendVersion: 'V1.53'
     });
 }
 
@@ -318,7 +318,6 @@ async function calculate(payload, res, db) {
     let rawExact = getField(compDoc.data(), ['useExactApi', 'Use Exact API']);
     const useExactApi = rawExact === undefined ? false : (String(rawExact).toUpperCase() === 'TRUE' || rawExact === true);
     
-    // V1.52 Time parsing
     const baseStartSeconds = parseStartTimeToSeconds(payload.startTime);
 
     const mapsApiKey = process.env.MAPS_API_KEY;
@@ -485,53 +484,60 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    // V1.52 Fully Fleshed-out Object Mapping 
-    let responseBay = finalBay.map(s => {
-        let isTuple = Array.isArray(s);
-        let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
-        let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
-        
-        let rNum = isTuple ? s[1] : (s.routeNum || s.R || s.cluster);
+    // V1.53 FIX: Payload Isolation. Only map and return the objects that were explicitly 
+    // submitted in the payload. Keeps the 'app.js' trapdoor away from clean routes and pending stops.
+    let responseBay = finalBay
+        .filter(s => {
+            let isTuple = Array.isArray(s);
+            let sId = String(isTuple ? s[0] : (s.rowId || s.id || s.r));
+            return payloadRowIds.has(sId);
+        })
+        .map(s => {
+            let isTuple = Array.isArray(s);
+            let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
+            let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
+            
+            let rNum = isTuple ? s[1] : (s.routeNum || s.R || s.cluster);
 
-        return {
-            rowId: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
-            id: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
-            r: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
-            routeNum: rNum,
-            R: rNum,
-            cluster: rNum,
-            address: String(isTuple ? s[2] : (s.address || s.a)),
-            a: String(isTuple ? s[2] : (s.address || s.a)),
-            client: String(isTuple ? s[3] : (s.client || s.c)),
-            c: String(isTuple ? s[3] : (s.client || s.c)),
-            app: String(isTuple ? s[4] : (s.app || s.p)),
-            p: String(isTuple ? s[4] : (s.app || s.p)),
-            dueDate: String(isTuple ? s[5] : (s.dueDate || s.d)),
-            d: String(isTuple ? s[5] : (s.dueDate || s.d)),
-            type: String(isTuple ? s[6] : (s.type || s.t)),
-            t: String(isTuple ? s[6] : (s.type || s.t)),
-            eta: String(isTuple ? s[7] : s.eta),
-            e: String(isTuple ? s[7] : s.eta),
-            dist: Number(isTuple ? s[8] : (s.dist || s.D)),
-            D: Number(isTuple ? s[8] : (s.dist || s.D)),
-            lat: Number(isTuple ? s[9] : (s.lat || s.l)),
-            l: Number(isTuple ? s[9] : (s.lat || s.l)),
-            lng: Number(isTuple ? s[10] : (s.lng || s.g)),
-            g: Number(isTuple ? s[10] : (s.lng || s.g)),
-            status: fullStatus,
-            s: fullStatus,
-            durationSecs: Number(isTuple ? s[12] : s.durationSecs),
-            driverId: String(payload.driverId),
-            routeState: nextState,
-            routeTargetId: String(payload.driverId)
-        };
-    });
+            return {
+                rowId: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                id: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                r: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                routeNum: rNum,
+                R: rNum,
+                cluster: rNum,
+                address: String(isTuple ? s[2] : (s.address || s.a)),
+                a: String(isTuple ? s[2] : (s.address || s.a)),
+                client: String(isTuple ? s[3] : (s.client || s.c)),
+                c: String(isTuple ? s[3] : (s.client || s.c)),
+                app: String(isTuple ? s[4] : (s.app || s.p)),
+                p: String(isTuple ? s[4] : (s.app || s.p)),
+                dueDate: String(isTuple ? s[5] : (s.dueDate || s.d)),
+                d: String(isTuple ? s[5] : (s.dueDate || s.d)),
+                type: String(isTuple ? s[6] : (s.type || s.t)),
+                t: String(isTuple ? s[6] : (s.type || s.t)),
+                eta: String(isTuple ? s[7] : s.eta),
+                e: String(isTuple ? s[7] : s.eta),
+                dist: Number(isTuple ? s[8] : (s.dist || s.D)),
+                D: Number(isTuple ? s[8] : (s.dist || s.D)),
+                lat: Number(isTuple ? s[9] : (s.lat || s.l)),
+                l: Number(isTuple ? s[9] : (s.lat || s.l)),
+                lng: Number(isTuple ? s[10] : (s.lng || s.g)),
+                g: Number(isTuple ? s[10] : (s.lng || s.g)),
+                status: fullStatus,
+                s: fullStatus,
+                durationSecs: Number(isTuple ? s[12] : s.durationSecs),
+                driverId: String(payload.driverId),
+                routeState: nextState,
+                routeTargetId: String(payload.driverId)
+            };
+        });
 
     return res.status(200).json({ 
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.52'
+        backendVersion: 'V1.53'
     });
 }
 
