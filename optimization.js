@@ -1,16 +1,38 @@
 /**
  * optimization.js
- * VERSION: V1.46
+ * VERSION: V1.47
  * * CHANGES:
- * V1.46 - Ultimate Preservation Filter. Strengthened the array merge logic in 
- * generateRoute and calculate. It now strictly isolates payload Row IDs and explicitly 
- * preserves all 'P' and 'V' orders from the database that were omitted from the 
- * frontend's payload, preventing recalculations from permanently deleting pending orders.
- * V1.45 - Pending Order Preservation attempt.
+ * V1.47 - Frontend Array Rendering Fix. When calculate returned synchronous 
+ * updatedStops, the backend was passing the minified 'R' status instead of the 
+ * full 'Routed' text. The frontend app.js failed to recognize 'R' as an active 
+ * stop, causing all orders to turn invisible (0 orders). Added a formatting 
+ * interceptor to expand the statuses in the JSON response so the frontend 
+ * renders them immediately, preventing the need for a manual refresh (which 
+ * previously triggered an unwanted ETA re-sort).
+ * V1.46 - Ultimate Preservation Filter.
  */
 
 const { GoogleAuth } = require('google-auth-library');
 const { getField, safeJsonParse, incrementApiUsage, getDistMi } = require('./helpers');
+
+function formatStopsForFrontend(bay) {
+    return bay.map(s => {
+        if (Array.isArray(s)) {
+            let copy = [...s];
+            if (copy[11] === 'R') copy[11] = 'Routed';
+            else if (copy[11] === 'P') copy[11] = 'Pending';
+            else if (copy[11] === 'V') copy[11] = 'Validation Failed';
+            return copy;
+        } else {
+            let copy = { ...s };
+            let stat = copy.status || copy.s;
+            if (stat === 'R') { copy.status = 'Routed'; copy.s = 'Routed'; }
+            else if (stat === 'P') { copy.status = 'Pending'; copy.s = 'Pending'; }
+            else if (stat === 'V') { copy.status = 'Validation Failed'; copy.s = 'Validation Failed'; }
+            return copy;
+        }
+    });
+}
 
 async function geocodeEndpoint(address, apiKey) {
     if (!address || !apiKey) return null;
@@ -231,20 +253,14 @@ async function generateRoute(payload, res, db) {
 
     let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
     
-    // V1.46 Extremely robust preservation filter
     let preservedStops = existingBay.filter(s => {
         let isTuple = Array.isArray(s);
         let sId = String(isTuple ? s[0] : (s.rowId || s.r || s.id));
         let sRoute = String(isTuple ? s[1] : (s.R || s.routeNum || s.cluster || 1));
         let sStat = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
 
-        // 1. If it was explicitly sent in the payload to be calculated, DO NOT preserve it.
         if (payloadRowIds.has(sId)) return false;
-
-        // 2. Always preserve Pending and Validation Failed orders that weren't in the payload.
         if (sStat === 'P' || sStat === 'V') return true;
-
-        // 3. Preserve any clean routes that were NOT sent to be recalculated.
         if (!recalculatedRouteIds.has(sRoute)) return true;
 
         return false;
@@ -270,12 +286,16 @@ async function generateRoute(payload, res, db) {
     await batch.commit();
 
     let routingMethod = entCalls > 0 ? `Enterprise Route Optimization API (${entCalls} calls)` : `Standard Directions API (${stdCalls} calls)`;
+    
+    // Format response so frontend instantly recognizes "Routed" instead of hidden "R"
+    let responseBay = formatStopsForFrontend(finalBay);
 
     return res.status(200).json({ 
         success: true, 
         status: 'queued',
+        updatedStops: responseBay,
         processUsed: routingMethod,
-        backendVersion: 'V1.46'
+        backendVersion: 'V1.47'
     });
 }
 
@@ -425,20 +445,14 @@ async function calculate(payload, res, db) {
 
     let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
     
-    // V1.46 Extremely robust preservation filter
     let preservedStops = existingBay.filter(s => {
         let isTuple = Array.isArray(s);
         let sId = String(isTuple ? s[0] : (s.rowId || s.r || s.id));
         let sRoute = String(isTuple ? s[1] : (s.R || s.routeNum || s.cluster || 1));
         let sStat = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
 
-        // 1. If it was explicitly sent in the payload to be calculated, DO NOT preserve it.
         if (payloadRowIds.has(sId)) return false;
-
-        // 2. Always preserve Pending and Validation Failed orders that weren't in the payload.
         if (sStat === 'P' || sStat === 'V') return true;
-
-        // 3. Preserve any clean routes that were NOT sent to be recalculated.
         if (!recalculatedRouteIds.has(sRoute)) return true;
 
         return false;
@@ -463,12 +477,15 @@ async function calculate(payload, res, db) {
     await batch.commit();
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
+    
+    // Format response so frontend instantly recognizes "Routed" instead of hidden "R"
+    let responseBay = formatStopsForFrontend(finalBay);
 
     return res.status(200).json({ 
         success: true, 
-        updatedStops: finalBay,
+        updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V1.46'
+        backendVersion: 'V1.47'
     });
 }
 
