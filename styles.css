@@ -78,26 +78,6 @@ body.testing-mode #testing-sidebar {
 .console-col:last-child {
     border-right: none;
 }
-.console-col-header {
-    padding: 12px 8px;
-    background: #1e293b;
-    color: #94a3b8;
-    font-size: 13px;
-    font-weight: bold;
-    text-transform: uppercase;
-    text-align: center;
-    border-bottom: 1px solid #334155;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.console-col-header:hover {
-    background: #2a364a;
-}
-.console-col-header.active {
-    background: var(--blue);
-    color: #ffffff;
-    border-bottom-color: var(--blue);
-}
 .visual-console {
     flex: 1;
     overflow-y: auto;
