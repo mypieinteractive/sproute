@@ -1,11 +1,11 @@
 /**
  * postOptimization.js
- * VERSION: V1.44
+ * VERSION: V1.45
  * * CHANGES:
- * V1.44 - Dispatch Relay Integration. Upgraded dispatchRoute to calculate stats, 
- * relay the email payload synchronously to the standalone Apps Script (keeping Cloud 
- * Run alive), save the comprehensive Dispatch document to Firestore, and wipe the staging bay.
- * V1.43 - Pending Order Preservation.
+ * V1.45 - Dispatch Synchronization & Safe Wipe. Converted the dispatchRoute relay 
+ * back to a synchronous wait to accurately report email failures to the frontend. 
+ * The staging bay is now strictly protected and will ONLY be wiped if the Apps Script 
+ * email relay returns a success.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -25,7 +25,6 @@ async function saveRoute(payload, res, db) {
         const driverDoc = await driverRef.get();
         if (driverDoc.exists) {
             
-            // V1.43 SMART MERGE: Preserve 'P' and 'V' orders omitted by the frontend
             let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
             let preservedPending = existingBay.filter(s => {
                 let stat = String(Array.isArray(s) ? s[11] : (s.status || s.s)).trim().toUpperCase();
@@ -167,11 +166,9 @@ async function dispatchRoute(payload, res, db, admin) {
         let stagingJson = safeJsonParse(stagingJsonStr, []);
         if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
-        // 1. Generate Route ID & Link
         const routeId = new Date().getTime().toString();
         const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
 
-        // 2. Calculate Dashboard Stats
         let r1Stops = 0, r2Stops = 0, r3Stops = 0, dueToday = 0, pastDue = 0;
         let today = new Date(); 
         today.setHours(0,0,0,0);
@@ -179,7 +176,6 @@ async function dispatchRoute(payload, res, db, admin) {
         stagingJson.forEach(s => {
             let rLabel = Array.isArray(s) ? s[1] : (s.R || 1);
             let dDate = Array.isArray(s) ? s[5] : (s.d || s.dueDate);
-            
             if (String(rLabel) === '1') r1Stops++;
             else if (String(rLabel) === '2') r2Stops++;
             else if (String(rLabel) === '3') r3Stops++;
@@ -191,7 +187,6 @@ async function dispatchRoute(payload, res, db, admin) {
             }
         });
 
-        // 3. Relay Payload to Apps Script
         const asPayload = {
             action: 'dispatchRoute',
             driverId: payload.driverId,
@@ -208,7 +203,11 @@ async function dispatchRoute(payload, res, db, admin) {
 
         const AS_URL = process.env.APPS_SCRIPT_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
         
-        let logStatus = "Relay Attempted";
+        let emailSuccess = false;
+        let logStatus = "Attempting Relay";
+        let errorMessage = "Unknown Error";
+
+        // Synchronous fetch to accurately report success/failure
         try {
             const asResponse = await fetch(AS_URL, {
                 method: 'POST',
@@ -216,13 +215,18 @@ async function dispatchRoute(payload, res, db, admin) {
                 body: JSON.stringify(asPayload)
             });
             const asData = await asResponse.json();
-            logStatus = asData.success ? "Sent Instantly" : `Failed: ${asData.error || 'Apps Script Error'}`;
+            emailSuccess = !!asData.success;
+            if (!emailSuccess) {
+                errorMessage = asData.error || 'Apps Script returned an error';
+            }
         } catch (err) {
             console.error("Apps Script Fetch Error:", err);
-            logStatus = `Failed: Network Error`;
+            emailSuccess = false;
+            errorMessage = "Network/Timeout Error connecting to email server.";
         }
 
-        // 4. Save permanent snapshot to Firestore
+        logStatus = emailSuccess ? "Sent Instantly" : `Failed: ${errorMessage}`;
+
         const dispatchDoc = {
             routeId: routeId,
             driverId: payload.driverId,
@@ -236,23 +240,25 @@ async function dispatchRoute(payload, res, db, admin) {
             currentRoute: stagingJsonStr, 
             originalRoute: stagingJsonStr,
             endpoints: endpointsObj,
-            stats: {
-                totalOrders: stagingJson.length,
-                r1Stops, r2Stops, r3Stops, dueToday, pastDue
-            }
+            stats: { totalOrders: stagingJson.length, r1Stops, r2Stops, r3Stops, dueToday, pastDue }
         };
 
+        // Save Dispatch Doc log regardless of success/failure
         await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
 
-        // 5. Clear the Driver's Staging Bay 
-        await driverRef.update({
-            lockedBy: null,
-            'activeStaging.orders': '[]',
-            'activeStaging.status': 'Pending',
-            'endpoints': {}
-        });
-
-        return res.status(200).json({ success: true, routeId: routeId });
+        if (emailSuccess) {
+            // WIPE STAGING BAY ONLY ON SUCCESS (Resolves Task 2 completely)
+            await driverRef.update({
+                lockedBy: null,
+                'activeStaging.orders': '[]',
+                'activeStaging.status': 'Pending',
+                'endpoints': {}
+            });
+            return res.status(200).json({ success: true, routeId: routeId });
+        } else {
+            // DO NOT WIPE STAGING BAY ON FAILURE. Return the error to trigger the UI prompt.
+            return res.status(500).json({ error: errorMessage });
+        }
 
     } catch (error) {
         console.error("Dispatch Error:", error);
