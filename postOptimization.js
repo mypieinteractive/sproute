@@ -1,13 +1,10 @@
 /**
  * postOptimization.js
- * VERSION: V1.43
+ * VERSION: V1.44
  * * CHANGES:
- * V1.43 - Pending Order Preservation. The frontend's silentSaveRouteState explicitly 
- * filters out and omits 'P' and 'V' orders to save payload size. Because saveRoute 
- * was performing a hard overwrite, it was permanently deleting pending orders from 
- * the database. Added a Smart Merge that retrieves existing pending orders from the 
- * database and safely concatenates them with the incoming routed payload.
- * V1.42 - Pure Silent Save.
+ * V1.44 - Dispatch Relay Integration. Upgraded the existing dispatchRoute function 
+ * to calculate route statistics, relay the email payload to the standalone Apps Script 
+ * environment, and save the rich Dispatch document to Firestore before clearing the staging bay.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -157,36 +154,107 @@ async function resetRoute(payload, res, db) {
 }
 
 async function dispatchRoute(payload, res, db, admin) {
-    const driverRef = db.collection('Users').doc(String(payload.driverId));
-    const driverDoc = await driverRef.get();
-    
-    if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found for dispatch." });
-    
-    const stagingJsonStr = driverDoc.data().activeStaging?.orders || "[]";
-    let stagingJson = safeJsonParse(stagingJsonStr, []);
-    
-    if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
+    try {
+        const driverRef = db.collection('Users').doc(String(payload.driverId));
+        const driverDoc = await driverRef.get();
+        if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found for dispatch." });
 
-    const routeId = new Date().getTime().toString();
+        const activeStaging = driverDoc.data().activeStaging || {};
+        const stagingJsonStr = activeStaging.orders || "[]";
+        const endpointsObj = driverDoc.data().endpoints || {};
 
-    const dispatchRef = db.collection('Dispatch').doc(routeId);
-    
-    await dispatchRef.set({
-        routeId: routeId,
-        driverId: payload.driverId || "",
-        companyId: payload.companyId || "",
-        currentRoute: stagingJsonStr,
-        originalRoute: stagingJsonStr,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-    });
+        let stagingJson = safeJsonParse(stagingJsonStr, []);
+        if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
-    await driverRef.update({
-        lockedBy: null,
-        'activeStaging.orders': '[]',
-        'activeStaging.status': null
-    });
+        // 1. Generate Route ID & Link
+        const routeId = new Date().getTime().toString();
+        const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
 
-    return res.status(200).json({ success: true, routeId: routeId });
+        // 2. Calculate Dashboard Stats
+        let r1Stops = 0, r2Stops = 0, r3Stops = 0, dueToday = 0, pastDue = 0;
+        let today = new Date(); 
+        today.setHours(0,0,0,0);
+        
+        stagingJson.forEach(s => {
+            let rLabel = Array.isArray(s) ? s[1] : (s.R || 1);
+            let dDate = Array.isArray(s) ? s[5] : (s.d || s.dueDate);
+            
+            if (String(rLabel) === '1') r1Stops++;
+            else if (String(rLabel) === '2') r2Stops++;
+            else if (String(rLabel) === '3') r3Stops++;
+            
+            if (dDate) {
+                let dueTime = new Date(dDate); dueTime.setHours(0,0,0,0);
+                if (dueTime < today) pastDue++; 
+                else if (dueTime.getTime() === today.getTime()) dueToday++;
+            }
+        });
+
+        // 3. Relay Payload to the New Apps Script (Enterprise.gs)
+        const asPayload = {
+            action: 'dispatchRoute',
+            driverId: payload.driverId,
+            companyId: payload.companyId,
+            customBody: payload.customBody || '',
+            ccCompany: payload.ccCompany || false,
+            addCc: payload.addCc || '',
+            ccEmail: payload.ccEmail || '',
+            mapBase64: payload.mapBase64 || '',  // Passed to Apps Script, NOT saved to DB
+            dashboardLink: dashboardLink,
+            stagingJsonStr: stagingJsonStr,      // Passing DB truth directly to script
+            endpointsObj: endpointsObj           // Passing DB truth directly to script
+        };
+
+        // Dedicated Enterprise Web App URL
+        const AS_URL = process.env.APPS_SCRIPT_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
+        
+        const asResponse = await fetch(AS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(asPayload)
+        });
+        
+        const asData = await asResponse.json();
+        let logStatus = asData.success ? "Sent Instantly" : `Failed: ${asData.error || 'Apps Script Error'}`;
+
+        // 4. Save permanent snapshot to Firestore 'Dispatch' Collection
+        const dispatchDoc = {
+            routeId: routeId,
+            driverId: payload.driverId,
+            companyId: payload.companyId,
+            dashboardLink: dashboardLink,
+            status: logStatus,
+            timestamp: new Date().toISOString(),
+            ccCompany: payload.ccCompany || false,
+            addCc: payload.addCc || '',
+            ccEmail: payload.ccEmail || '',
+            currentRoute: stagingJsonStr, 
+            originalRoute: stagingJsonStr,
+            endpoints: endpointsObj,
+            stats: {
+                totalOrders: stagingJson.length,
+                r1Stops, r2Stops, r3Stops, dueToday, pastDue
+            }
+        };
+
+        await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
+
+        if (asData.success) {
+            // 5. Clear the Driver's Staging Bay 
+            await driverRef.update({
+                'activeStaging.orders': '[]',
+                'activeStaging.status': 'Pending',
+                'endpoints': {}
+            });
+            return res.status(200).json({ success: true, routeId: routeId });
+        } else {
+            return res.status(500).json({ error: "Email Relay Failed: " + (asData.error || "Unknown") });
+        }
+
+    } catch (error) {
+        console.error("Dispatch Error:", error);
+        return res.status(500).json({ error: error.message });
+    }
 }
 
 module.exports = {
