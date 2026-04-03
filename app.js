@@ -1,11 +1,10 @@
 /**
- * Dashboard - V12.7
+ * Dashboard - V12.8
  * FILE: app.js
  * Changes: 
- * 1. Added Unmatched Address Resolution flow. Intercepts the uploadCsv response 
- * and triggers a paginated modal if unmatched addresses are found, rather than immediately 
- * reloading the board. Supports validation state, dynamic buttons, and skip logic utilizing 
- * existing customConfirm functionality.
+ * 1. Non-Blocking Dispatch UI. Replaced the synchronous modal freeze with an Optimistic 
+ * UI Toast notification. Modal now vanishes instantly, freeing the user to navigate the 
+ * dashboard while html2canvas and the dispatch payload process gracefully in the background.
  * 2. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
  * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
  */
@@ -1337,7 +1336,6 @@ function handleOpenEmailModal() {
 
     document.getElementById('btn-submit-dispatch').onclick = async () => {
         const btn = document.getElementById('btn-submit-dispatch');
-        btn.innerText = 'Dispatching...';
         btn.disabled = true;
 
         const customBody = document.getElementById('email-body-text').value;
@@ -1357,6 +1355,20 @@ function handleOpenEmailModal() {
             el.style.display = 'none';
         });
 
+        // 1. INSTANTLY HIDE MODAL & SPAWN PROCESSING TOAST
+        const mOverlay = document.getElementById('modal-overlay');
+        mOverlay.style.display = 'none';
+
+        const toast = document.createElement('div');
+        toast.id = 'dispatch-toast';
+        toast.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating Map & Dispatching...';
+        toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--blue, #3B82F6); color: white; padding: 12px 24px; border-radius: 30px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 10px 15px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; transition: all 0.3s ease;';
+        document.body.appendChild(toast);
+
+        // Small delay to allow the browser to visually close the modal before locking the thread
+        await new Promise(r => setTimeout(r, 50));
+
+        // 2. BACKGROUND MAP FOCUS & SNAPSHOT
         const bounds = new mapboxgl.LngLatBounds();
         const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
         
@@ -1403,12 +1415,12 @@ function handleOpenEmailModal() {
         };
         if (!isManagerView) payload.routeId = routeId;
 
+        // 3. BACKGROUND API EXECUTION
         try {
             const res = await apiFetch(payload);
             const result = await res.json();
             
             if (result.success) {
-                m.style.display = 'none';
                 
                 stops.forEach(s => {
                     if (String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status)) {
@@ -1425,22 +1437,28 @@ function handleOpenEmailModal() {
                     render(); drawRoute(); updateSummary();
                 }
                 
-                const toast = document.createElement('div');
-                toast.innerText = 'Route Sent!';
-                toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
-                document.body.appendChild(toast);
+                // 4. SUCCESS UI (Turns Green, fades out)
+                toast.style.background = '#10b981'; // Green
+                toast.innerHTML = '<i class="fa-solid fa-check"></i> Route Sent!';
                 
                 setTimeout(() => {
                     toast.style.opacity = '0';
                     setTimeout(() => toast.remove(), 300);
-                }, 1000);
+                }, 3000);
+
             } else {
                 throw new Error("Dispatch failed");
             }
         } catch (e) {
-            btn.innerText = 'Submit';
-            btn.disabled = false;
-            await customAlert("Failed to dispatch route. Please try again.");
+            // 5. ERROR UI (Turns Red)
+            toast.style.background = '#ef4444'; // Red
+            toast.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Dispatch Failed';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+            
+            await customAlert("Failed to dispatch route. Please check your connection and try again.");
         }
     };
 }
