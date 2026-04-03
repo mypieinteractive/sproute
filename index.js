@@ -1,20 +1,14 @@
 /**
  * index.js
- * VERSION: V1.36
+ * VERSION: V1.37
  * * CHANGES:
- * V1.36 - Firebase Auth & Webhook Restoration. Restored the specific named 
- * database connection ('sproute') using getFirestore, which fixes the 5 NOT_FOUND 
- * gRPC error caused by the server looking for a '(default)' database. Re-imported 
- * the glideWebhooks controllers and wired them back into the POST switch statement 
- * so Glide integrations function properly.
- * V1.35 - Environment Overwrite Fix. 
+ * V1.37 - Cleaned up dispatchRoute imports and duplicate routing blocks.
  */
 
 const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
-const { dispatchRoute } = require('./dispatch');
 
 // Initialize Firebase Admin globally
 let firebaseApp;
@@ -71,10 +65,6 @@ app.post('/', async (req, res) => {
     const payload = req.body.payload || req.body;
     
     console.log(`[${getLogTime()}] REQ - POST ${action || 'UNKNOWN'}`);
-
-    if (action === 'dispatchRoute') {
-    return await dispatchRoute(payload, res, db);
-}
 
     if (!action) {
         console.error(`[${getLogTime()}] RES - POST (Missing Action)`);
