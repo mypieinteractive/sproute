@@ -1,12 +1,10 @@
 /**
- * Dashboard - V12.8
+ * Dashboard - V13.0 (Enterprise Edition)
  * FILE: app.js
  * Changes: 
- * 1. Non-Blocking Dispatch UI. Replaced the synchronous modal freeze with an Optimistic 
- * UI Toast notification. Modal now vanishes instantly, freeing the user to navigate the 
- * dashboard while html2canvas and the dispatch payload process gracefully in the background.
- * 2. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
- * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
+ * V13.0 - Enterprise Cutover. Permanently deprecated the legacy Apps Script backend. 
+ * Removed all A/B testing UI toggles, hardwired the API_URL to Cloud Run, and enforced 
+ * application/json headers globally for all requests.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -25,34 +23,21 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 
-// --- A/B TESTING & BACKEND URLS ---
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzgh2KCzfdWbOmdVq_edpuI_m6HxkfErzYAEHySfKkq1zgLtwuiUT3GCS5Xor9GgjFa/exec';
-const FIRESTORE_API_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
+// --- ENTERPRISE CLOUD RUN BACKEND ---
+const API_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
 
 const params = new URLSearchParams(window.location.search);
 let isTestingMode = params.has('testing') || params.get('testing') === '';
-let activeBackend = 'sheet';
 
 if (isTestingMode) {
     document.body.classList.add('testing-mode');
 }
 
-window.setTestingBackend = function(backend) {
-    activeBackend = backend;
-    document.getElementById('btn-backend-sheet').classList.toggle('active', backend === 'sheet');
-    document.getElementById('btn-backend-firestore').classList.toggle('active', backend === 'firestore');
-    logToVisualConsole('INFO', 'System Toggle', `Switched backend routing to: ${backend.toUpperCase()}`);
-    
-    // Clear snapshot so it doesn't falsely diff against the other backend's structure
-    sessionStorage.removeItem('sproute_snapshot');
-    loadData(); 
-};
-
 function logToVisualConsole(type, endpoint, data) {
     if (!isTestingMode) return;
     
-    const targetId = activeBackend === 'firestore' ? 'console-firestore' : 'console-sheet';
-    const consoleEl = document.getElementById(targetId);
+    // Unified console target for the Enterprise architecture
+    const consoleEl = document.getElementById('console-log') || document.getElementById('console-firestore');
     if (!consoleEl) return;
 
     const entry = document.createElement('div');
@@ -83,28 +68,22 @@ let unmatchedAddressesQueue = [];
 let currentUnmatchedIndex = 0;
 let currentUploadDriverId = null;
 
-// Central Wrapper to inject tracking counts into all backend POST requests
+// Central Wrapper to inject tracking counts and enforce Cloud Run headers
 async function apiFetch(payload) {
     payload.frontEndApiUsage = { geocode: frontEndApiUsage.geocode, mapLoads: frontEndApiUsage.mapLoads };
     frontEndApiUsage.geocode = 0;
     frontEndApiUsage.mapLoads = 0;
-    
-    const targetUrl = activeBackend === 'firestore' ? FIRESTORE_API_URL : WEB_APP_URL;
     
     logToVisualConsole('REQ', `POST ${payload.action}`, payload);
     
     try {
         let fetchOptions = {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' }, // Permanently enforced for Cloud Run
             body: JSON.stringify(payload)
         };
         
-        // Conditionally add Content-Type for Express backend only to avoid Apps Script preflight issues
-        if (activeBackend === 'firestore') {
-            fetchOptions.headers = { 'Content-Type': 'application/json' };
-        }
-        
-        const response = await fetch(targetUrl, fetchOptions);
+        const response = await fetch(API_URL, fetchOptions);
         const clonedRes = response.clone();
         clonedRes.json()
             .then(data => logToVisualConsole('RES', `POST ${payload.action}`, data))
@@ -414,7 +393,7 @@ const mapConfig = {
     cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile' || viewMode === 'managermobilesplit')
 };
 const map = new mapboxgl.Map(mapConfig);
-frontEndApiUsage.mapLoads++; // Log map load
+frontEndApiUsage.mapLoads++; 
 
 // Force one-finger scroll overlay to disappear immediately on touch end
 map.getContainer().addEventListener('touchend', () => {
@@ -709,7 +688,6 @@ function performResize(e) {
         mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px';
         mapWrapEl.style.flex = 'none';
     } else {
-        // Adjust for the Testing Sidebar width if present
         let testingSidebarOffset = 0;
         if (isTestingMode) {
             const ts = document.getElementById('testing-sidebar');
@@ -759,8 +737,7 @@ async function loadData() {
     }
 
     try {
-        const targetUrl = activeBackend === 'firestore' ? FIRESTORE_API_URL : WEB_APP_URL;
-        let fetchUrl = `${targetUrl}${queryParams}&_t=${new Date().getTime()}`;
+        let fetchUrl = `${API_URL}${queryParams}&_t=${new Date().getTime()}`;
         
         logToVisualConsole('REQ', 'GET loadData', fetchUrl);
         const res = await fetch(fetchUrl);
@@ -1353,7 +1330,6 @@ function handleOpenEmailModal() {
             el.style.display = 'none';
         });
 
-        // 1. HIDE MODAL INSTANTLY & SPAWN PROCESSING TOAST
         const mOverlay = document.getElementById('modal-overlay');
         mOverlay.style.display = 'none';
 
@@ -1363,10 +1339,8 @@ function handleOpenEmailModal() {
         toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--blue, #3B82F6); color: white; padding: 12px 24px; border-radius: 30px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 10px 15px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; transition: all 0.3s ease;';
         document.body.appendChild(toast);
 
-        // Small delay to allow the browser to visually close the modal before locking the thread
         await new Promise(r => setTimeout(r, 50));
 
-        // 2. MAP SNAPSHOT
         const bounds = new mapboxgl.LngLatBounds();
         const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
         
@@ -1401,10 +1375,8 @@ function handleOpenEmailModal() {
             el.style.display = originalDisplays[index];
         });
 
-        // 3. OPTIMISTIC UI: Instantly clear dashboard
-        const cachedStops = JSON.parse(JSON.stringify(stops)); // Keep local backup
+        const cachedStops = JSON.parse(JSON.stringify(stops)); 
         
-        // Remove ALL orders for this inspector (Fixes Task 2)
         stops = stops.filter(s => String(s.driverId) !== String(currentInspectorFilter));
         
         if (isManagerView) {
@@ -1427,7 +1399,6 @@ function handleOpenEmailModal() {
         };
         if (!isManagerView) payload.routeId = routeId;
 
-        // 4. RETRY LOOP (Wait for Email)
         const attemptDispatch = async () => {
             toast.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Dispatching Email...';
             try {
@@ -1435,21 +1406,20 @@ function handleOpenEmailModal() {
                 const result = await res.json();
                 
                 if (result.success) {
-                    toast.style.background = '#10b981'; // Green
+                    toast.style.background = '#10b981'; 
                     toast.innerHTML = '<i class="fa-solid fa-check"></i> Route Sent!';
                     setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
                 } else {
                     throw new Error(result.error || "Dispatch failed");
                 }
             } catch (e) {
-                toast.style.display = 'none'; // Hide toast during prompt
+                toast.style.display = 'none'; 
                 
                 const tryAgain = await customConfirm("Dispatch failed. Try again?");
                 if (tryAgain) {
                     toast.style.display = 'flex';
-                    await attemptDispatch(); // Recursive retry
+                    await attemptDispatch(); 
                 } else {
-                    // Restore orders from local memory backup
                     stops = cachedStops;
                     if (isManagerView) {
                         const filterEl = document.getElementById('inspector-filter');
@@ -1465,6 +1435,7 @@ function handleOpenEmailModal() {
 
         await attemptDispatch();
     };
+}
 
 function updateRoutingUI() {
     const isDirty = dirtyRoutes.size > 0;
@@ -3598,14 +3569,12 @@ async function nextUnmatchedAddress() {
             setTimeout(() => toast.remove(), 300);
         }, 2000);
 
-        await loadData(); // Refresh the board when the queue is finished
+        await loadData(); 
     }
 }
 
-// Event Listeners for the Unmatched Modal
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Dynamic Button Text Swap
     const correctedInput = document.getElementById('unmatched-corrected');
     if (correctedInput) {
         correctedInput.addEventListener('input', (e) => {
@@ -3618,7 +3587,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Submit Logic (Validating Overlay)
     const unmatchedSubmitBtn = document.getElementById('btn-unmatched-submit');
     if (unmatchedSubmitBtn) {
         unmatchedSubmitBtn.addEventListener('click', async () => {
@@ -3666,7 +3634,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Skip Logic
     const unmatchedSkipBtn = document.getElementById('btn-unmatched-skip');
     if (unmatchedSkipBtn) {
         unmatchedSkipBtn.addEventListener('click', async () => {
