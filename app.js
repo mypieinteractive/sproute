@@ -1,9 +1,9 @@
 /**
- * Dashboard - V12.8 
+ * Dashboard - V12.9
  * FILE: app.js
  * Changes: 
- * 1. Modified drawRoute() to remove the explicit sortByEta enforcement so map route lines connect based on the physical array order.
- * 2. Updated initSortable() onEnd events to trigger drawRoute(), updateSummary(), and updateRouteTimes() on all drag-and-drop actions to ensure map visuals update instantly.
+ * 1. Increased fitBounds padding from 50 to 120 in the dispatchRoute function to fix the zoomed-in map screenshot.
+ * 2. Added defensive JSON parsing in loadData() to successfully render the Inspector dashboard when data.stops is returned as a string.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -40,7 +40,6 @@ window.setTestingBackend = function(backend) {
     document.getElementById('btn-backend-firestore').classList.toggle('active', backend === 'firestore');
     logToVisualConsole('INFO', 'System Toggle', `Switched backend routing to: ${backend.toUpperCase()}`);
     
-    // Clear snapshot so it doesn't falsely diff against the other backend's structure
     sessionStorage.removeItem('sproute_snapshot');
     loadData(); 
 };
@@ -72,15 +71,11 @@ function logToVisualConsole(type, endpoint, data) {
     consoleEl.prepend(entry);
 }
 
-// Global API Usage Tracker
 let frontEndApiUsage = { geocode: 0, mapLoads: 0 };
-
-// Global Variables for Unmatched Resolution Modal
 let unmatchedAddressesQueue = [];
 let currentUnmatchedIndex = 0;
 let currentUploadDriverId = null;
 
-// Central Wrapper to inject tracking counts into all backend POST requests
 async function apiFetch(payload) {
     payload.frontEndApiUsage = { geocode: frontEndApiUsage.geocode, mapLoads: frontEndApiUsage.mapLoads };
     frontEndApiUsage.geocode = 0;
@@ -96,7 +91,6 @@ async function apiFetch(payload) {
             body: JSON.stringify(payload)
         };
         
-        // Conditionally add Content-Type for Express backend only to avoid Apps Script preflight issues
         if (activeBackend === 'firestore') {
             fetchOptions.headers = { 'Content-Type': 'application/json' };
         }
@@ -121,11 +115,9 @@ const adminParam = params.get('admin');
 const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
 const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile' || viewMode === 'managermobilesplit'); 
 
-// Global Keyboard Listeners
 document.addEventListener('keydown', (e) => { 
     if (e.key === 'Shift') updateShiftCursor(true); 
 
-    // Physical Delete Shortcut for Manager View
     if (viewMode === 'manager' && (e.key === 'Delete' || e.key === 'Backspace')) {
         const tag = e.target.tagName.toUpperCase();
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -176,7 +168,6 @@ let currentRouteCount = 1;
 let availableCsvTypes = [];
 let currentInspectorFilter = sessionStorage.getItem('sproute_inspector_filter') || 'all';
 
-// --- GLIDE REFRESH TRACKING (Front-End Upload Detection) ---
 const currentQuery = window.location.search;
 const lastQuery = sessionStorage.getItem('sproute_last_query');
 let isFreshGlideRefresh = false;
@@ -190,7 +181,6 @@ sessionStorage.setItem('sproute_last_query', currentQuery);
 
 let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
-// -----------------------------------------------------------
 
 let defaultEmailMessage = "";
 let companyEmail = "";
@@ -393,7 +383,6 @@ function silentSaveRouteState() {
     apiFetch(payload).catch(e => console.log("Silent save error", e));
 }
 
-// APPLY CSS CLASS BEFORE RENDER
 document.body.className = `view-${viewMode} manager-all-inspectors ${isTestingMode ? 'testing-mode' : ''}`;
 if (viewMode === 'managermobilesplit') {
     document.body.classList.add('split-show-map');
@@ -411,9 +400,8 @@ const mapConfig = {
     cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile' || viewMode === 'managermobilesplit')
 };
 const map = new mapboxgl.Map(mapConfig);
-frontEndApiUsage.mapLoads++; // Log map load
+frontEndApiUsage.mapLoads++;
 
-// Force one-finger scroll overlay to disappear immediately on touch end
 map.getContainer().addEventListener('touchend', () => {
     const blocker = document.querySelector('.mapboxgl-touch-pan-blocker');
     if (blocker) {
@@ -706,7 +694,6 @@ function performResize(e) {
         mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px';
         mapWrapEl.style.flex = 'none';
     } else {
-        // Adjust for the Testing Sidebar width if present
         let testingSidebarOffset = 0;
         if (isTestingMode) {
             const ts = document.getElementById('testing-sidebar');
@@ -799,7 +786,18 @@ async function loadData() {
             return;
         }
 
-        let rawStops = Array.isArray(data) ? data : (data.stops || []);
+        // V12.9 Fix: Defensive parsing for Inspector View
+        let rawStops = [];
+        if (Array.isArray(data)) {
+            rawStops = data;
+        } else if (data.stops) {
+            if (typeof data.stops === 'string') {
+                try { rawStops = JSON.parse(data.stops); } catch(e) { rawStops = []; }
+            } else if (Array.isArray(data.stops)) {
+                rawStops = data.stops;
+            }
+        }
+
         let currentSnapshot = JSON.stringify(rawStops);
         let preUploadSnapshot = sessionStorage.getItem('sproute_snapshot');
 
@@ -1338,10 +1336,8 @@ function handleOpenEmailModal() {
 
         const customBody = document.getElementById('email-body-text').value;
         const ccCompany = document.getElementById('cc-company-checkbox').checked;
-        
         const ccMeChecked = document.getElementById('cc-me-checkbox').checked;
         const addCcValue = ccMeChecked ? adminEmail : '';
-        
         const ccEmail = document.getElementById('additional-cc-email').value;
 
         const mapWrapper = document.getElementById('map-wrapper');
@@ -1365,7 +1361,8 @@ function handleOpenEmailModal() {
         if (eps.end && eps.end.lng && eps.end.lat) bounds.extend([parseFloat(eps.end.lng), parseFloat(eps.end.lat)]);
 
         if (!bounds.isEmpty()) {
-            map.fitBounds(bounds, { padding: 50, animate: false });
+            // V12.9 Fix: Increased padding to 120 to fix map screenshot zoom issues
+            map.fitBounds(bounds, { padding: 120, animate: false });
         }
 
         map.resize();
@@ -3262,7 +3259,6 @@ function drawRoute() {
     
     if (routedStops.length === 0) return; 
 
-    // Directly respect the array order instead of enforcing ETA sorting
     let visualStops = [...routedStops];
 
     const features = [];
@@ -3498,7 +3494,6 @@ function initSortable() {
     }
 }
 
-// Setup Header Dropzone Listeners
 const headerDropzone = document.getElementById('header-csv-upload');
 const headerInput = document.getElementById('header-file-input');
 if (headerDropzone && headerInput) {
@@ -3525,13 +3520,10 @@ if (headerDropzone && headerInput) {
     headerInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
-            headerInput.value = ''; // Reset input
+            headerInput.value = ''; 
         }
     };
 }
-
-
-// --- ADD THE UNMATCHED MODAL LOGIC ---
 
 function openUnmatchedModal() {
     const modal = document.getElementById('unmatched-modal');
@@ -3548,7 +3540,6 @@ function openUnmatchedModal() {
     title.textContent = `Match Addresses (${currentUnmatchedIndex + 1} of ${unmatchedAddressesQueue.length})`;
     origAddr.textContent = currentAddr;
 
-    // Reset Inputs
     latInput.value = '';
     lngInput.value = '';
     correctedInput.value = '';
@@ -3565,7 +3556,6 @@ async function nextUnmatchedAddress() {
     } else {
         document.getElementById('unmatched-modal').style.display = 'none';
         
-        // Show success toast
         const toast = document.createElement('div');
         toast.innerText = 'Address matching complete.';
         toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
@@ -3576,14 +3566,12 @@ async function nextUnmatchedAddress() {
             setTimeout(() => toast.remove(), 300);
         }, 2000);
 
-        await loadData(); // Refresh the board when the queue is finished
+        await loadData(); 
     }
 }
 
-// Event Listeners for the Unmatched Modal
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Dynamic Button Text Swap
     const correctedInput = document.getElementById('unmatched-corrected');
     if (correctedInput) {
         correctedInput.addEventListener('input', (e) => {
@@ -3596,7 +3584,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Submit Logic (Validating Overlay)
     const unmatchedSubmitBtn = document.getElementById('btn-unmatched-submit');
     if (unmatchedSubmitBtn) {
         unmatchedSubmitBtn.addEventListener('click', async () => {
@@ -3644,7 +3631,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Skip Logic
     const unmatchedSkipBtn = document.getElementById('btn-unmatched-skip');
     if (unmatchedSkipBtn) {
         unmatchedSkipBtn.addEventListener('click', async () => {
