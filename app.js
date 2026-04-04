@@ -3101,8 +3101,7 @@ async function handleCalculate() {
 
         if (!isManagerView) isAlteredRoute = true;
         historyStack = []; 
-        dirtyRoutes.clear();
-        originalStops = JSON.parse(JSON.stringify(stops)); 
+        dirtyRoutes.clear(); 
         render(); drawRoute(); updateSummary();
         silentSaveRouteState();
 
