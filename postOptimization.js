@@ -1,22 +1,16 @@
 /**
  * postOptimization.js
- * VERSION: V1.44
+ * VERSION: V1.45
  * * CHANGES:
- * V1.44 - Google Apps Script Dispatch Integration. Updated dispatchRoute to construct 
- * the payload expected by the Enterprise.gs webhook and issue a POST request via native fetch 
- * to trigger the email generation and sheet logging. The function now awaits a successful 
- * response from GAS before clearing the Firestore staging area.
- * V1.43 - Pending Order Preservation. The frontend's silentSaveRouteState explicitly 
- * filters out and omits 'P' and 'V' orders to save payload size. Because saveRoute 
- * was performing a hard overwrite, it was permanently deleting pending orders from 
- * the database. Added a Smart Merge that retrieves existing pending orders from the 
- * database and safely concatenates them with the incoming routed payload.
- * V1.42 - Pure Silent Save.
+ * V1.45 - Asynchronous Queue Claim Check. Rewrote dispatchRoute to calculate 
+ * legacy route statistics (Total Orders, Routes, Due Dates). It now saves the heavy 
+ * Base64 image and JSON Array to Firestore, and pushes a microscopic "claim check" 
+ * payload containing the UI stats to the Google Apps Script Webhook for zero-lag logging.
+ * V1.44 - Google Apps Script Dispatch Integration. 
  */
 
 const { getField, safeJsonParse } = require('./helpers');
 
-// The Web App URL for the Google Apps Script dispatch trigger
 const GAS_DISPATCH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
 
 async function saveRoute(payload, res, db) {
@@ -33,14 +27,11 @@ async function saveRoute(payload, res, db) {
         const driverRef = db.collection('Users').doc(String(payload.driverId));
         const driverDoc = await driverRef.get();
         if (driverDoc.exists) {
-            
-            // V1.43 SMART MERGE: Preserve 'P' and 'V' orders omitted by the frontend
             let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
             let preservedPending = existingBay.filter(s => {
                 let stat = String(Array.isArray(s) ? s[11] : (s.status || s.s)).trim().toUpperCase();
                 return stat === 'P' || stat === 'V';
             });
-
             let finalBay = payload.stops.concat(preservedPending);
 
             await driverRef.update({ 
@@ -59,19 +50,9 @@ async function recreateOrders(payload, res, db) {
     const minifyOrder = (o) => {
         let stat = o.status ? String(o.status).substring(0,1).toUpperCase() : "P";
         return [
-            o.rowId || o.id || "",
-            o.cluster || o.routeNum || 1,
-            o.address || "",
-            o.client || "",
-            o.app || "",
-            o.dueDate || "",
-            o.type || "",
-            o.eta || "",
-            parseFloat(o.dist) || 0,
-            parseFloat(o.lat) || 0,
-            parseFloat(o.lng) || 0,
-            stat,
-            parseInt(o.durationSecs) || 0
+            o.rowId || o.id || "", o.cluster || o.routeNum || 1, o.address || "", o.client || "",
+            o.app || "", o.dueDate || "", o.type || "", o.eta || "", parseFloat(o.dist) || 0,
+            parseFloat(o.lat) || 0, parseFloat(o.lng) || 0, stat, parseInt(o.durationSecs) || 0
         ];
     };
 
@@ -90,8 +71,7 @@ async function recreateOrders(payload, res, db) {
             });
             
             await dispatchRef.update({ 
-                currentRoute: JSON.stringify(sandboxArr),
-                originalRoute: JSON.stringify(originalArr)
+                currentRoute: JSON.stringify(sandboxArr), originalRoute: JSON.stringify(originalArr)
             });
             return res.status(200).json({ success: true });
         }
@@ -104,10 +84,8 @@ async function recreateOrders(payload, res, db) {
             ordersToRestore.forEach(o => stagingArr.push(minifyOrder(o)));
             
             let stateToSave = payload.routeState || 'Staging';
-            
             await driverRef.update({ 
-                'activeStaging.orders': JSON.stringify(stagingArr),
-                'activeStaging.status': stateToSave
+                'activeStaging.orders': JSON.stringify(stagingArr), 'activeStaging.status': stateToSave
             });
             return res.status(200).json({ success: true });
         }
@@ -175,37 +153,65 @@ async function dispatchRoute(payload, res, db, admin) {
     
     if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
+    // --- Legacy Stats Calculation for the UI ---
+    let totalOrders = stagingJson.length;
+    let r1Stops = 0, r2Stops = 0, r3Stops = 0, dueToday = 0, pastDue = 0;
+    
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const [{ value: mo }, , { value: da }, , { value: ye }] = formatter.formatToParts(new Date());
+    const todayMs = new Date(`${ye}-${mo}-${da}T00:00:00`).getTime(); 
+
+    stagingJson.forEach(s => {
+        let rLabel = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1));
+        let dDate = Array.isArray(s) ? s[5] : (s.d || s.dueDate);
+        
+        if (rLabel.includes('1')) r1Stops++;
+        else if (rLabel.includes('2')) r2Stops++;
+        else if (rLabel.includes('3')) r3Stops++;
+        
+        if (dDate) {
+            let dueTimeMs = new Date(`${dDate}T00:00:00`).getTime();
+            if (dueTimeMs < todayMs) pastDue++; 
+            else if (dueTimeMs === todayMs) dueToday++;
+        }
+    });
+    // ------------------------------------------
+
     const routeId = new Date().getTime().toString();
     const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
-
     const dispatchRef = db.collection('Dispatch').doc(routeId);
     
-    // Save to Firestore First
+    // Save Heavy Payload to Firestore
     await dispatchRef.set({
         routeId: routeId,
         driverId: payload.driverId || "",
         companyId: payload.companyId || "",
         currentRoute: stagingJsonStr,
         originalRoute: stagingJsonStr,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Construct Payload for Google Apps Script
-    const gasPayload = {
-        action: 'dispatchRoute',
-        driverId: payload.driverId,
-        companyId: payload.companyId,
+        mapBase64: payload.mapBase64 || "",
         customBody: payload.customBody || "",
         ccCompany: payload.ccCompany || false,
         addCc: payload.addCc || "",
         ccEmail: payload.ccEmail || "",
-        mapBase64: payload.mapBase64 || "",
-        stagingJsonStr: stagingJsonStr,
         endpointsObj: driverData.endpoints || {},
-        dashboardLink: dashboardLink
+        dashboardLink: dashboardLink,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Send Microscopic "Claim Check" to GAS Webhook
+    const gasPayload = {
+        action: 'queueDispatch',
+        routeId: routeId,
+        driverId: payload.driverId,
+        companyId: payload.companyId,
+        customBody: payload.customBody,
+        ccCompany: payload.ccCompany,
+        addCc: payload.addCc,
+        ccEmail: payload.ccEmail,
+        dashboardLink: dashboardLink,
+        totalOrders, r1Stops, r2Stops, r3Stops, dueToday, pastDue
     };
 
-    // Call the GAS Webhook
     try {
         const gasResponse = await fetch(GAS_DISPATCH_WEBHOOK_URL, {
             method: 'POST',
@@ -214,17 +220,13 @@ async function dispatchRoute(payload, res, db, admin) {
         });
 
         const gasResult = await gasResponse.json();
-
         if (!gasResult.success) {
-            console.error("GAS Dispatch Error:", gasResult.error);
-            return res.status(500).json({ error: "Failed to send dispatch email: " + (gasResult.error || "Unknown error") });
+            return res.status(500).json({ error: "Failed to queue dispatch email: " + (gasResult.error || "Unknown error") });
         }
     } catch (error) {
-        console.error("Error communicating with GAS Webhook:", error);
-        return res.status(500).json({ error: "Network error when attempting to dispatch email." });
+        return res.status(500).json({ error: "Network error when attempting to queue email." });
     }
 
-    // Only clear the staging area if the email was successfully dispatched
     await driverRef.update({
         lockedBy: null,
         'activeStaging.orders': '[]',
