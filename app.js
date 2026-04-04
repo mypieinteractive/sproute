@@ -2,12 +2,10 @@
  * Dashboard - V13.2 (Enterprise Edition)
  * FILE: app.js
  * Changes: 
- * V13.2 - Optimistic UI Unlock. Converted dispatch network requests to a Detached Async 
- * process. The UI now fully unlocks immediately upon clicking submit. Optimized map snapshots 
- * using JPEG compression to slice through Google Apps Script payload limits. If an email fails, 
- * the dashboard instantly restores the orders from local cached memory.
+ * V13.2 - Truthful Undo Architecture. Replaced error-prone frontend array caching with a 
+ * secure server-side rollback. The frontend optimistically clears the UI instantly upon 
+ * dispatch, and strictly uses loadData() to retrieve rolled-back orders if the dispatch fails.
  * V13.1 - Codebase Optimization. Removed dead memory bloat and duplicate drag listeners.
- * V13.0 - Enterprise Cutover. Permanently deprecated the legacy Apps Script backend.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -26,6 +24,7 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 
+// --- ENTERPRISE CLOUD RUN BACKEND ---
 const API_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
 
 const params = new URLSearchParams(window.location.search);
@@ -1355,18 +1354,6 @@ function handleOpenEmailModal() {
             el.style.display = originalDisplays[index];
         });
 
-        const cachedStops = JSON.parse(JSON.stringify(stops)); 
-        
-        stops = stops.filter(s => String(s.driverId) !== String(currentInspectorFilter));
-        
-        if (isManagerView) {
-            const filterEl = document.getElementById('inspector-filter');
-            if (filterEl) filterEl.value = 'all';
-            handleInspectorFilterChange('all');
-        } else {
-            render(); drawRoute(); updateSummary();
-        }
-
         const payload = {
             action: "dispatchRoute",
             driverId: currentInspectorFilter,
@@ -1379,7 +1366,19 @@ function handleOpenEmailModal() {
         };
         if (!isManagerView) payload.routeId = routeId;
 
-        // Detached background processor
+        // 3. TRUTHFUL OPTIMISTIC UI: Immediately clear orders from the frontend memory. 
+        // This keeps the UI perfectly synced with the backend wipe.
+        stops = stops.filter(s => String(s.driverId) !== String(currentInspectorFilter));
+        
+        if (isManagerView) {
+            const filterEl = document.getElementById('inspector-filter');
+            if (filterEl) filterEl.value = 'all';
+            handleInspectorFilterChange('all');
+        } else {
+            render(); drawRoute(); updateSummary();
+        }
+
+        // 4. FIRE AND FORGET WITH ROLLBACK RECOVERY
         const processBackgroundDispatch = async () => {
             toast.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Dispatching Email...';
             try {
@@ -1394,27 +1393,24 @@ function handleOpenEmailModal() {
                     throw new Error(result.error || "Dispatch failed");
                 }
             } catch (e) {
-                toast.style.display = 'none'; 
+                toast.style.background = '#ef4444';
+                toast.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Dispatch Failed';
+                setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
                 
-                const tryAgain = await customConfirm("Dispatch failed. Try again?");
-                if (tryAgain) {
-                    toast.style.display = 'flex';
-                    processBackgroundDispatch(); 
-                } else {
-                    stops = cachedStops;
-                    if (isManagerView) {
-                        const filterEl = document.getElementById('inspector-filter');
-                        if (filterEl) filterEl.value = payload.driverId;
-                        handleInspectorFilterChange(payload.driverId);
-                    } else {
-                        render(); drawRoute(); updateSummary();
-                    }
-                    toast.remove();
+                await customAlert("Dispatch failed. The orders have been restored to the dashboard so you can try again.");
+                
+                // Truthful rollback: Fetch fresh data from backend to retrieve the server-restored orders
+                await loadData();
+                
+                // Switch the view back to the failed inspector to try again
+                if (isManagerView && currentInspectorFilter === 'all') {
+                     const filterEl = document.getElementById('inspector-filter');
+                     if (filterEl) filterEl.value = payload.driverId;
+                     handleInspectorFilterChange(payload.driverId);
                 }
             }
         };
 
-        // Fire and Forget immediately - User regains total control of the UI instantly
         processBackgroundDispatch();
     };
 }
@@ -3101,7 +3097,7 @@ async function handleCalculate() {
 
         if (!isManagerView) isAlteredRoute = true;
         historyStack = []; 
-        dirtyRoutes.clear(); 
+        dirtyRoutes.clear();
         render(); drawRoute(); updateSummary();
         silentSaveRouteState();
 
@@ -3480,10 +3476,6 @@ if (headerDropzone && headerInput) {
     headerDropzone.ondragover = (e) => {
         e.preventDefault();
         headerDropzone.classList.add('drag-active');
-    };
-    headerDropzone.ondragleave = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.remove('drag-active');
     };
     headerDropzone.ondrop = (e) => {
         e.preventDefault();
