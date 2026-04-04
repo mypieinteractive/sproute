@@ -3515,6 +3515,46 @@ if (headerDropzone && headerInput) {
     };
 }
 
+// --- GLOBAL DRAG & DROP LOGIC ---
+let globalDragCounter = 0;
+
+document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    globalDragCounter++;
+    
+    // Only trigger if a file is being dragged (ignores text/element dragging)
+    if (e.dataTransfer && e.dataTransfer.types.some(t => t.toLowerCase() === 'files')) {
+        const gd = document.getElementById('global-dropzone');
+        if (gd) gd.style.display = 'flex';
+    }
+});
+
+document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    globalDragCounter--;
+    
+    if (globalDragCounter === 0) {
+        const gd = document.getElementById('global-dropzone');
+        if (gd) gd.style.display = 'none';
+    }
+});
+
+// Necessary to allow the 'drop' event to fire
+document.addEventListener('dragover', (e) => { 
+    e.preventDefault(); 
+});
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    globalDragCounter = 0;
+    const gd = document.getElementById('global-dropzone');
+    if (gd) gd.style.display = 'none';
+    
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFileSelection(e.dataTransfer.files[0]);
+    }
+});
+
 
 // --- ADD THE UNMATCHED MODAL LOGIC ---
 
