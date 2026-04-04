@@ -1,7 +1,11 @@
 /**
  * postOptimization.js
- * VERSION: V1.43
+ * VERSION: V1.44
  * * CHANGES:
+ * V1.44 - Google Apps Script Dispatch Integration. Updated dispatchRoute to construct 
+ * the payload expected by the Enterprise.gs webhook and issue a POST request via native fetch 
+ * to trigger the email generation and sheet logging. The function now awaits a successful 
+ * response from GAS before clearing the Firestore staging area.
  * V1.43 - Pending Order Preservation. The frontend's silentSaveRouteState explicitly 
  * filters out and omits 'P' and 'V' orders to save payload size. Because saveRoute 
  * was performing a hard overwrite, it was permanently deleting pending orders from 
@@ -11,6 +15,9 @@
  */
 
 const { getField, safeJsonParse } = require('./helpers');
+
+// The Web App URL for the Google Apps Script dispatch trigger
+const GAS_DISPATCH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
 
 async function saveRoute(payload, res, db) {
     if (!payload.stops) return res.status(400).json({ error: "Missing stops." });
@@ -162,15 +169,18 @@ async function dispatchRoute(payload, res, db, admin) {
     
     if (!driverDoc.exists) return res.status(404).json({ error: "Driver not found for dispatch." });
     
-    const stagingJsonStr = driverDoc.data().activeStaging?.orders || "[]";
+    const driverData = driverDoc.data();
+    const stagingJsonStr = driverData.activeStaging?.orders || "[]";
     let stagingJson = safeJsonParse(stagingJsonStr, []);
     
     if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
     const routeId = new Date().getTime().toString();
+    const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
 
     const dispatchRef = db.collection('Dispatch').doc(routeId);
     
+    // Save to Firestore First
     await dispatchRef.set({
         routeId: routeId,
         driverId: payload.driverId || "",
@@ -180,6 +190,41 @@ async function dispatchRoute(payload, res, db, admin) {
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
+    // Construct Payload for Google Apps Script
+    const gasPayload = {
+        action: 'dispatchRoute',
+        driverId: payload.driverId,
+        companyId: payload.companyId,
+        customBody: payload.customBody || "",
+        ccCompany: payload.ccCompany || false,
+        addCc: payload.addCc || "",
+        ccEmail: payload.ccEmail || "",
+        mapBase64: payload.mapBase64 || "",
+        stagingJsonStr: stagingJsonStr,
+        endpointsObj: driverData.endpoints || {},
+        dashboardLink: dashboardLink
+    };
+
+    // Call the GAS Webhook
+    try {
+        const gasResponse = await fetch(GAS_DISPATCH_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(gasPayload)
+        });
+
+        const gasResult = await gasResponse.json();
+
+        if (!gasResult.success) {
+            console.error("GAS Dispatch Error:", gasResult.error);
+            return res.status(500).json({ error: "Failed to send dispatch email: " + (gasResult.error || "Unknown error") });
+        }
+    } catch (error) {
+        console.error("Error communicating with GAS Webhook:", error);
+        return res.status(500).json({ error: "Network error when attempting to dispatch email." });
+    }
+
+    // Only clear the staging area if the email was successfully dispatched
     await driverRef.update({
         lockedBy: null,
         'activeStaging.orders': '[]',
