@@ -1,16 +1,13 @@
 /**
  * index.js
- * VERSION: V1.37
+ * VERSION: V1.38
  * * CHANGES:
+ * V1.38 - Firestore Claim Check API. Added a dedicated GET endpoint `/dispatchData/:id` 
+ * to securely serve large Dispatch documents (containing base64 map images and full arrays) 
+ * back to the Google Apps Script background worker.
  * V1.37 - Deployment Crash Fix. Removed duplicate import declaration for `dispatchRoute` 
  * and deleted the stray `if (action === 'dispatchRoute')` execution block that sat outside 
  * the main switch statement, resolving the fatal SyntaxError preventing server startup.
- * V1.36 - Firebase Auth & Webhook Restoration. Restored the specific named 
- * database connection ('sproute') using getFirestore, which fixes the 5 NOT_FOUND 
- * gRPC error caused by the server looking for a '(default)' database. Re-imported 
- * the glideWebhooks controllers and wired them back into the POST switch statement 
- * so Glide integrations function properly.
- * V1.35 - Environment Overwrite Fix. 
  */
 
 const express = require('express');
@@ -50,7 +47,7 @@ function getLogTime() {
     return new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago' });
 }
 
-// --- GET ROUTER (Initialization) ---
+// --- GET ROUTER (Initialization & Fetching) ---
 app.get('/', async (req, res) => {
     const action = req.query.action || 'getDashboardInit';
     console.log(`[${getLogTime()}] REQ - GET ${action}`);
@@ -63,6 +60,18 @@ app.get('/', async (req, res) => {
         return res.status(400).json({ error: "Invalid GET action provided" });
     } catch (error) {
         console.error(`[${getLogTime()}] ERROR - GET ${action}:`, error.message);
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+// GET ENDPOINT FOR GAS BACKGROUND QUEUE
+app.get('/dispatchData/:id', async (req, res) => {
+    try {
+        const doc = await db.collection('Dispatch').doc(req.params.id).get();
+        if (!doc.exists) return res.status(404).json({ error: "Dispatch document not found" });
+        return res.json(doc.data());
+    } catch (error) {
+        console.error(`[${getLogTime()}] ERROR - Fetching Dispatch Data:`, error.message);
         return res.status(500).json({ error: error.message });
     }
 });
@@ -82,44 +91,28 @@ app.post('/', async (req, res) => {
     try {
         switch (action) {
             // Glide Webhooks
-            case 'updateUserFromGlide':
-                return await updateUserFromGlide(payload, res, db);
-            case 'updateCompanyFromGlide':
-                return await updateCompanyFromGlide(payload, res, db);
-            case 'updateCsvSettingsFromGlide':
-                return await updateCsvSettingsFromGlide(payload, res, db);
-            case 'updateEndpoint':
-                return await updateEndpoint(payload, res, db);
+            case 'updateUserFromGlide': return await updateUserFromGlide(payload, res, db);
+            case 'updateCompanyFromGlide': return await updateCompanyFromGlide(payload, res, db);
+            case 'updateCsvSettingsFromGlide': return await updateCsvSettingsFromGlide(payload, res, db);
+            case 'updateEndpoint': return await updateEndpoint(payload, res, db);
 
             // Pre-Optimization
-            case 'uploadCsv': 
-                return await uploadCsv(payload, res, db, admin);
-            case 'resolveUnmatchedAddress': 
-                return await resolveUnmatchedAddress(payload, res, db, admin);
-            case 'updateOrder': 
-                return await updateOrder(payload, res, db);
-            case 'updateMultipleOrders': 
-                return await updateMultipleOrders(payload, res, db);
-            case 'deleteMultipleOrders': 
-                return await deleteMultipleOrders(payload, res, db);
+            case 'uploadCsv': return await uploadCsv(payload, res, db, admin);
+            case 'resolveUnmatchedAddress': return await resolveUnmatchedAddress(payload, res, db, admin);
+            case 'updateOrder': return await updateOrder(payload, res, db);
+            case 'updateMultipleOrders': return await updateMultipleOrders(payload, res, db);
+            case 'deleteMultipleOrders': return await deleteMultipleOrders(payload, res, db);
             
             // Optimization
-            case 'generateRoute': 
-                return await generateRoute(payload, res, db);
-            case 'calculate': 
-                return await calculate(payload, res, db);
+            case 'generateRoute': return await generateRoute(payload, res, db);
+            case 'calculate': return await calculate(payload, res, db);
             
             // Post-Optimization
-            case 'saveRoute': 
-                return await saveRoute(payload, res, db);
-            case 'resetRoute': 
-                return await resetRoute(payload, res, db);
-            case 'recreateOrders': 
-                return await recreateOrders(payload, res, db);
-            case 'restoreOriginalRoute': 
-                return await restoreOriginalRoute(payload, res, db);
-            case 'dispatchRoute': 
-                return await dispatchRoute(payload, res, db, admin);
+            case 'saveRoute': return await saveRoute(payload, res, db);
+            case 'resetRoute': return await resetRoute(payload, res, db);
+            case 'recreateOrders': return await recreateOrders(payload, res, db);
+            case 'restoreOriginalRoute': return await restoreOriginalRoute(payload, res, db);
+            case 'dispatchRoute': return await dispatchRoute(payload, res, db, admin);
 
             default:
                 console.error(`[${getLogTime()}] RES - POST ${action} \n { "error": "Invalid or unhandled action provided: ${action}" }`);
