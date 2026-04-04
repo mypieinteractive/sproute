@@ -189,7 +189,7 @@ async function dispatchRoute(payload, res, db, admin) {
     // ------------------------------------------
 
     const routeId = new Date().getTime().toString();
-    const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
+    const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
     const dispatchRef = db.collection('Dispatch').doc(routeId);
     
     await dispatchRef.set({
