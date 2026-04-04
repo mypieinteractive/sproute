@@ -1,11 +1,10 @@
 /**
  * postOptimization.js
- * VERSION: V1.45
+ * VERSION: V1.44
  * * CHANGES:
- * V1.45 - Dispatch Synchronization & Safe Wipe. Converted the dispatchRoute relay 
- * back to a synchronous wait to accurately report email failures to the frontend. 
- * The staging bay is now strictly protected and will ONLY be wiped if the Apps Script 
- * email relay returns a success.
+ * V1.44 - Dispatch Relay Integration. Upgraded the existing dispatchRoute function 
+ * to calculate route statistics, relay the email payload to the standalone Apps Script 
+ * environment, and save the rich Dispatch document to Firestore before clearing the staging bay.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -25,6 +24,7 @@ async function saveRoute(payload, res, db) {
         const driverDoc = await driverRef.get();
         if (driverDoc.exists) {
             
+            // V1.43 SMART MERGE: Preserve 'P' and 'V' orders omitted by the frontend
             let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
             let preservedPending = existingBay.filter(s => {
                 let stat = String(Array.isArray(s) ? s[11] : (s.status || s.s)).trim().toUpperCase();
@@ -166,106 +166,15 @@ async function dispatchRoute(payload, res, db, admin) {
         let stagingJson = safeJsonParse(stagingJsonStr, []);
         if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
+        // Generate Route ID & Link
         const routeId = new Date().getTime().toString();
         const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
 
+        // Calculate Dashboard Stats
         let r1Stops = 0, r2Stops = 0, r3Stops = 0, dueToday = 0, pastDue = 0;
         let today = new Date(); 
         today.setHours(0,0,0,0);
         
         stagingJson.forEach(s => {
             let rLabel = Array.isArray(s) ? s[1] : (s.R || 1);
-            let dDate = Array.isArray(s) ? s[5] : (s.d || s.dueDate);
-            if (String(rLabel) === '1') r1Stops++;
-            else if (String(rLabel) === '2') r2Stops++;
-            else if (String(rLabel) === '3') r3Stops++;
-            
-            if (dDate) {
-                let dueTime = new Date(dDate); dueTime.setHours(0,0,0,0);
-                if (dueTime < today) pastDue++; 
-                else if (dueTime.getTime() === today.getTime()) dueToday++;
-            }
-        });
-
-        const asPayload = {
-            action: 'dispatchRoute',
-            driverId: payload.driverId,
-            companyId: payload.companyId,
-            customBody: payload.customBody || '',
-            ccCompany: payload.ccCompany || false,
-            addCc: payload.addCc || '',
-            ccEmail: payload.ccEmail || '',
-            mapBase64: payload.mapBase64 || '',  
-            dashboardLink: dashboardLink,
-            stagingJsonStr: stagingJsonStr,      
-            endpointsObj: endpointsObj           
-        };
-
-        const AS_URL = process.env.APPS_SCRIPT_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
-        
-        let emailSuccess = false;
-        let logStatus = "Attempting Relay";
-        let errorMessage = "Unknown Error";
-
-        // Synchronous fetch to accurately report success/failure
-        try {
-            const asResponse = await fetch(AS_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(asPayload)
-            });
-            const asData = await asResponse.json();
-            emailSuccess = !!asData.success;
-            if (!emailSuccess) {
-                errorMessage = asData.error || 'Apps Script returned an error';
-            }
-        } catch (err) {
-            console.error("Apps Script Fetch Error:", err);
-            emailSuccess = false;
-            errorMessage = "Network/Timeout Error connecting to email server.";
-        }
-
-        logStatus = emailSuccess ? "Sent Instantly" : `Failed: ${errorMessage}`;
-
-        const dispatchDoc = {
-            routeId: routeId,
-            driverId: payload.driverId,
-            companyId: payload.companyId,
-            dashboardLink: dashboardLink,
-            status: logStatus,
-            timestamp: admin ? admin.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
-            ccCompany: payload.ccCompany || false,
-            addCc: payload.addCc || '',
-            ccEmail: payload.ccEmail || '',
-            currentRoute: stagingJsonStr, 
-            originalRoute: stagingJsonStr,
-            endpoints: endpointsObj,
-            stats: { totalOrders: stagingJson.length, r1Stops, r2Stops, r3Stops, dueToday, pastDue }
-        };
-
-        // Save Dispatch Doc log regardless of success/failure
-        await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
-
-        if (emailSuccess) {
-            // WIPE STAGING BAY ONLY ON SUCCESS (Resolves Task 2 completely)
-            await driverRef.update({
-                lockedBy: null,
-                'activeStaging.orders': '[]',
-                'activeStaging.status': 'Pending',
-                'endpoints': {}
-            });
-            return res.status(200).json({ success: true, routeId: routeId });
-        } else {
-            // DO NOT WIPE STAGING BAY ON FAILURE. Return the error to trigger the UI prompt.
-            return res.status(500).json({ error: errorMessage });
-        }
-
-    } catch (error) {
-        console.error("Dispatch Error:", error);
-        return res.status(500).json({ error: error.message });
-    }
-}
-
-module.exports = {
-    saveRoute, recreateOrders, restoreOriginalRoute, resetRoute, dispatchRoute
-};
+            let dDate = Array.isArray(s) ? s
