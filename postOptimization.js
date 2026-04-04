@@ -1,10 +1,11 @@
 /**
  * postOptimization.js
- * VERSION: V1.46
+ * VERSION: V1.44
  * * CHANGES:
- * V1.46 - Truthful Undo Architecture. Implemented immediate backend wipe of the staging bay 
- * before the Apps Script relay to support Optimistic UI on the frontend. If the email relay fails, 
- * the backend performs a secure rollback, safely restoring the orders to Firestore.
+ * V1.44 - Dispatch Relay Integration. Upgraded dispatchRoute to calculate stats, 
+ * relay the email payload synchronously to the standalone Apps Script (keeping Cloud 
+ * Run alive), save the comprehensive Dispatch document to Firestore, and wipe the staging bay.
+ * V1.43 - Pending Order Preservation.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -24,6 +25,7 @@ async function saveRoute(payload, res, db) {
         const driverDoc = await driverRef.get();
         if (driverDoc.exists) {
             
+            // V1.43 SMART MERGE: Preserve 'P' and 'V' orders omitted by the frontend
             let existingBay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
             let preservedPending = existingBay.filter(s => {
                 let stat = String(Array.isArray(s) ? s[11] : (s.status || s.s)).trim().toUpperCase();
@@ -160,15 +162,16 @@ async function dispatchRoute(payload, res, db, admin) {
 
         const activeStaging = driverDoc.data().activeStaging || {};
         const stagingJsonStr = activeStaging.orders || "[]";
-        const originalStatus = activeStaging.status || "Pending";
         const endpointsObj = driverDoc.data().endpoints || {};
 
         let stagingJson = safeJsonParse(stagingJsonStr, []);
         if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
+        // 1. Generate Route ID & Link
         const routeId = new Date().getTime().toString();
         const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
 
+        // 2. Calculate Dashboard Stats
         let r1Stops = 0, r2Stops = 0, r3Stops = 0, dueToday = 0, pastDue = 0;
         let today = new Date(); 
         today.setHours(0,0,0,0);
@@ -176,6 +179,7 @@ async function dispatchRoute(payload, res, db, admin) {
         stagingJson.forEach(s => {
             let rLabel = Array.isArray(s) ? s[1] : (s.R || 1);
             let dDate = Array.isArray(s) ? s[5] : (s.d || s.dueDate);
+            
             if (String(rLabel) === '1') r1Stops++;
             else if (String(rLabel) === '2') r2Stops++;
             else if (String(rLabel) === '3') r3Stops++;
@@ -187,34 +191,7 @@ async function dispatchRoute(payload, res, db, admin) {
             }
         });
 
-        // 1. TRUTHFUL UI SYNC: Immediately wipe the Staging Bay in Firestore.
-        // This ensures the database matches the frontend's optimistic state.
-        await driverRef.update({
-            lockedBy: null,
-            'activeStaging.orders': '[]',
-            'activeStaging.status': 'Pending',
-            'endpoints': {}
-        });
-
-        // 2. Log Initial Dispatch state
-        const dispatchDoc = {
-            routeId: routeId,
-            driverId: payload.driverId,
-            companyId: payload.companyId,
-            dashboardLink: dashboardLink,
-            status: "Processing Relay...",
-            timestamp: admin ? admin.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
-            ccCompany: payload.ccCompany || false,
-            addCc: payload.addCc || '',
-            ccEmail: payload.ccEmail || '',
-            currentRoute: stagingJsonStr, 
-            originalRoute: stagingJsonStr,
-            endpoints: endpointsObj,
-            stats: { totalOrders: stagingJson.length, r1Stops, r2Stops, r3Stops, dueToday, pastDue }
-        };
-        await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
-
-        // 3. Execute the Google Apps Script Email Relay
+        // 3. Relay Payload to Apps Script
         const asPayload = {
             action: 'dispatchRoute',
             driverId: payload.driverId,
@@ -231,48 +208,51 @@ async function dispatchRoute(payload, res, db, admin) {
 
         const AS_URL = process.env.APPS_SCRIPT_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
         
-        let emailSuccess = false;
-        let errorMessage = "Unknown Error";
-
+        let logStatus = "Relay Attempted";
         try {
             const asResponse = await fetch(AS_URL, {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(asPayload)
             });
-            
-            const responseText = await asResponse.text();
-            
-            try {
-                const asData = JSON.parse(responseText);
-                emailSuccess = !!asData.success;
-                if (!emailSuccess) errorMessage = asData.error || 'Apps Script returned an error';
-            } catch (jsonErr) {
-                console.error("Apps Script returned non-JSON:", responseText.substring(0, 200));
-                emailSuccess = false;
-                errorMessage = "Email Server rejected the payload. (Likely too large).";
-            }
+            const asData = await asResponse.json();
+            logStatus = asData.success ? "Sent Instantly" : `Failed: ${asData.error || 'Apps Script Error'}`;
         } catch (err) {
             console.error("Apps Script Fetch Error:", err);
-            emailSuccess = false;
-            errorMessage = "Network/Timeout Error connecting to email server.";
+            logStatus = `Failed: Network Error`;
         }
 
-        // 4. Resolve the Outcome
-        if (emailSuccess) {
-            await db.collection('Dispatch').doc(routeId).update({ status: "Sent Instantly" });
-            return res.status(200).json({ success: true, routeId: routeId });
-        } else {
-            // FAILURE: Perform the Truthful Server-Side Rollback
-            await db.collection('Dispatch').doc(routeId).update({ status: `Failed: ${errorMessage}` });
-            
-            await driverRef.update({
-                'activeStaging.orders': stagingJsonStr,
-                'activeStaging.status': originalStatus,
-                'endpoints': endpointsObj
-            });
-            
-            return res.status(500).json({ error: errorMessage });
-        }
+        // 4. Save permanent snapshot to Firestore
+        const dispatchDoc = {
+            routeId: routeId,
+            driverId: payload.driverId,
+            companyId: payload.companyId,
+            dashboardLink: dashboardLink,
+            status: logStatus,
+            timestamp: admin ? admin.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
+            ccCompany: payload.ccCompany || false,
+            addCc: payload.addCc || '',
+            ccEmail: payload.ccEmail || '',
+            currentRoute: stagingJsonStr, 
+            originalRoute: stagingJsonStr,
+            endpoints: endpointsObj,
+            stats: {
+                totalOrders: stagingJson.length,
+                r1Stops, r2Stops, r3Stops, dueToday, pastDue
+            }
+        };
+
+        await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
+
+        // 5. Clear the Driver's Staging Bay 
+        await driverRef.update({
+            lockedBy: null,
+            'activeStaging.orders': '[]',
+            'activeStaging.status': 'Pending',
+            'endpoints': {}
+        });
+
+        return res.status(200).json({ success: true, routeId: routeId });
 
     } catch (error) {
         console.error("Dispatch Error:", error);
