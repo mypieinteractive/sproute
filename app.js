@@ -1,10 +1,12 @@
 /**
- * Dashboard - V13.1 (Enterprise Edition)
+ * Dashboard - V13.2 (Enterprise Edition)
  * FILE: app.js
  * Changes: 
- * V13.1 - Codebase Optimization. Removed dead memory bloat (originalStops, managerEmail, 
- * isPollingForUpload), stripped legacy Apps Script payload checks, and fixed duplicate 
- * event listeners for a cleaner, leaner execution thread.
+ * V13.2 - Optimistic UI Unlock. Converted dispatch network requests to a Detached Async 
+ * process. The UI now fully unlocks immediately upon clicking submit. Optimized map snapshots 
+ * using JPEG compression to slice through Google Apps Script payload limits. If an email fails, 
+ * the dashboard instantly restores the orders from local cached memory.
+ * V13.1 - Codebase Optimization. Removed dead memory bloat and duplicate drag listeners.
  * V13.0 - Enterprise Cutover. Permanently deprecated the legacy Apps Script backend.
  */
 
@@ -24,7 +26,6 @@ document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); }
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXlwaWVpbnRlcmFjdGl2ZSIsImEiOiJjbWx2ajk5Z2MwOGZlM2VwcDBkc295dzI1In0.eGIhcRPrj_Hx_PeoFAYxBA';
 
-// --- ENTERPRISE CLOUD RUN BACKEND ---
 const API_URL = 'https://glidewebhooksync-761669621272.us-south1.run.app';
 
 const params = new URLSearchParams(window.location.search);
@@ -37,7 +38,6 @@ if (isTestingMode) {
 function logToVisualConsole(type, endpoint, data) {
     if (!isTestingMode) return;
     
-    // Unified console target for the Enterprise architecture
     const consoleEl = document.getElementById('console-log') || document.getElementById('console-firestore');
     if (!consoleEl) return;
 
@@ -69,7 +69,6 @@ let unmatchedAddressesQueue = [];
 let currentUnmatchedIndex = 0;
 let currentUploadDriverId = null;
 
-// Central Wrapper to inject tracking counts and enforce Cloud Run headers
 async function apiFetch(payload) {
     payload.frontEndApiUsage = { geocode: frontEndApiUsage.geocode, mapLoads: frontEndApiUsage.mapLoads };
     frontEndApiUsage.geocode = 0;
@@ -80,7 +79,7 @@ async function apiFetch(payload) {
     try {
         let fetchOptions = {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }, // Permanently enforced for Cloud Run
+            headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify(payload)
         };
         
@@ -104,11 +103,9 @@ const adminParam = params.get('admin');
 const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
 const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile' || viewMode === 'managermobilesplit'); 
 
-// Global Keyboard Listeners
 document.addEventListener('keydown', (e) => { 
     if (e.key === 'Shift') updateShiftCursor(true); 
 
-    // Physical Delete Shortcut for Manager View
     if (viewMode === 'manager' && (e.key === 'Delete' || e.key === 'Backspace')) {
         const tag = e.target.tagName.toUpperCase();
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -159,7 +156,6 @@ let currentRouteCount = 1;
 let availableCsvTypes = [];
 let currentInspectorFilter = sessionStorage.getItem('sproute_inspector_filter') || 'all';
 
-// --- GLIDE REFRESH TRACKING (Front-End Upload Detection) ---
 const currentQuery = window.location.search;
 const lastQuery = sessionStorage.getItem('sproute_last_query');
 let isFreshGlideRefresh = false;
@@ -173,7 +169,6 @@ sessionStorage.setItem('sproute_last_query', currentQuery);
 
 let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
-// -----------------------------------------------------------
 
 let defaultEmailMessage = "";
 let companyEmail = "";
@@ -191,9 +186,7 @@ let isPollingForRoute = false;
 let pollRetries = 0;
 
 let currentRouteViewFilter = 'all';
-
 let isFirstMapRender = true;
-
 let latestSuggestions = { start: null, end: null };
 
 let stops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
@@ -384,7 +377,6 @@ function silentSaveRouteState() {
     apiFetch(payload).catch(e => console.log("Silent save error", e));
 }
 
-// APPLY CSS CLASS BEFORE RENDER
 document.body.className = `view-${viewMode} manager-all-inspectors ${isTestingMode ? 'testing-mode' : ''}`;
 if (viewMode === 'managermobilesplit') {
     document.body.classList.add('split-show-map');
@@ -404,7 +396,6 @@ const mapConfig = {
 const map = new mapboxgl.Map(mapConfig);
 frontEndApiUsage.mapLoads++; 
 
-// Force one-finger scroll overlay to disappear immediately on touch end
 map.getContainer().addEventListener('touchend', () => {
     const blocker = document.querySelector('.mapboxgl-touch-pan-blocker');
     if (blocker) {
@@ -602,18 +593,6 @@ function updateRouteButtonColors() {
                 ind.appendChild(circle);
             }
         }
-    }
-}
-
-function isActiveStop(s) {
-    const status = (s.status || '').toLowerCase().trim();
-    if (isManagerView) {
-        if (status === 'dispatched' || status === 's') return false;
-        return (status === 'pending' || status === 'routed' || status === 'completed');
-    } else {
-        let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
-        if (s.hiddenInInspector) active = false;
-        return active;
     }
 }
 
@@ -1362,8 +1341,12 @@ function handleOpenEmailModal() {
 
         let mapBase64 = '';
         try {
-            const canvasSnapshot = await html2canvas(mapWrapper, { useCORS: true, backgroundColor: '#121212' });
-            mapBase64 = canvasSnapshot.toDataURL('image/png', 0.9);
+            const canvasSnapshot = await html2canvas(mapWrapper, { 
+                useCORS: true, 
+                backgroundColor: '#121212',
+                scale: 1 
+            });
+            mapBase64 = canvasSnapshot.toDataURL('image/jpeg', 0.7); 
         } catch(e) {
             console.error("Screenshot error:", e);
         }
@@ -1396,7 +1379,8 @@ function handleOpenEmailModal() {
         };
         if (!isManagerView) payload.routeId = routeId;
 
-        const attemptDispatch = async () => {
+        // Detached background processor
+        const processBackgroundDispatch = async () => {
             toast.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Dispatching Email...';
             try {
                 const res = await apiFetch(payload);
@@ -1415,13 +1399,13 @@ function handleOpenEmailModal() {
                 const tryAgain = await customConfirm("Dispatch failed. Try again?");
                 if (tryAgain) {
                     toast.style.display = 'flex';
-                    await attemptDispatch(); 
+                    processBackgroundDispatch(); 
                 } else {
                     stops = cachedStops;
                     if (isManagerView) {
                         const filterEl = document.getElementById('inspector-filter');
-                        if (filterEl) filterEl.value = currentInspectorFilter;
-                        handleInspectorFilterChange(currentInspectorFilter);
+                        if (filterEl) filterEl.value = payload.driverId;
+                        handleInspectorFilterChange(payload.driverId);
                     } else {
                         render(); drawRoute(); updateSummary();
                     }
@@ -1430,7 +1414,8 @@ function handleOpenEmailModal() {
             }
         };
 
-        await attemptDispatch();
+        // Fire and Forget immediately - User regains total control of the UI instantly
+        processBackgroundDispatch();
     };
 }
 
@@ -3117,6 +3102,7 @@ async function handleCalculate() {
         if (!isManagerView) isAlteredRoute = true;
         historyStack = []; 
         dirtyRoutes.clear();
+        originalStops = JSON.parse(JSON.stringify(stops)); 
         render(); drawRoute(); updateSummary();
         silentSaveRouteState();
 
@@ -3510,7 +3496,7 @@ if (headerDropzone && headerInput) {
     headerInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
-            headerInput.value = ''; // Reset input
+            headerInput.value = ''; 
         }
     };
 }
@@ -3522,7 +3508,6 @@ document.addEventListener('dragenter', (e) => {
     e.preventDefault();
     globalDragCounter++;
     
-    // Only trigger if a file is being dragged (ignores text/element dragging)
     if (e.dataTransfer && e.dataTransfer.types.some(t => t.toLowerCase() === 'files')) {
         const gd = document.getElementById('global-dropzone');
         if (gd) gd.style.display = 'flex';
@@ -3539,7 +3524,6 @@ document.addEventListener('dragleave', (e) => {
     }
 });
 
-// Necessary to allow the 'drop' event to fire
 document.addEventListener('dragover', (e) => { 
     e.preventDefault(); 
 });
@@ -3556,7 +3540,7 @@ document.addEventListener('drop', (e) => {
 });
 
 
-// --- ADD THE UNMATCHED MODAL LOGIC ---
+// --- UNMATCHED MODAL LOGIC ---
 
 function openUnmatchedModal() {
     const modal = document.getElementById('unmatched-modal');
@@ -3573,7 +3557,6 @@ function openUnmatchedModal() {
     title.textContent = `Match Addresses (${currentUnmatchedIndex + 1} of ${unmatchedAddressesQueue.length})`;
     origAddr.textContent = currentAddr;
 
-    // Reset Inputs
     latInput.value = '';
     lngInput.value = '';
     correctedInput.value = '';
@@ -3590,7 +3573,6 @@ async function nextUnmatchedAddress() {
     } else {
         document.getElementById('unmatched-modal').style.display = 'none';
         
-        // Show success toast
         const toast = document.createElement('div');
         toast.innerText = 'Address matching complete.';
         toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
