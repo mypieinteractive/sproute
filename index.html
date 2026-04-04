@@ -15,18 +15,21 @@
 </head>
 <body class="view-inspector manager-all-inspectors">
 
-<div id="global-dropzone" style="display: none;">
-    <div class="global-dropzone-content">
-        <i class="fa-solid fa-cloud-arrow-up"></i>
-        <h2>Drop CSV to Upload</h2>
-    </div>
-</div>
-
 <aside id="testing-sidebar">
-    <div class="test-header">Enterprise Diagnostics</div>
-    <div id="visual-console-wrapper" style="display: block; height: calc(100% - 40px);">
-        <div id="console-log" class="visual-console" style="width: 100%; height: 100%; border-left: none;">
-            <div class="log-entry log-info"><strong>System Initialize</strong><br>Awaiting network activity...</div>
+    <div class="test-header">Testing Mode</div>
+    
+    <div id="visual-console-wrapper">
+        <div class="console-col">
+            <div id="btn-backend-sheet" class="console-col-header active" onclick="setTestingBackend('sheet')">Apps Script (Sheet)</div>
+            <div id="console-sheet" class="visual-console">
+                <div class="log-entry log-info"><strong>System Initialize</strong><br>Awaiting network activity...</div>
+            </div>
+        </div>
+        <div class="console-col">
+            <div id="btn-backend-firestore" class="console-col-header" onclick="setTestingBackend('firestore')">Node.js (Firestore)</div>
+            <div id="console-firestore" class="visual-console">
+                <div class="log-entry log-info"><strong>System Initialize</strong><br>Awaiting network activity...</div>
+            </div>
         </div>
     </div>
 </aside>
