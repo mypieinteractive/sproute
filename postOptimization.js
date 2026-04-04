@@ -1,11 +1,10 @@
 /**
  * postOptimization.js
- * VERSION: V1.45
+ * VERSION: V1.46
  * * CHANGES:
- * V1.45 - Dispatch Synchronization & Safe Wipe. Converted the dispatchRoute relay 
- * back to a synchronous wait to accurately report email failures to the frontend. 
- * The staging bay is now strictly protected and will ONLY be wiped if the Apps Script 
- * email relay returns a success.
+ * V1.46 - Enterprise Network Optimization. Removed the strict 'application/json' 
+ * header on the Apps Script fetch to bypass Google's strict CORS preflight size limits. 
+ * Staging bay wipe is strictly protected behind a successful email transmission.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -207,17 +206,25 @@ async function dispatchRoute(payload, res, db, admin) {
         let logStatus = "Attempting Relay";
         let errorMessage = "Unknown Error";
 
-        // Synchronous fetch to accurately report success/failure
         try {
+            // Unrestricted fetch bypasses Apps Script JSON size limits
             const asResponse = await fetch(AS_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(asPayload)
             });
-            const asData = await asResponse.json();
-            emailSuccess = !!asData.success;
-            if (!emailSuccess) {
-                errorMessage = asData.error || 'Apps Script returned an error';
+            
+            const responseText = await asResponse.text();
+            
+            try {
+                const asData = JSON.parse(responseText);
+                emailSuccess = !!asData.success;
+                if (!emailSuccess) {
+                    errorMessage = asData.error || 'Apps Script returned an error';
+                }
+            } catch (jsonErr) {
+                console.error("Apps Script returned non-JSON:", responseText.substring(0, 200));
+                emailSuccess = false;
+                errorMessage = "Email Server rejected the payload. (Likely too large).";
             }
         } catch (err) {
             console.error("Apps Script Fetch Error:", err);
@@ -243,11 +250,11 @@ async function dispatchRoute(payload, res, db, admin) {
             stats: { totalOrders: stagingJson.length, r1Stops, r2Stops, r3Stops, dueToday, pastDue }
         };
 
-        // Save Dispatch Doc log regardless of success/failure
+        // Save Dispatch history log regardless of success
         await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
 
         if (emailSuccess) {
-            // WIPE STAGING BAY ONLY ON SUCCESS (Resolves Task 2 completely)
+            // ONLY WIPE THE STAGING BAY ON A CONFIRMED SUCCESS
             await driverRef.update({
                 lockedBy: null,
                 'activeStaging.orders': '[]',
@@ -256,7 +263,7 @@ async function dispatchRoute(payload, res, db, admin) {
             });
             return res.status(200).json({ success: true, routeId: routeId });
         } else {
-            // DO NOT WIPE STAGING BAY ON FAILURE. Return the error to trigger the UI prompt.
+            // LEAVE STAGING BAY INTACT IF EMAIL FAILS
             return res.status(500).json({ error: errorMessage });
         }
 
