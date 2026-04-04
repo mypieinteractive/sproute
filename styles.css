@@ -1,9 +1,12 @@
-/*
- * styles.css
- * VERSION: V13.1
- * CHANGES:
- * V13.1 - Consolidated current code base for review. No functional changes from V13.0.
- */
+/* * */
+/* * Dashboard - V12.3 */
+/* * FILE: styles.css */
+/* * Changes: */
+/* * 1. Fixed `.console-col` to a rigid `width: 300px; flex: none;` to enforce column sizes. */
+/* * 2. Updated `#testing-sidebar` width to exactly 602px to account for borders and prevent wrapping. */
+/* * 3. Updated `.console-col-header` to act as interactive toggle buttons. */
+/* * 4. Removed unused `.test-rocker` CSS rules. */
+/* * */
 
 :root { 
     --blue: #2563eb; 
@@ -33,10 +36,10 @@ body[data-route-count="1"] #priority-container {
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
-/* --- ENTERPRISE DIAGNOSTICS SIDEBAR --- */
+/* --- A/B TESTING SIDEBAR --- */
 #testing-sidebar {
     display: none;
-    width: 400px; 
+    width: 602px; /* Accounts for the 300px columns + border to prevent wrapping */
     flex-direction: column;
     background: #0f172a; 
     border-right: 2px solid var(--blue);
@@ -58,6 +61,42 @@ body.testing-mode #testing-sidebar {
     text-align: center;
     text-transform: uppercase;
     letter-spacing: 1px;
+}
+#visual-console-wrapper {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    overflow: hidden;
+}
+.console-col {
+    width: 300px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #334155;
+}
+.console-col:last-child {
+    border-right: none;
+}
+.console-col-header {
+    padding: 12px 8px;
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+    text-align: center;
+    border-bottom: 1px solid #334155;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.console-col-header:hover {
+    background: #2a364a;
+}
+.console-col-header.active {
+    background: var(--blue);
+    color: #ffffff;
+    border-bottom-color: var(--blue);
 }
 .visual-console {
     flex: 1;
@@ -88,7 +127,7 @@ body.view-inspector { flex-direction: column; }
 body.testing-mode.view-inspector { flex-direction: row; }
 body.testing-mode.view-inspector #map-wrapper, 
 body.testing-mode.view-inspector #sidebar { 
-    width: calc(100vw - 400px); 
+    width: calc(100vw - 602px); 
 }
 body.testing-mode.view-inspector #map-wrapper { flex: none; }
 body.testing-mode.view-inspector #sidebar { flex: 1; }
@@ -591,38 +630,3 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 /* Hide text on Mapbox's two-finger scroll warning, keep the dimming overlay */
 .mapboxgl-touch-pan-blocker { color: transparent !important; }
-
-/* --- GLOBAL DRAG & DROP OVERLAY --- */
-#global-dropzone {
-    position: fixed;
-    top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(15, 23, 42, 0.85); 
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    z-index: 100000; 
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-#global-dropzone .global-dropzone-content {
-    border: 3px dashed var(--blue);
-    border-radius: 16px;
-    padding: 60px 100px;
-    text-align: center;
-    background: rgba(37, 99, 235, 0.1);
-    color: var(--blue);
-    pointer-events: none; 
-}
-
-#global-dropzone .global-dropzone-content i {
-    font-size: 64px;
-    margin-bottom: 20px;
-}
-
-#global-dropzone .global-dropzone-content h2 {
-    font-size: 24px;
-    color: white;
-    margin: 0;
-}
