@@ -1,10 +1,11 @@
 /**
- * Dashboard - V13.0 (Enterprise Edition)
+ * Dashboard - V13.1 (Enterprise Edition)
  * FILE: app.js
  * Changes: 
- * V13.0 - Enterprise Cutover. Permanently deprecated the legacy Apps Script backend. 
- * Removed all A/B testing UI toggles, hardwired the API_URL to Cloud Run, and enforced 
- * application/json headers globally for all requests.
+ * V13.1 - Codebase Optimization. Removed dead memory bloat (originalStops, managerEmail, 
+ * isPollingForUpload), stripped legacy Apps Script payload checks, and fixed duplicate 
+ * event listeners for a cleaner, leaner execution thread.
+ * V13.0 - Enterprise Cutover. Permanently deprecated the legacy Apps Script backend.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -176,7 +177,6 @@ const MAX_RETRIES = 5;
 
 let defaultEmailMessage = "";
 let companyEmail = "";
-let managerEmail = "";
 let adminEmail = ""; 
 let ccCompanyDefault = true;
 
@@ -188,7 +188,6 @@ let historyStack = [];
 let isAlteredRoute = false;
 
 let isPollingForRoute = false;
-let isPollingForUpload = false;
 let pollRetries = 0;
 
 let currentRouteViewFilter = 'all';
@@ -196,6 +195,16 @@ let currentRouteViewFilter = 'all';
 let isFirstMapRender = true;
 
 let latestSuggestions = { start: null, end: null };
+
+let stops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
+let currentSort = { col: null, asc: true };
+
+const MASTER_PALETTE = [
+    '#4363d8', '#ffd8b1', '#469990', '#808000', '#000075', 
+    '#bfef45', '#fffac8', '#f58231', '#42d4f4', '#3cb44b', 
+    '#a9a9a9', '#800000', '#aaffc3', '#f032e6', '#ffe119', 
+    '#e6194B', '#9A6324', '#fabed4', '#dcbeff', '#911eb4'
+];
 
 const isTrueInspector = (val) => val === true || String(val).trim().toLowerCase() === 'true';
 
@@ -403,16 +412,6 @@ map.getContainer().addEventListener('touchend', () => {
         blocker.style.opacity = '0';
     }
 }, { passive: true });
-
-let stops = [], originalStops = [], inspectors = [], markers = [], initialBounds = null, selectedIds = new Set(), currentDisplayMode = 'detailed', currentStartTime = "8:00 AM";
-let currentSort = { col: null, asc: true };
-
-const MASTER_PALETTE = [
-    '#4363d8', '#ffd8b1', '#469990', '#808000', '#000075', 
-    '#bfef45', '#fffac8', '#f58231', '#42d4f4', '#3cb44b', 
-    '#a9a9a9', '#800000', '#aaffc3', '#f032e6', '#ffe119', 
-    '#e6194B', '#9A6324', '#fabed4', '#dcbeff', '#911eb4'
-];
 
 function expandStop(minStop) {
     if (!minStop) return {};
@@ -926,7 +925,6 @@ async function loadData() {
         }
         document.body.setAttribute('data-route-count', currentRouteCount);
 
-        originalStops = JSON.parse(JSON.stringify(stops)); 
         if (stops.length > 0 && stops[0].eta) currentStartTime = stops[0].eta;
         
         historyStack = [];
@@ -941,7 +939,6 @@ async function loadData() {
         if (!Array.isArray(data)) {
             if (data.defaultEmailMessage) defaultEmailMessage = data.defaultEmailMessage;
             if (data.companyEmail) companyEmail = data.companyEmail;
-            if (data.managerEmail) managerEmail = data.managerEmail;
             if (typeof data.ccCompanyDefault !== 'undefined') ccCompanyDefault = !!data.ccCompanyDefault;
 
             inspectors = data.inspectors || []; 
@@ -1725,8 +1722,8 @@ async function handleGenerateRoute() {
         const res = await apiFetch(payload);
         const data = await res.json();
         
-        if (data.updatedStops || (data.stops && Array.isArray(data.stops))) {
-            let optimizedData = data.updatedStops || data.stops;
+        if (data.updatedStops && Array.isArray(data.updatedStops)) {
+            let optimizedData = data.updatedStops;
             const returnedStopsMap = new Map();
             optimizedData.forEach(s => {
                 let exp = expandStop(s);
@@ -3120,7 +3117,6 @@ async function handleCalculate() {
         if (!isManagerView) isAlteredRoute = true;
         historyStack = []; 
         dirtyRoutes.clear();
-        originalStops = JSON.parse(JSON.stringify(stops)); 
         render(); drawRoute(); updateSummary();
         silentSaveRouteState();
 
@@ -3499,10 +3495,6 @@ if (headerDropzone && headerInput) {
     headerDropzone.ondragover = (e) => {
         e.preventDefault();
         headerDropzone.classList.add('drag-active');
-    };
-    headerDropzone.ondragleave = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.remove('drag-active');
     };
     headerDropzone.ondragleave = (e) => {
         e.preventDefault();
