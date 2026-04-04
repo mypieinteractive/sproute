@@ -2,9 +2,9 @@
  * postOptimization.js
  * VERSION: V1.46
  * * CHANGES:
- * V1.46 - Enterprise Network Optimization. Removed the strict 'application/json' 
- * header on the Apps Script fetch to bypass Google's strict CORS preflight size limits. 
- * Staging bay wipe is strictly protected behind a successful email transmission.
+ * V1.46 - Truthful Undo Architecture. Implemented immediate backend wipe of the staging bay 
+ * before the Apps Script relay to support Optimistic UI on the frontend. If the email relay fails, 
+ * the backend performs a secure rollback, safely restoring the orders to Firestore.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -160,6 +160,7 @@ async function dispatchRoute(payload, res, db, admin) {
 
         const activeStaging = driverDoc.data().activeStaging || {};
         const stagingJsonStr = activeStaging.orders || "[]";
+        const originalStatus = activeStaging.status || "Pending";
         const endpointsObj = driverDoc.data().endpoints || {};
 
         let stagingJson = safeJsonParse(stagingJsonStr, []);
@@ -186,6 +187,34 @@ async function dispatchRoute(payload, res, db, admin) {
             }
         });
 
+        // 1. TRUTHFUL UI SYNC: Immediately wipe the Staging Bay in Firestore.
+        // This ensures the database matches the frontend's optimistic state.
+        await driverRef.update({
+            lockedBy: null,
+            'activeStaging.orders': '[]',
+            'activeStaging.status': 'Pending',
+            'endpoints': {}
+        });
+
+        // 2. Log Initial Dispatch state
+        const dispatchDoc = {
+            routeId: routeId,
+            driverId: payload.driverId,
+            companyId: payload.companyId,
+            dashboardLink: dashboardLink,
+            status: "Processing Relay...",
+            timestamp: admin ? admin.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
+            ccCompany: payload.ccCompany || false,
+            addCc: payload.addCc || '',
+            ccEmail: payload.ccEmail || '',
+            currentRoute: stagingJsonStr, 
+            originalRoute: stagingJsonStr,
+            endpoints: endpointsObj,
+            stats: { totalOrders: stagingJson.length, r1Stops, r2Stops, r3Stops, dueToday, pastDue }
+        };
+        await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
+
+        // 3. Execute the Google Apps Script Email Relay
         const asPayload = {
             action: 'dispatchRoute',
             driverId: payload.driverId,
@@ -203,11 +232,9 @@ async function dispatchRoute(payload, res, db, admin) {
         const AS_URL = process.env.APPS_SCRIPT_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
         
         let emailSuccess = false;
-        let logStatus = "Attempting Relay";
         let errorMessage = "Unknown Error";
 
         try {
-            // Unrestricted fetch bypasses Apps Script JSON size limits
             const asResponse = await fetch(AS_URL, {
                 method: 'POST',
                 body: JSON.stringify(asPayload)
@@ -218,9 +245,7 @@ async function dispatchRoute(payload, res, db, admin) {
             try {
                 const asData = JSON.parse(responseText);
                 emailSuccess = !!asData.success;
-                if (!emailSuccess) {
-                    errorMessage = asData.error || 'Apps Script returned an error';
-                }
+                if (!emailSuccess) errorMessage = asData.error || 'Apps Script returned an error';
             } catch (jsonErr) {
                 console.error("Apps Script returned non-JSON:", responseText.substring(0, 200));
                 emailSuccess = false;
@@ -232,38 +257,20 @@ async function dispatchRoute(payload, res, db, admin) {
             errorMessage = "Network/Timeout Error connecting to email server.";
         }
 
-        logStatus = emailSuccess ? "Sent Instantly" : `Failed: ${errorMessage}`;
-
-        const dispatchDoc = {
-            routeId: routeId,
-            driverId: payload.driverId,
-            companyId: payload.companyId,
-            dashboardLink: dashboardLink,
-            status: logStatus,
-            timestamp: admin ? admin.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
-            ccCompany: payload.ccCompany || false,
-            addCc: payload.addCc || '',
-            ccEmail: payload.ccEmail || '',
-            currentRoute: stagingJsonStr, 
-            originalRoute: stagingJsonStr,
-            endpoints: endpointsObj,
-            stats: { totalOrders: stagingJson.length, r1Stops, r2Stops, r3Stops, dueToday, pastDue }
-        };
-
-        // Save Dispatch history log regardless of success
-        await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
-
+        // 4. Resolve the Outcome
         if (emailSuccess) {
-            // ONLY WIPE THE STAGING BAY ON A CONFIRMED SUCCESS
-            await driverRef.update({
-                lockedBy: null,
-                'activeStaging.orders': '[]',
-                'activeStaging.status': 'Pending',
-                'endpoints': {}
-            });
+            await db.collection('Dispatch').doc(routeId).update({ status: "Sent Instantly" });
             return res.status(200).json({ success: true, routeId: routeId });
         } else {
-            // LEAVE STAGING BAY INTACT IF EMAIL FAILS
+            // FAILURE: Perform the Truthful Server-Side Rollback
+            await db.collection('Dispatch').doc(routeId).update({ status: `Failed: ${errorMessage}` });
+            
+            await driverRef.update({
+                'activeStaging.orders': stagingJsonStr,
+                'activeStaging.status': originalStatus,
+                'endpoints': endpointsObj
+            });
+            
             return res.status(500).json({ error: errorMessage });
         }
 
