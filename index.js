@@ -1,8 +1,8 @@
 /**
  * index.js
- * VERSION: V1.37
+ * VERSION: V1.38
  * * CHANGES:
- * V1.37 - Cleaned up dispatchRoute imports and duplicate routing blocks.
+ * V1.38 - Cleaned up dispatchRoute imports and duplicate routing blocks.
  */
 
 const express = require('express');
