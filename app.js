@@ -1,13 +1,9 @@
 /**
- * Dashboard - V12.7
+ * Dashboard - V12.8
  * FILE: app.js
  * Changes: 
- * 1. Added Unmatched Address Resolution flow. Intercepts the uploadCsv response 
- * and triggers a paginated modal if unmatched addresses are found, rather than immediately 
- * reloading the board. Supports validation state, dynamic buttons, and skip logic utilizing 
- * existing customConfirm functionality.
- * 2. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
- * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
+ * 1. Modified drawRoute() to remove the explicit sortByEta enforcement so map route lines connect based on the physical array order.
+ * 2. Updated initSortable() onEnd events to trigger drawRoute(), updateSummary(), and updateRouteTimes() on all drag-and-drop actions to ensure map visuals update instantly.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -3266,7 +3262,8 @@ function drawRoute() {
     
     if (routedStops.length === 0) return; 
 
-    let visualStops = [...routedStops].sort(sortByEta);
+    // Directly respect the array order instead of enforcing ETA sorting
+    let visualStops = [...routedStops];
 
     const features = [];
     const routesMap = new Map();
@@ -3440,11 +3437,10 @@ function initSortable() {
                     
                     reorderStopsFromDOM();
                     render(); 
+                    drawRoute(); 
+                    updateSummary(); 
+                    updateRouteTimes();
                     silentSaveRouteState();
-                    
-                    if (isMovedToUnrouted) {
-                        drawRoute(); updateSummary(); updateRouteTimes();
-                    }
                 }
             });
             sortableInstances.push(inst);
@@ -3491,6 +3487,9 @@ function initSortable() {
 
                     reorderStopsFromDOM();
                     render(); 
+                    drawRoute(); 
+                    updateSummary(); 
+                    updateRouteTimes();
                     silentSaveRouteState();
                 }
             });
