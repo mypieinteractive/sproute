@@ -1,7 +1,10 @@
 /**
  * index.js
- * VERSION: V1.36
+ * VERSION: V1.37
  * * CHANGES:
+ * V1.37 - Deployment Crash Fix. Removed duplicate import declaration for `dispatchRoute` 
+ * and deleted the stray `if (action === 'dispatchRoute')` execution block that sat outside 
+ * the main switch statement, resolving the fatal SyntaxError preventing server startup.
  * V1.36 - Firebase Auth & Webhook Restoration. Restored the specific named 
  * database connection ('sproute') using getFirestore, which fixes the 5 NOT_FOUND 
  * gRPC error caused by the server looking for a '(default)' database. Re-imported 
@@ -14,7 +17,6 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
-const { dispatchRoute } = require('./dispatch');
 
 // Initialize Firebase Admin globally
 let firebaseApp;
@@ -71,10 +73,6 @@ app.post('/', async (req, res) => {
     const payload = req.body.payload || req.body;
     
     console.log(`[${getLogTime()}] REQ - POST ${action || 'UNKNOWN'}`);
-
-    if (action === 'dispatchRoute') {
-    return await dispatchRoute(payload, res, db);
-}
 
     if (!action) {
         console.error(`[${getLogTime()}] RES - POST (Missing Action)`);
