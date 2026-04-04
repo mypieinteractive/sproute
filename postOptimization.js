@@ -2,10 +2,9 @@
  * postOptimization.js
  * VERSION: V1.44
  * * CHANGES:
- * V1.44 - Dispatch Relay Integration. Upgraded dispatchRoute to calculate stats, 
- * relay the email payload synchronously to the standalone Apps Script (keeping Cloud 
- * Run alive), save the comprehensive Dispatch document to Firestore, and wipe the staging bay.
- * V1.43 - Pending Order Preservation.
+ * V1.44 - Dispatch Relay Integration. Upgraded the existing dispatchRoute function 
+ * to calculate route statistics, relay the email payload to the standalone Apps Script 
+ * environment, and save the rich Dispatch document to Firestore before clearing the staging bay.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -191,7 +190,7 @@ async function dispatchRoute(payload, res, db, admin) {
             }
         });
 
-        // 3. Relay Payload to Apps Script
+        // 3. Relay Payload to the New Apps Script (Enterprise.gs)
         const asPayload = {
             action: 'dispatchRoute',
             driverId: payload.driverId,
@@ -200,36 +199,32 @@ async function dispatchRoute(payload, res, db, admin) {
             ccCompany: payload.ccCompany || false,
             addCc: payload.addCc || '',
             ccEmail: payload.ccEmail || '',
-            mapBase64: payload.mapBase64 || '',  
+            mapBase64: payload.mapBase64 || '',  // Passed to Apps Script, NOT saved to DB
             dashboardLink: dashboardLink,
-            stagingJsonStr: stagingJsonStr,      
-            endpointsObj: endpointsObj           
+            stagingJsonStr: stagingJsonStr,      // Passing DB truth directly to script
+            endpointsObj: endpointsObj           // Passing DB truth directly to script
         };
 
+        // Dedicated Enterprise Web App URL
         const AS_URL = process.env.APPS_SCRIPT_WEBHOOK_URL || 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
         
-        let logStatus = "Relay Attempted";
-        try {
-            const asResponse = await fetch(AS_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(asPayload)
-            });
-            const asData = await asResponse.json();
-            logStatus = asData.success ? "Sent Instantly" : `Failed: ${asData.error || 'Apps Script Error'}`;
-        } catch (err) {
-            console.error("Apps Script Fetch Error:", err);
-            logStatus = `Failed: Network Error`;
-        }
+        const asResponse = await fetch(AS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(asPayload)
+        });
+        
+        const asData = await asResponse.json();
+        let logStatus = asData.success ? "Sent Instantly" : `Failed: ${asData.error || 'Apps Script Error'}`;
 
-        // 4. Save permanent snapshot to Firestore
+        // 4. Save permanent snapshot to Firestore 'Dispatch' Collection
         const dispatchDoc = {
             routeId: routeId,
             driverId: payload.driverId,
             companyId: payload.companyId,
             dashboardLink: dashboardLink,
             status: logStatus,
-            timestamp: admin ? admin.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
+            timestamp: new Date().toISOString(),
             ccCompany: payload.ccCompany || false,
             addCc: payload.addCc || '',
             ccEmail: payload.ccEmail || '',
@@ -244,15 +239,17 @@ async function dispatchRoute(payload, res, db, admin) {
 
         await db.collection('Dispatch').doc(routeId).set(dispatchDoc);
 
-        // 5. Clear the Driver's Staging Bay 
-        await driverRef.update({
-            lockedBy: null,
-            'activeStaging.orders': '[]',
-            'activeStaging.status': 'Pending',
-            'endpoints': {}
-        });
-
-        return res.status(200).json({ success: true, routeId: routeId });
+        if (asData.success) {
+            // 5. Clear the Driver's Staging Bay 
+            await driverRef.update({
+                'activeStaging.orders': '[]',
+                'activeStaging.status': 'Pending',
+                'endpoints': {}
+            });
+            return res.status(200).json({ success: true, routeId: routeId });
+        } else {
+            return res.status(500).json({ error: "Email Relay Failed: " + (asData.error || "Unknown") });
+        }
 
     } catch (error) {
         console.error("Dispatch Error:", error);
