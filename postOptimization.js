@@ -1,12 +1,12 @@
 /**
  * postOptimization.js
- * VERSION: V1.45
+ * VERSION: V1.46
  * * CHANGES:
- * V1.45 - Asynchronous Queue Claim Check. Rewrote dispatchRoute to calculate 
- * legacy route statistics (Total Orders, Routes, Due Dates). It now saves the heavy 
- * Base64 image and JSON Array to Firestore, and pushes a microscopic "claim check" 
- * payload containing the UI stats to the Google Apps Script Webhook for zero-lag logging.
- * V1.44 - Google Apps Script Dispatch Integration. 
+ * V1.46 - Due Date Statistic Fix. Rebuilt the date-parsing logic in dispatchRoute 
+ * to handle incoming dates safely across timezones. Node.js now coerces all dates 
+ * (whether formatted as YYYY-MM-DD or MM/DD/YYYY) into localized UTC midnight markers 
+ * prior to comparing, guaranteeing that dueToday and pastDue stats properly reflect 
+ * the inspector's local dashboard time.
  */
 
 const { getField, safeJsonParse } = require('./helpers');
@@ -157,9 +157,13 @@ async function dispatchRoute(payload, res, db, admin) {
     let totalOrders = stagingJson.length;
     let r1Stops = 0, r2Stops = 0, r3Stops = 0, dueToday = 0, pastDue = 0;
     
+    // V1.46 Fix: Securely standardize current date to UTC midnight relative to Central Time
     const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
-    const [{ value: mo }, , { value: da }, , { value: ye }] = formatter.formatToParts(new Date());
-    const todayMs = new Date(`${ye}-${mo}-${da}T00:00:00`).getTime(); 
+    const parts = formatter.formatToParts(new Date());
+    const tzMonth = parts.find(p => p.type === 'month').value;
+    const tzDay = parts.find(p => p.type === 'day').value;
+    const tzYear = parts.find(p => p.type === 'year').value;
+    const todayMs = new Date(`${tzYear}-${tzMonth}-${tzDay}T00:00:00Z`).getTime(); 
 
     stagingJson.forEach(s => {
         let rLabel = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1));
@@ -170,9 +174,16 @@ async function dispatchRoute(payload, res, db, admin) {
         else if (rLabel.includes('3')) r3Stops++;
         
         if (dDate) {
-            let dueTimeMs = new Date(`${dDate}T00:00:00`).getTime();
-            if (dueTimeMs < todayMs) pastDue++; 
-            else if (dueTimeMs === todayMs) dueToday++;
+            let dObj = new Date(dDate);
+            if (!isNaN(dObj.getTime())) {
+                let dYear = dObj.getFullYear();
+                let dMonth = String(dObj.getMonth() + 1).padStart(2, '0');
+                let dDay = String(dObj.getDate()).padStart(2, '0');
+                let normalizedDueMs = new Date(`${dYear}-${dMonth}-${dDay}T00:00:00Z`).getTime();
+                
+                if (normalizedDueMs < todayMs) pastDue++; 
+                else if (normalizedDueMs === todayMs) dueToday++;
+            }
         }
     });
     // ------------------------------------------
@@ -181,7 +192,6 @@ async function dispatchRoute(payload, res, db, admin) {
     const dashboardLink = `https://mypieinteractive.github.io/prospect-dashboard/?id=${routeId}`;
     const dispatchRef = db.collection('Dispatch').doc(routeId);
     
-    // Save Heavy Payload to Firestore
     await dispatchRef.set({
         routeId: routeId,
         driverId: payload.driverId || "",
@@ -198,7 +208,6 @@ async function dispatchRoute(payload, res, db, admin) {
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Send Microscopic "Claim Check" to GAS Webhook
     const gasPayload = {
         action: 'queueDispatch',
         routeId: routeId,
