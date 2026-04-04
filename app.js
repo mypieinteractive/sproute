@@ -1,11 +1,10 @@
 /**
- * Dashboard - V12.7
+ * Dashboard - V12.8
  * FILE: app.js
  * Changes: 
- * 1. Added Unmatched Address Resolution flow. Intercepts the uploadCsv response 
- * and triggers a paginated modal if unmatched addresses are found, rather than immediately 
- * reloading the board. Supports validation state, dynamic buttons, and skip logic utilizing 
- * existing customConfirm functionality.
+ * 1. Non-Blocking Dispatch UI. Replaced the synchronous modal freeze with an Optimistic 
+ * UI Toast notification. Modal now vanishes instantly, freeing the user to navigate the 
+ * dashboard while html2canvas and the dispatch payload process gracefully in the background.
  * 2. Safely added the 'Content-Type' header to `apiFetch` strictly for requests 
  * routing to `activeBackend === 'firestore'`, preventing CORS issues for Apps Script.
  */
@@ -1337,15 +1336,12 @@ function handleOpenEmailModal() {
 
     document.getElementById('btn-submit-dispatch').onclick = async () => {
         const btn = document.getElementById('btn-submit-dispatch');
-        btn.innerText = 'Dispatching...';
         btn.disabled = true;
 
         const customBody = document.getElementById('email-body-text').value;
         const ccCompany = document.getElementById('cc-company-checkbox').checked;
-        
         const ccMeChecked = document.getElementById('cc-me-checkbox').checked;
         const addCcValue = ccMeChecked ? adminEmail : '';
-        
         const ccEmail = document.getElementById('additional-cc-email').value;
 
         const mapWrapper = document.getElementById('map-wrapper');
@@ -1357,6 +1353,20 @@ function handleOpenEmailModal() {
             el.style.display = 'none';
         });
 
+        // 1. HIDE MODAL INSTANTLY & SPAWN PROCESSING TOAST
+        const mOverlay = document.getElementById('modal-overlay');
+        mOverlay.style.display = 'none';
+
+        const toast = document.createElement('div');
+        toast.id = 'dispatch-toast';
+        toast.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating Map...';
+        toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--blue, #3B82F6); color: white; padding: 12px 24px; border-radius: 30px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 10px 15px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 10px; transition: all 0.3s ease;';
+        document.body.appendChild(toast);
+
+        // Small delay to allow the browser to visually close the modal before locking the thread
+        await new Promise(r => setTimeout(r, 50));
+
+        // 2. MAP SNAPSHOT
         const bounds = new mapboxgl.LngLatBounds();
         const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
         
@@ -1391,6 +1401,20 @@ function handleOpenEmailModal() {
             el.style.display = originalDisplays[index];
         });
 
+        // 3. OPTIMISTIC UI: Instantly clear dashboard
+        const cachedStops = JSON.parse(JSON.stringify(stops)); // Keep local backup
+        
+        // Remove ALL orders for this inspector (Fixes Task 2)
+        stops = stops.filter(s => String(s.driverId) !== String(currentInspectorFilter));
+        
+        if (isManagerView) {
+            const filterEl = document.getElementById('inspector-filter');
+            if (filterEl) filterEl.value = 'all';
+            handleInspectorFilterChange('all');
+        } else {
+            render(); drawRoute(); updateSummary();
+        }
+
         const payload = {
             action: "dispatchRoute",
             driverId: currentInspectorFilter,
@@ -1403,47 +1427,44 @@ function handleOpenEmailModal() {
         };
         if (!isManagerView) payload.routeId = routeId;
 
-        try {
-            const res = await apiFetch(payload);
-            const result = await res.json();
-            
-            if (result.success) {
-                m.style.display = 'none';
+        // 4. RETRY LOOP (Wait for Email)
+        const attemptDispatch = async () => {
+            toast.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Dispatching Email...';
+            try {
+                const res = await apiFetch(payload);
+                const result = await res.json();
                 
-                stops.forEach(s => {
-                    if (String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status)) {
-                        s.routeState = 'Dispatched';
-                        s.status = 'Dispatched'; 
-                    }
-                });
-                
-                if (isManagerView) {
-                    const filterEl = document.getElementById('inspector-filter');
-                    if (filterEl) filterEl.value = 'all';
-                    handleInspectorFilterChange('all');
+                if (result.success) {
+                    toast.style.background = '#10b981'; // Green
+                    toast.innerHTML = '<i class="fa-solid fa-check"></i> Route Sent!';
+                    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
                 } else {
-                    render(); drawRoute(); updateSummary();
+                    throw new Error(result.error || "Dispatch failed");
                 }
+            } catch (e) {
+                toast.style.display = 'none'; // Hide toast during prompt
                 
-                const toast = document.createElement('div');
-                toast.innerText = 'Route Sent!';
-                toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
-                document.body.appendChild(toast);
-                
-                setTimeout(() => {
-                    toast.style.opacity = '0';
-                    setTimeout(() => toast.remove(), 300);
-                }, 1000);
-            } else {
-                throw new Error("Dispatch failed");
+                const tryAgain = await customConfirm("Dispatch failed. Try again?");
+                if (tryAgain) {
+                    toast.style.display = 'flex';
+                    await attemptDispatch(); // Recursive retry
+                } else {
+                    // Restore orders from local memory backup
+                    stops = cachedStops;
+                    if (isManagerView) {
+                        const filterEl = document.getElementById('inspector-filter');
+                        if (filterEl) filterEl.value = currentInspectorFilter;
+                        handleInspectorFilterChange(currentInspectorFilter);
+                    } else {
+                        render(); drawRoute(); updateSummary();
+                    }
+                    toast.remove();
+                }
             }
-        } catch (e) {
-            btn.innerText = 'Submit';
-            btn.disabled = false;
-            await customAlert("Failed to dispatch route. Please try again.");
-        }
+        };
+
+        await attemptDispatch();
     };
-}
 
 function updateRoutingUI() {
     const isDirty = dirtyRoutes.size > 0;
