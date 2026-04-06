@@ -1,10 +1,10 @@
 /**
- * Dashboard - V13.0 (Enterprise Core)
+ * Dashboard - V13.1 (Enterprise Core)
  * FILE: app.js
  * Changes: 
  * 1. Completely removed A/B testing scaffolding, visual console, and Apps Script routing logic.
  * 2. Hardcoded the Node.js/Firestore API as the sole backend environment.
- * 3. Cleaned up global variables, resize listeners, and API fetch wrappers.
+ * 3. Integrated Dynamic Geographic Aspect Ratio calculation for perfectly scaled dispatch emails.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -1262,7 +1262,7 @@ function handleOpenEmailModal() {
         m.style.display = 'none';
     };
 
-document.getElementById('btn-submit-dispatch').onclick = async () => {
+    document.getElementById('btn-submit-dispatch').onclick = async () => {
         const btn = document.getElementById('btn-submit-dispatch');
         btn.innerText = 'Dispatching...';
         btn.disabled = true;
@@ -1282,7 +1282,7 @@ document.getElementById('btn-submit-dispatch').onclick = async () => {
             el.style.display = 'none';
         });
 
-        // --- NEW: Calculate the true geographic aspect ratio of the route ---
+        // Calculate the true geographic aspect ratio of the route
         const bounds = new mapboxgl.LngLatBounds();
         let lats = [];
         let lngs = [];
@@ -1334,7 +1334,7 @@ document.getElementById('btn-submit-dispatch').onclick = async () => {
             }
         }
 
-        // --- Set the map container to the perfect dynamic dimensions ---
+        // Set the map container to the perfect dynamic dimensions
         const originalWrapperStyle = mapWrapper.style.cssText;
         mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
         
@@ -1362,7 +1362,7 @@ document.getElementById('btn-submit-dispatch').onclick = async () => {
             console.error("Screenshot error:", e);
         }
 
-        // --- Instantly restore the user's original UI layout ---
+        // Instantly restore the user's original UI layout
         mapWrapper.style.cssText = originalWrapperStyle;
         map.resize(); 
         if (!bounds.isEmpty()) {
@@ -1425,6 +1425,7 @@ document.getElementById('btn-submit-dispatch').onclick = async () => {
             await customAlert("Failed to dispatch route. Please try again.");
         }
     };
+}
 
 function updateRoutingUI() {
     const isDirty = dirtyRoutes.size > 0;
