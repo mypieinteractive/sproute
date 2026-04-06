@@ -1294,7 +1294,7 @@ function handleOpenEmailModal() {
         if (eps.end && eps.end.lng && eps.end.lat) bounds.extend([parseFloat(eps.end.lng), parseFloat(eps.end.lat)]);
 
         if (!bounds.isEmpty()) {
-            map.fitBounds(bounds, { padding: 120, animate: false });
+            map.fitBounds(bounds, { padding: 50, animate: false });
         }
 
         map.resize();
