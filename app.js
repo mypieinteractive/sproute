@@ -1262,7 +1262,7 @@ function handleOpenEmailModal() {
         m.style.display = 'none';
     };
 
-    document.getElementById('btn-submit-dispatch').onclick = async () => {
+document.getElementById('btn-submit-dispatch').onclick = async () => {
         const btn = document.getElementById('btn-submit-dispatch');
         btn.innerText = 'Dispatching...';
         btn.disabled = true;
@@ -1282,34 +1282,91 @@ function handleOpenEmailModal() {
             el.style.display = 'none';
         });
 
+        // --- NEW: Calculate the true geographic aspect ratio of the route ---
         const bounds = new mapboxgl.LngLatBounds();
+        let lats = [];
+        let lngs = [];
+
         const routedStopsForInsp = stops.filter(s => isActiveStop(s) && String(s.driverId) === String(currentInspectorFilter) && isRouteAssigned(s.status));
         
-        routedStopsForInsp.forEach(s => {
-            if (s.lng && s.lat) bounds.extend([s.lng, s.lat]);
-        });
-        
+        const addPoint = (lng, lat) => {
+            if (lng !== undefined && lat !== undefined && !isNaN(lng) && !isNaN(lat)) {
+                bounds.extend([lng, lat]);
+                lngs.push(lng);
+                lats.push(lat);
+            }
+        };
+
+        routedStopsForInsp.forEach(s => addPoint(s.lng, s.lat));
         let eps = getActiveEndpoints();
-        if (eps.start && eps.start.lng && eps.start.lat) bounds.extend([parseFloat(eps.start.lng), parseFloat(eps.start.lat)]);
-        if (eps.end && eps.end.lng && eps.end.lat) bounds.extend([parseFloat(eps.end.lng), parseFloat(eps.end.lat)]);
+        if (eps.start) addPoint(eps.start.lng, eps.start.lat);
+        if (eps.end) addPoint(eps.end.lng, eps.end.lat);
+
+        let finalWidth = 800;
+        let finalHeight = 450; // Fallback
+
+        if (lats.length > 1) {
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+            const minLng = Math.min(...lngs);
+            const maxLng = Math.max(...lngs);
+
+            const dLat = maxLat - minLat;
+            const avgLat = (maxLat + minLat) / 2;
+            
+            // Adjust longitude distance based on latitude to get true physical ratio
+            const dLng = (maxLng - minLng) * Math.cos(avgLat * Math.PI / 180);
+
+            if (dLat > 0.00001 && dLng > 0.00001) {
+                let ratio = dLng / dLat; // width / height
+                
+                if (ratio > 1) {
+                    // Landscape Route (Wider than it is tall)
+                    finalWidth = 800;
+                    // Clamp minimum height to 350px so it doesn't look like a thin ribbon
+                    finalHeight = Math.max(350, Math.floor(800 / ratio)); 
+                } else {
+                    // Portrait Route (Taller than it is wide)
+                    finalHeight = 800;
+                    // Clamp minimum width to 350px so it fits email layouts nicely
+                    finalWidth = Math.max(350, Math.floor(800 * ratio));
+                }
+            }
+        }
+
+        // --- Set the map container to the perfect dynamic dimensions ---
+        const originalWrapperStyle = mapWrapper.style.cssText;
+        mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
+        
+        map.resize(); 
 
         if (!bounds.isEmpty()) {
             map.fitBounds(bounds, { padding: 50, animate: false });
         }
 
-        map.resize();
-
+        // Wait for the map to finish rendering the new layout
         await new Promise(resolve => {
             map.once('idle', resolve);
-            setTimeout(resolve, 1000); 
+            setTimeout(resolve, 1200); 
         });
 
         let mapBase64 = '';
         try {
-            const canvasSnapshot = await html2canvas(mapWrapper, { useCORS: true, backgroundColor: '#121212' });
-            mapBase64 = canvasSnapshot.toDataURL('image/png', 0.9);
+            const canvasSnapshot = await html2canvas(mapWrapper, { 
+                useCORS: true, 
+                backgroundColor: '#121212',
+                scale: 1 
+            });
+            mapBase64 = canvasSnapshot.toDataURL('image/jpeg', 0.85); 
         } catch(e) {
             console.error("Screenshot error:", e);
+        }
+
+        // --- Instantly restore the user's original UI layout ---
+        mapWrapper.style.cssText = originalWrapperStyle;
+        map.resize(); 
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: 50, animate: false }); 
         }
 
         overlaysToHide.forEach((el, index) => {
@@ -1368,7 +1425,6 @@ function handleOpenEmailModal() {
             await customAlert("Failed to dispatch route. Please try again.");
         }
     };
-}
 
 function updateRoutingUI() {
     const isDirty = dirtyRoutes.size > 0;
