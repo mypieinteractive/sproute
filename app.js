@@ -7,6 +7,9 @@ document.body.className = `view-${activeViewMode} manager-all-inspectors`;
 if (isMobileManager) {
     document.body.classList.add('split-show-list');
 }
+if (isTestingMode) {
+    document.body.classList.add('testing-mode');
+}
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
