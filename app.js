@@ -1,12 +1,10 @@
 /**
- * Dashboard - V15.0
+ * Dashboard - V13.1 (Enterprise Core)
  * FILE: app.js
  * Changes: 
- * 1. Mapped 'managermobile' and 'managermobilesplit' to the split-view architecture by default.
- * 2. Implemented Global Empty States to hide maps/lists when zero company orders exist.
- * 3. Replaced Map/List segmented controller with a Floating Action Button (FAB).
- * 4. Added full-screen global drag-and-drop file listeners for managers.
- * 5. Auto-routes manager back to specific Inspector's list following a successful upload.
+ * 1. Completely removed A/B testing scaffolding, visual console, and Apps Script routing logic.
+ * 2. Hardcoded the Node.js/Firestore API as the sole backend environment.
+ * 3. Integrated Dynamic Geographic Aspect Ratio calculation for perfectly scaled dispatch emails.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -57,20 +55,13 @@ const driverParam = params.get('driver');
 const companyParam = params.get('company');
 const adminParam = params.get('admin');
 
-const rawViewMode = (params.get('view') || 'inspector').toLowerCase(); 
-const activeViewMode = rawViewMode === 'managermobilesplit' ? 'managermobile' : rawViewMode;
-const isManagerView = activeViewMode.startsWith('manager'); 
-const isMobileManager = activeViewMode === 'managermobile';
-
-document.body.className = `view-${activeViewMode} manager-all-inspectors`;
-if (isMobileManager) {
-    document.body.classList.add('split-show-list');
-}
+const viewMode = (params.get('view') || 'inspector').toLowerCase(); 
+const isManagerView = (viewMode === 'manager' || viewMode === 'managermobile' || viewMode === 'managermobilesplit'); 
 
 document.addEventListener('keydown', (e) => { 
     if (e.key === 'Shift') updateShiftCursor(true); 
 
-    if (isManagerView && (e.key === 'Delete' || e.key === 'Backspace')) {
+    if (viewMode === 'manager' && (e.key === 'Delete' || e.key === 'Backspace')) {
         const tag = e.target.tagName.toUpperCase();
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         if (document.getElementById('modal-overlay').style.display === 'flex') return;
@@ -80,6 +71,9 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+
+document.addEventListener('keyup', (e) => { if (e.key === 'Shift') updateShiftCursor(false); });
+document.addEventListener('mousemove', (e) => { updateShiftCursor(e.shiftKey); });
 
 const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
 const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
@@ -197,18 +191,17 @@ window.setRouteViewFilter = function(val) {
     updateSummary();
 };
 
-window.toggleMobileView = function() {
-    const isList = document.body.classList.contains('split-show-list');
-    const fab = document.getElementById('mobile-fab-toggle');
-    if (isList) {
-        document.body.classList.remove('split-show-list');
+window.setMobileSplitView = function(viewType) {
+    document.getElementById('toggle-map').classList.toggle('active', viewType === 'map');
+    document.getElementById('toggle-list').classList.toggle('active', viewType === 'list');
+    
+    if (viewType === 'map') {
         document.body.classList.add('split-show-map');
-        if (fab) fab.innerHTML = '<i class="fa-solid fa-list"></i>';
+        document.body.classList.remove('split-show-list');
         setTimeout(() => { if(map) map.resize(); }, 100);
     } else {
-        document.body.classList.remove('split-show-map');
         document.body.classList.add('split-show-list');
-        if (fab) fab.innerHTML = '<i class="fa-solid fa-map"></i>';
+        document.body.classList.remove('split-show-map');
     }
 };
 
@@ -333,6 +326,11 @@ function silentSaveRouteState() {
     apiFetch(payload).catch(e => console.log("Silent save error", e));
 }
 
+document.body.className = `view-${viewMode} manager-all-inspectors`;
+if (viewMode === 'managermobilesplit') {
+    document.body.classList.add('split-show-map');
+}
+
 mapboxgl.accessToken = MAPBOX_TOKEN;
 const mapConfig = { 
     container: 'map', 
@@ -342,7 +340,7 @@ const mapConfig = {
     attributionControl: false,
     boxZoom: false,
     preserveDrawingBuffer: true,
-    cooperativeGestures: (viewMode === 'inspector' || isMobileManager)
+    cooperativeGestures: (viewMode === 'inspector' || viewMode === 'managermobile' || viewMode === 'managermobilesplit')
 };
 const map = new mapboxgl.Map(mapConfig);
 frontEndApiUsage.mapLoads++;
@@ -618,7 +616,7 @@ function startResize(e) {
     if(!isManagerView) return;
     isResizing = true;
     resizerEl.classList.add('active');
-    document.body.style.cursor = isMobileManager ? 'row-resize' : 'col-resize';
+    document.body.style.cursor = viewMode === 'managermobile' ? 'row-resize' : 'col-resize';
     mapWrapEl.style.pointerEvents = 'none'; 
 }
 
@@ -630,7 +628,7 @@ function performResize(e) {
     let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
     let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
     
-    if (isMobileManager) {
+    if (viewMode === 'managermobile') {
         let newHeight = window.innerHeight - clientY;
         if (newHeight < 200) newHeight = 200;
         if (newHeight > window.innerHeight - 200) newHeight = window.innerHeight - 200;
@@ -908,22 +906,14 @@ async function loadData() {
             }
 
             const mapLogo = document.getElementById('brand-logo-map');
-            const emptyLogo = document.getElementById('empty-brand-logo');
+
             const isCompanyTier = document.body.classList.contains('tier-company');
 
             if (isCompanyTier && data.companyLogo) {
                 if (mapLogo) mapLogo.src = data.companyLogo;
-                if (emptyLogo) {
-                    emptyLogo.src = data.companyLogo;
-                    emptyLogo.style.display = 'block';
-                }
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
                 if (mapLogo) mapLogo.src = sprouteLogoUrl;
-                if (emptyLogo) {
-                    emptyLogo.src = sprouteLogoUrl;
-                    emptyLogo.style.display = 'block';
-                }
             }
             
             let displayName = data.displayName || 'Sproute'; 
@@ -933,11 +923,6 @@ async function loadData() {
             const sidebarDriverEl = document.getElementById('sidebar-driver-name');
             if (sidebarDriverEl && !isCompanyTier) {
                 sidebarDriverEl.innerText = displayName;
-            }
-
-            const emptyNameEl = document.getElementById('empty-brand-name');
-            if (emptyNameEl) {
-                emptyNameEl.innerText = displayName;
             }
 
             updateInspectorDropdown(); 
@@ -1289,7 +1274,7 @@ function handleOpenEmailModal() {
         const ccEmail = document.getElementById('additional-cc-email').value;
 
         const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-fab-toggle');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-view-toggle');
         
         const originalDisplays = [];
         overlaysToHide.forEach((el, index) => {
@@ -1475,7 +1460,7 @@ function updateRoutingUI() {
                 break;
             }
         }
-        if (hintEl) hintEl.style.display = (showHint && !isMobileManager) ? 'block' : 'none';
+        if (hintEl) hintEl.style.display = (showHint && viewMode !== 'managermobile' && viewMode !== 'managermobilesplit') ? 'block' : 'none';
         return;
     }
 
@@ -2571,13 +2556,6 @@ async function performUpload(file, inspectorId, csvType, overrideLock = false) {
                     openUnmatchedModal();
                 } else {
                     await loadData(); 
-                    if (isManagerView && inspectorId) {
-                        const filterEl = document.getElementById('inspector-filter');
-                        if (filterEl) { 
-                            filterEl.value = inspectorId; 
-                            handleInspectorFilterChange(inspectorId); 
-                        }
-                    }
                 }
             } else if (data.status === 'size_limit') {
                 overlay.style.display = 'none';
@@ -2615,95 +2593,56 @@ function handleFileSelection(file) {
     }
 }
 
-// Global Drag Overlay Listeners
-let dragCounter = 0;
-const dragOverlay = document.getElementById('drag-overlay');
-
-document.addEventListener('dragenter', (e) => {
-    if (!isManagerView) return;
-    e.preventDefault(); 
-    dragCounter++;
-    const allActiveCompanyStops = stops.filter(s => isActiveStop(s));
-    if (dragCounter === 1 && allActiveCompanyStops.length > 0) {
-        if (dragOverlay) dragOverlay.style.display = 'flex';
-    }
-});
-document.addEventListener('dragleave', (e) => {
-    if (!isManagerView) return;
-    e.preventDefault(); 
-    dragCounter--;
-    if (dragCounter === 0 && dragOverlay) dragOverlay.style.display = 'none';
-});
-document.addEventListener('dragover', (e) => { 
-    if (isManagerView) e.preventDefault(); 
-});
-document.addEventListener('drop', (e) => {
-    if (!isManagerView) return;
-    e.preventDefault(); 
-    dragCounter = 0;
-    if (dragOverlay) dragOverlay.style.display = 'none';
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        handleFileSelection(e.dataTransfer.files[0]);
-    }
-});
-
-// Empty State Main Dropzone Listeners
-const mainDropzone = document.getElementById('main-dropzone');
-const mainInput = document.getElementById('main-file-input');
-if (mainDropzone && mainInput) {
-    mainDropzone.onclick = () => mainInput.click();
-    mainDropzone.ondragover = (e) => { 
-        e.preventDefault(); 
-        mainDropzone.style.borderColor = 'var(--blue)'; 
-        mainDropzone.style.background = 'rgba(37, 99, 235, 0.05)'; 
+function createDropzone() {
+    const dropzone = document.createElement('div');
+    dropzone.className = 'upload-dropzone';
+    dropzone.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: 8px; margin: 20px; cursor: pointer; transition: all 0.2s; min-height: 250px;';
+    
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.style.display = 'none';
+    
+    dropzone.innerHTML = `
+        <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px; pointer-events: none;">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i>
+        </div>
+        <div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; pointer-events: none;">Ready to Route</div>
+        <div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5; pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
+    `;
+    
+    dropzone.appendChild(input);
+    
+    dropzone.onclick = () => input.click();
+    
+    dropzone.ondragover = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'var(--bg-hover)';
+        dropzone.style.borderColor = 'var(--blue)';
     };
-    mainDropzone.ondragleave = (e) => { 
-        e.preventDefault(); 
-        mainDropzone.style.borderColor = 'var(--border-color)'; 
-        mainDropzone.style.background = 'transparent'; 
+    
+    dropzone.ondragleave = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'transparent';
+        dropzone.style.borderColor = 'var(--border-color)';
     };
-    mainDropzone.ondrop = (e) => {
-        e.preventDefault(); 
-        mainDropzone.style.borderColor = 'var(--border-color)'; 
-        mainDropzone.style.background = 'transparent';
+    
+    dropzone.ondrop = (e) => {
+        e.preventDefault();
+        dropzone.style.backgroundColor = 'transparent';
+        dropzone.style.borderColor = 'var(--border-color)';
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             handleFileSelection(e.dataTransfer.files[0]);
         }
     };
-    mainInput.onchange = (e) => {
-        if (e.target.files && e.target.files.length > 0) { 
-            handleFileSelection(e.target.files[0]); 
-            mainInput.value = ''; 
-        }
-    };
-}
-
-// Header CSV Upload Listeners
-const headerDropzone = document.getElementById('header-csv-upload');
-const headerInput = document.getElementById('header-file-input');
-if (headerDropzone && headerInput) {
-    headerDropzone.onclick = () => headerInput.click();
-    headerDropzone.ondragover = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.add('drag-active');
-    };
-    headerDropzone.ondragleave = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.remove('drag-active');
-    };
-    headerDropzone.ondrop = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.remove('drag-active');
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
-    };
-    headerInput.onchange = (e) => {
+    
+    input.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
-            headerInput.value = ''; 
         }
     };
+    
+    return dropzone;
 }
 
 function render() {
@@ -2739,21 +2678,12 @@ function render() {
         }
     }
 
-    const mobileToggle = document.getElementById('mobile-fab-toggle');
+    const mobileToggle = document.getElementById('mobile-view-toggle');
     if (mobileToggle) {
-        mobileToggle.style.display = isMobileManager ? 'flex' : 'none';
+        mobileToggle.style.display = viewMode === 'managermobilesplit' ? 'flex' : 'none';
     }
 
     if (isManagerView) {
-        // --- NEW: Handle Empty State Visualization ---
-        const allActiveCompanyStops = stops.filter(s => isActiveStop(s));
-        if (allActiveCompanyStops.length === 0) {
-            document.body.classList.add('empty-state');
-            return; // Halt render, empty state CSS handles the rest
-        } else {
-            document.body.classList.remove('empty-state');
-        }
-
         const header = document.createElement('div');
         header.className = 'glide-table-header';
         header.style.position = 'sticky';
@@ -2849,7 +2779,7 @@ function render() {
             const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}" style="visibility:${showHandle ? 'visible' : 'hidden'};">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
 
             let metaHtml = '';
-            if (isMobileManager) {
+            if (viewMode === 'managermobile' || viewMode === 'managermobilesplit') {
                 metaHtml = `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>`;
             }
 
@@ -2929,6 +2859,12 @@ function render() {
         let eps = getActiveEndpoints();
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
+        if (activeStops.length === 0) {
+            if (isManagerView) {
+                listContainer.appendChild(createDropzone());
+            }
+        }
+
         if (unroutedStops.length > 0) {
             const unroutedDiv = document.createElement('div');
             unroutedDiv.id = 'unrouted-list';
@@ -2968,7 +2904,13 @@ function render() {
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
         
-        activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+        if (activeStops.length === 0) {
+            if (isManagerView) {
+                mainDiv.appendChild(createDropzone());
+            }
+        } else {
+            activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+        }
     }
 
     let endpointsToDraw = [];
@@ -3541,6 +3483,37 @@ function initSortable() {
     }
 }
 
+const headerDropzone = document.getElementById('header-csv-upload');
+const headerInput = document.getElementById('header-file-input');
+if (headerDropzone && headerInput) {
+    headerDropzone.onclick = () => headerInput.click();
+    headerDropzone.ondragover = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.add('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+    };
+    headerDropzone.ondrop = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
+    headerInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+            headerInput.value = ''; 
+        }
+    };
+}
+
 function openUnmatchedModal() {
     const modal = document.getElementById('unmatched-modal');
     const title = document.getElementById('unmatched-modal-title');
@@ -3583,14 +3556,6 @@ async function nextUnmatchedAddress() {
         }, 2000);
 
         await loadData(); 
-        
-        if (isManagerView && currentUploadDriverId) {
-            const filterEl = document.getElementById('inspector-filter');
-            if (filterEl) { 
-                filterEl.value = currentUploadDriverId; 
-                handleInspectorFilterChange(currentUploadDriverId); 
-            }
-        }
     }
 }
 
