@@ -7,8 +7,13 @@
 const { safeJsonParse } = require('./helpers'); // Assuming you have this in your helpers file
 
 const ZEPTO_URL = "https://api.zeptomail.com/v1.1/email";
-// IMPORTANT: Move this to your .env file later for security! (process.env.ZEPTO_TOKEN)
-const ZEPTO_TOKEN = "Zoho-enczapikey wSsVR60lq0b1Cv18yDWlL+9tml4DVlukFhss2wOjun78TajEp8c8n0bOA1PzSaMfGGY8EzBH8L8tmR0B1mJbhtV4zg4FDiiF9mqRe1U4J3x17qnvhDzMXGRflhKLKI0LxgtvkmZpF8wg+g==";
+
+// Pull the token securely from Google Cloud Run's environment
+const ZEPTO_TOKEN = process.env.ZEPTO_TOKEN;
+
+if (!ZEPTO_TOKEN) {
+    console.error("CRITICAL: ZEPTO_TOKEN environment variable is missing!");
+}
 
 async function sendRouteEmail(db, payload, routeId, driverData) {
     try {
