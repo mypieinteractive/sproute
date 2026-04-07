@@ -1,5 +1,5 @@
 /**
- * ZEPTO MAILER - V1.0
+ * ZEPTO MAILER - V15.0
  * FILE: zeptoMailer.js
  * Handles formatting and sending enterprise dispatch emails via ZeptoMail REST API.
  */
