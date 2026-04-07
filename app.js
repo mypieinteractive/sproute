@@ -1,5 +1,5 @@
 /**
- * Dashboard - V13.2 (Enterprise Core)
+ * Dashboard - V15.0
  * FILE: app.js
  * Changes: 
  * 1. Mapped 'managermobile' and 'managermobilesplit' to the split-view architecture by default.
