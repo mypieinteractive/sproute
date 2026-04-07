@@ -1,15 +1,25 @@
 /**
- * ZEPTO MAILER - V15.0
- * FILE: zeptoMailer.js
- * Handles formatting and sending enterprise dispatch emails via ZeptoMail REST API.
+ * zeptoMailer.js
+ * VERSION: V15.1
+ * * CHANGES:
+ * V15.1 - ZeptoMail Authorization & Local Timezone Accuracy Fix. Added the 
+ * required 'Zoho-enczapikey ' prefix handler for the ZEPTO_TOKEN. Integrated 'geo-tz' 
+ * to dynamically extract the exact IANA Timezone string based on the latitude and 
+ * longitude of the route's first stop. This ensures the "Due Today" and "Past Due" 
+ * badge calculations are perfectly synchronized with the route's physical location, 
+ * regardless of where the company's HQ is.
  */
 
-const { safeJsonParse } = require('./helpers'); // Assuming you have this in your helpers file
+const { safeJsonParse } = require('./helpers'); 
+const { find } = require('geo-tz');
 
 const ZEPTO_URL = "https://api.zeptomail.com/v1.1/email";
 
-// Pull the token securely from Google Cloud Run's environment
-const ZEPTO_TOKEN = process.env.ZEPTO_TOKEN;
+// Pull the token securely from Google Cloud Run's environment and ensure prefix
+let ZEPTO_TOKEN = process.env.ZEPTO_TOKEN;
+if (ZEPTO_TOKEN && !ZEPTO_TOKEN.startsWith("Zoho-enczapikey ")) {
+    ZEPTO_TOKEN = `Zoho-enczapikey ${ZEPTO_TOKEN}`;
+}
 
 if (!ZEPTO_TOKEN) {
     console.error("CRITICAL: ZEPTO_TOKEN environment variable is missing!");
@@ -37,11 +47,30 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         
         if (stagingStops.length === 0) throw new Error("No orders in staging bay to dispatch.");
 
-        // 3. Calculate Route Statistics
+        // 3. Resolve Dynamic Timezone from Coordinates
+        let localTimeZone = 'America/Chicago'; // Default fallback
+        const firstStop = stagingStops[0];
+        if (firstStop) {
+            let lat = parseFloat(Array.isArray(firstStop) ? firstStop[9] : (firstStop.lat || firstStop.l));
+            let lng = parseFloat(Array.isArray(firstStop) ? firstStop[10] : (firstStop.lng || firstStop.g));
+            
+            if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+                try {
+                    const tzResult = find(lat, lng);
+                    if (tzResult && tzResult.length > 0) {
+                        localTimeZone = tzResult[0];
+                    }
+                } catch (tzError) {
+                    console.error("Timezone resolution failed, using default:", tzError.message);
+                }
+            }
+        }
+
+        // 4. Calculate Route Statistics 
         let totalMiles = 0, dueToday = 0, pastDue = 0, totalSecs = 0;
         let routesMap = {};
         
-        const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
+        const formatter = new Intl.DateTimeFormat('en-US', { timeZone: localTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
         const [{ value: mo }, , { value: da }, , { value: ye }] = formatter.formatToParts(new Date());
         const todayMs = new Date(`${ye}-${mo}-${da}T00:00:00`).getTime();
 
@@ -69,7 +98,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         const totalOrders = stagingStops.length;
         const totalHrs = totalOrders > 0 ? ((totalSecs + (totalOrders * serviceDelay * 60)) / 3600).toFixed(1) : 0;
 
-        // 4. Build the HTML Table Rows
+        // 5. Build the HTML Table Rows
         let tableRows = "";
         const hexColors = { "1": "#000075", "2": "#4363d8", "3": "#469990" };
         
@@ -120,7 +149,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             });
         });
 
-        // 5. Construct the Full HTML Body
+        // 6. Construct the Full HTML Body
         const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
         const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/Sproute/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
         const customBodyText = payload.customBody || comp.defaultEmailMessage || "";
@@ -179,7 +208,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             </div>
         </div>`;
 
-        // 6. Build ZeptoMail Payload
+        // 7. Build ZeptoMail Payload
         const toList = [{ email_address: { address: driverEmail, name: driverName } }];
         let ccList = [];
         
@@ -207,7 +236,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         if (ccList.length > 0) zeptoPayload.cc = ccList;
         if (comp.email) zeptoPayload.reply_to = [{ address: comp.email, name: comp.name }];
 
-        // 7. Fire to ZeptoMail
+        // 8. Fire to ZeptoMail
         const emailResponse = await fetch(ZEPTO_URL, {
             method: "POST",
             headers: {
