@@ -1,6 +1,6 @@
 /**
  * initialization.js
- * VERSION: V1.37
+ * VERSION: V15.0
  * * CHANGES:
  * V1.37 - Inspector "Dead Link" Fix. Added support for 'req.query.id' to intercept 
  * dispatched route links. It now queries the Dispatch collection, retrieves the 
