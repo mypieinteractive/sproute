@@ -1,6 +1,6 @@
 /**
  * helpers.js
- * VERSION: V1.37
+ * VERSION: V15.0
  * * CHANGES:
  * V1.37 - Amnesia Formatting Fix. Updated formatStopForManager to correctly 
  * extract and preserve the cluster, eta, dist, and durationSecs properties 
