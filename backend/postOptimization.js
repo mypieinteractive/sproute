@@ -6,8 +6,8 @@
  * handle email dispatches natively and instantly entirely within Node.js.
  */
 
-const { safeJsonParse } = require('./helpers');
-const { sendRouteEmail } = require('./zeptoMailer');
+const { safeJsonParse } = require('./backend/helpers');
+const { sendRouteEmail } = require('./backend/zeptoMailer');
 
 async function saveRoute(payload, res, db) {
     if (!payload.stops) return res.status(400).json({ error: "Missing stops." });
