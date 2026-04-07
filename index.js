@@ -29,11 +29,11 @@ if (!admin.apps.length) {
 const db = getFirestore(firebaseApp, 'sproute');
 
 // Import Modular Controllers
-const { getDashboardInit } = require('./initialization');
-const { updateUserFromGlide, updateCompanyFromGlide, updateCsvSettingsFromGlide, updateEndpoint } = require('./glideWebhooks');
-const { uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress } = require('./preOptimization');
-const { generateRoute, calculate } = require('./optimization');
-const { saveRoute, resetRoute, recreateOrders, restoreOriginalRoute, dispatchRoute } = require('./postOptimization');
+const { getDashboardInit } = require('./backend/initialization');
+const { updateUserFromGlide, updateCompanyFromGlide, updateCsvSettingsFromGlide, updateEndpoint } = require('./backend/glideWebhooks');
+const { uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress } = require('./backend/preOptimization');
+const { generateRoute, calculate } = require('./backend/optimization');
+const { saveRoute, resetRoute, recreateOrders, restoreOriginalRoute, dispatchRoute } = require('./backend/postOptimization');
 
 const app = express();
 
