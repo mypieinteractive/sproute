@@ -540,7 +540,7 @@ body.view-manager #resizer { display: block; }
     border-right: 2px solid var(--blue); 
     height: 100vh; 
     flex: none; 
-    z-index: 500;
+    z-index: 100000;
     box-shadow: 2px 0 10px rgba(0,0,0,0.5);
 }
 body.testing-mode #testing-sidebar { display: flex; }
