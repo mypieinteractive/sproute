@@ -1,6 +1,6 @@
 /**
  * index.js
- * VERSION: V1.38
+ * VERSION: V15.0
  * * CHANGES:
  * V1.38 - Firestore Claim Check API. Added a dedicated GET endpoint `/dispatchData/:id` 
  * to securely serve large Dispatch documents (containing base64 map images and full arrays) 
