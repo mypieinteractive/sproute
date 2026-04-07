@@ -1,10 +1,11 @@
 /**
- * Dashboard - V15.0
+ * Dashboard - V15.2
  * FILE: app.js
  * Changes: 
- * 1. Completely removed A/B testing scaffolding, visual console, and Apps Script routing logic.
- * 2. Hardcoded the Node.js/Firestore API as the sole backend environment.
- * 3. Integrated Dynamic Geographic Aspect Ratio calculation for perfectly scaled dispatch emails.
+ * 1. Populated #empty-state-header dynamically with companyLogo and displayName in loadData().
+ * 2. Toggled document.body.classList "empty-state-active" when a manager view has zero active orders.
+ * 3. Removed obsolete createDropzone() function and references in the render loop.
+ * 4. Bound the main full-screen upload dropzone events to the handleFileSelection() handler.
  */
 
 function updateShiftCursor(isShiftDown) {
@@ -906,14 +907,17 @@ async function loadData() {
             }
 
             const mapLogo = document.getElementById('brand-logo-map');
+            const emptyLogo = document.getElementById('empty-brand-logo');
 
             const isCompanyTier = document.body.classList.contains('tier-company');
 
             if (isCompanyTier && data.companyLogo) {
                 if (mapLogo) mapLogo.src = data.companyLogo;
+                if (emptyLogo) { emptyLogo.src = data.companyLogo; emptyLogo.style.display = 'block'; }
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
                 if (mapLogo) mapLogo.src = sprouteLogoUrl;
+                if (emptyLogo) { emptyLogo.src = sprouteLogoUrl; emptyLogo.style.display = 'block'; }
             }
             
             let displayName = data.displayName || 'Sproute'; 
@@ -924,6 +928,9 @@ async function loadData() {
             if (sidebarDriverEl && !isCompanyTier) {
                 sidebarDriverEl.innerText = displayName;
             }
+
+            const emptyBrandName = document.getElementById('empty-brand-name');
+            if (emptyBrandName) emptyBrandName.innerText = displayName;
 
             updateInspectorDropdown(); 
             updateRouteButtonColors();
@@ -1282,7 +1289,6 @@ function handleOpenEmailModal() {
             el.style.display = 'none';
         });
 
-        // Calculate the true geographic aspect ratio of the route
         const bounds = new mapboxgl.LngLatBounds();
         let lats = [];
         let lngs = [];
@@ -1303,7 +1309,7 @@ function handleOpenEmailModal() {
         if (eps.end) addPoint(eps.end.lng, eps.end.lat);
 
         let finalWidth = 800;
-        let finalHeight = 450; // Fallback
+        let finalHeight = 450; 
 
         if (lats.length > 1) {
             const minLat = Math.min(...lats);
@@ -1314,27 +1320,21 @@ function handleOpenEmailModal() {
             const dLat = maxLat - minLat;
             const avgLat = (maxLat + minLat) / 2;
             
-            // Adjust longitude distance based on latitude to get true physical ratio
             const dLng = (maxLng - minLng) * Math.cos(avgLat * Math.PI / 180);
 
             if (dLat > 0.00001 && dLng > 0.00001) {
-                let ratio = dLng / dLat; // width / height
+                let ratio = dLng / dLat; 
                 
                 if (ratio > 1) {
-                    // Landscape Route (Wider than it is tall)
                     finalWidth = 800;
-                    // Clamp minimum height to 350px so it doesn't look like a thin ribbon
                     finalHeight = Math.max(350, Math.floor(800 / ratio)); 
                 } else {
-                    // Portrait Route (Taller than it is wide)
                     finalHeight = 800;
-                    // Clamp minimum width to 350px so it fits email layouts nicely
                     finalWidth = Math.max(350, Math.floor(800 * ratio));
                 }
             }
         }
 
-        // Set the map container to the perfect dynamic dimensions
         const originalWrapperStyle = mapWrapper.style.cssText;
         mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
         
@@ -1344,7 +1344,6 @@ function handleOpenEmailModal() {
             map.fitBounds(bounds, { padding: 50, animate: false });
         }
 
-        // Wait for the map to finish rendering the new layout
         await new Promise(resolve => {
             map.once('idle', resolve);
             setTimeout(resolve, 1200); 
@@ -1362,7 +1361,6 @@ function handleOpenEmailModal() {
             console.error("Screenshot error:", e);
         }
 
-        // Instantly restore the user's original UI layout
         mapWrapper.style.cssText = originalWrapperStyle;
         map.resize(); 
         if (!bounds.isEmpty()) {
@@ -2593,58 +2591,6 @@ function handleFileSelection(file) {
     }
 }
 
-function createDropzone() {
-    const dropzone = document.createElement('div');
-    dropzone.className = 'upload-dropzone';
-    dropzone.style.cssText = 'display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; border: 2px dashed var(--border-color); border-radius: 8px; margin: 20px; cursor: pointer; transition: all 0.2s; min-height: 250px;';
-    
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv';
-    input.style.display = 'none';
-    
-    dropzone.innerHTML = `
-        <div style="background: rgba(255,255,255,0.05); padding: 25px; border-radius: 50%; margin-bottom: 15px; pointer-events: none;">
-            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--blue);"></i>
-        </div>
-        <div style="font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; pointer-events: none;">Ready to Route</div>
-        <div style="font-size: 14px; color: var(--text-muted); max-width: 250px; line-height: 1.5; pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
-    `;
-    
-    dropzone.appendChild(input);
-    
-    dropzone.onclick = () => input.click();
-    
-    dropzone.ondragover = (e) => {
-        e.preventDefault();
-        dropzone.style.backgroundColor = 'var(--bg-hover)';
-        dropzone.style.borderColor = 'var(--blue)';
-    };
-    
-    dropzone.ondragleave = (e) => {
-        e.preventDefault();
-        dropzone.style.backgroundColor = 'transparent';
-        dropzone.style.borderColor = 'var(--border-color)';
-    };
-    
-    dropzone.ondrop = (e) => {
-        e.preventDefault();
-        dropzone.style.backgroundColor = 'transparent';
-        dropzone.style.borderColor = 'var(--border-color)';
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
-    };
-    
-    input.onchange = (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-            handleFileSelection(e.target.files[0]);
-        }
-    };
-    
-    return dropzone;
-}
-
 function render() {
     updateHeaderUI();
     updateRoutingUI();
@@ -2664,6 +2610,10 @@ function render() {
     const activeStops = stops.filter(s => isStopVisible(s, true));
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
     
+    // Toggle Empty State Visibility
+    const isEmptyManager = isManagerView && activeStops.length === 0;
+    document.body.classList.toggle('empty-state-active', isEmptyManager);
+
     const headerActions = document.getElementById('header-actions-wrapper');
     if (headerActions) {
         headerActions.style.display = viewMode === 'inspector' ? 'none' : 'flex';
@@ -2859,12 +2809,6 @@ function render() {
         let eps = getActiveEndpoints();
         listContainer.appendChild(createEndpointRow('start', eps.start));
 
-        if (activeStops.length === 0) {
-            if (isManagerView) {
-                listContainer.appendChild(createDropzone());
-            }
-        }
-
         if (unroutedStops.length > 0) {
             const unroutedDiv = document.createElement('div');
             unroutedDiv.id = 'unrouted-list';
@@ -2904,11 +2848,7 @@ function render() {
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
         
-        if (activeStops.length === 0) {
-            if (isManagerView) {
-                mainDiv.appendChild(createDropzone());
-            }
-        } else {
+        if (activeStops.length > 0) {
             activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
         }
     }
@@ -3510,6 +3450,37 @@ if (headerDropzone && headerInput) {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
             headerInput.value = ''; 
+        }
+    };
+}
+
+// Full Screen Dropzone Wiring
+const mainDropzone = document.getElementById('main-dropzone');
+const mainInput = document.getElementById('main-file-input');
+if (mainDropzone && mainInput) {
+    mainDropzone.onclick = () => mainInput.click();
+    mainDropzone.ondragover = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--blue)';
+        mainDropzone.style.backgroundColor = 'var(--bg-hover)';
+    };
+    mainDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--border-color)';
+        mainDropzone.style.backgroundColor = 'transparent';
+    };
+    mainDropzone.ondrop = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--border-color)';
+        mainDropzone.style.backgroundColor = 'transparent';
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
+    mainInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+            mainInput.value = ''; 
         }
     };
 }
