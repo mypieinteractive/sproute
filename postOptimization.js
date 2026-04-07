@@ -2,16 +2,12 @@
  * postOptimization.js
  * VERSION: V1.46
  * * CHANGES:
- * V1.46 - Due Date Statistic Fix. Rebuilt the date-parsing logic in dispatchRoute 
- * to handle incoming dates safely across timezones. Node.js now coerces all dates 
- * (whether formatted as YYYY-MM-DD or MM/DD/YYYY) into localized UTC midnight markers 
- * prior to comparing, guaranteeing that dueToday and pastDue stats properly reflect 
- * the inspector's local dashboard time.
+ * V1.46 - Disconnected Google Apps Script Webhook. Imported zeptoMailer to 
+ * handle email dispatches natively and instantly entirely within Node.js.
  */
 
-const { getField, safeJsonParse } = require('./helpers');
-
-const GAS_DISPATCH_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxqvQCesYcHzJ9ps9YR7LM9st7gptSARmLXI10gYmAdpkgSXQFCBqrPsVNwA4PjTIZW/exec';
+const { safeJsonParse } = require('./helpers');
+const { sendRouteEmail } = require('./zeptoMailer');
 
 async function saveRoute(payload, res, db) {
     if (!payload.stops) return res.status(400).json({ error: "Missing stops." });
@@ -153,41 +149,7 @@ async function dispatchRoute(payload, res, db, admin) {
     
     if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
-    // --- Legacy Stats Calculation for the UI ---
-    let totalOrders = stagingJson.length;
-    let r1Stops = 0, r2Stops = 0, r3Stops = 0, dueToday = 0, pastDue = 0;
-    
-    // V1.46 Fix: Securely standardize current date to UTC midnight relative to Central Time
-    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' });
-    const parts = formatter.formatToParts(new Date());
-    const tzMonth = parts.find(p => p.type === 'month').value;
-    const tzDay = parts.find(p => p.type === 'day').value;
-    const tzYear = parts.find(p => p.type === 'year').value;
-    const todayMs = new Date(`${tzYear}-${tzMonth}-${tzDay}T00:00:00Z`).getTime(); 
-
-    stagingJson.forEach(s => {
-        let rLabel = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1));
-        let dDate = Array.isArray(s) ? s[5] : (s.d || s.dueDate);
-        
-        if (rLabel.includes('1')) r1Stops++;
-        else if (rLabel.includes('2')) r2Stops++;
-        else if (rLabel.includes('3')) r3Stops++;
-        
-        if (dDate) {
-            let dObj = new Date(dDate);
-            if (!isNaN(dObj.getTime())) {
-                let dYear = dObj.getFullYear();
-                let dMonth = String(dObj.getMonth() + 1).padStart(2, '0');
-                let dDay = String(dObj.getDate()).padStart(2, '0');
-                let normalizedDueMs = new Date(`${dYear}-${dMonth}-${dDay}T00:00:00Z`).getTime();
-                
-                if (normalizedDueMs < todayMs) pastDue++; 
-                else if (normalizedDueMs === todayMs) dueToday++;
-            }
-        }
-    });
-    // ------------------------------------------
-
+    // 1. Create the persistent Route ID and save the payload into Firestore
     const routeId = new Date().getTime().toString();
     const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
     const dispatchRef = db.collection('Dispatch').doc(routeId);
@@ -208,41 +170,22 @@ async function dispatchRoute(payload, res, db, admin) {
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    const gasPayload = {
-        action: 'queueDispatch',
-        routeId: routeId,
-        driverId: payload.driverId,
-        companyId: payload.companyId,
-        customBody: payload.customBody,
-        ccCompany: payload.ccCompany,
-        addCc: payload.addCc,
-        ccEmail: payload.ccEmail,
-        dashboardLink: dashboardLink,
-        totalOrders, r1Stops, r2Stops, r3Stops, dueToday, pastDue
-    };
-
-    try {
-        const gasResponse = await fetch(GAS_DISPATCH_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(gasPayload)
-        });
-
-        const gasResult = await gasResponse.json();
-        if (!gasResult.success) {
-            return res.status(500).json({ error: "Failed to queue dispatch email: " + (gasResult.error || "Unknown error") });
-        }
-    } catch (error) {
-        return res.status(500).json({ error: "Network error when attempting to queue email." });
-    }
-
+    // 2. Clear the Driver's Staging Bay
     await driverRef.update({
         lockedBy: null,
         'activeStaging.orders': '[]',
         'activeStaging.status': null
     });
 
-    return res.status(200).json({ success: true, routeId: routeId });
+    // 3. Immediately compile and send the ZeptoMail
+    try {
+        await sendRouteEmail(db, payload, routeId, driverData);
+        return res.status(200).json({ success: true, routeId: routeId });
+    } catch (emailError) {
+        console.error("Failed to send ZeptoMail, but route was saved:", emailError);
+        // We still return 200 so the UI resets, but we attach the warning.
+        return res.status(200).json({ success: true, routeId: routeId, warning: "Route saved, but email failed to send." });
+    }
 }
 
 module.exports = {
