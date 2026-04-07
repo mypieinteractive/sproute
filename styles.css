@@ -1,12 +1,9 @@
-/* * */
-/* * Dashboard - V15.0 */
-/* * FILE: styles.css */
-/* * Changes: */
-/* * 1. Fixed `.console-col` to a rigid `width: 300px; flex: none;` to enforce column sizes. */
-/* * 2. Updated `#testing-sidebar` width to exactly 602px to account for borders and prevent wrapping. */
-/* * 3. Updated `.console-col-header` to act as interactive toggle buttons. */
-/* * 4. Removed unused `.test-rocker` CSS rules. */
-/* * */
+/*
+ * Dashboard - V15.2
+ * FILE: styles.css
+ * Changes: 
+ * 1. Added empty state visibility rules to toggle the display of `#empty-state-container` and hide main layout elements.
+ */
 
 :root { 
     --blue: #2563eb; 
@@ -33,6 +30,14 @@ body[data-route-count="1"] #slider-priority,
 body[data-route-count="1"] #priority-container { 
     display: none !important; 
 }
+
+/* EMPTY STATE LOGIC */
+#empty-state-container { display: none; }
+body.empty-state-active #empty-state-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; background: var(--bg-base); z-index: 50; }
+body.empty-state-active #map-wrapper,
+body.empty-state-active #sidebar,
+body.empty-state-active #resizer,
+body.empty-state-active #mobile-fab-toggle { display: none !important; }
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
