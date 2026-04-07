@@ -1,5 +1,5 @@
 /**
- * Dashboard - V13.1 (Enterprise Core)
+ * Dashboard - V15.0
  * FILE: app.js
  * Changes: 
  * 1. Completely removed A/B testing scaffolding, visual console, and Apps Script routing logic.
