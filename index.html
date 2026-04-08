@@ -23,28 +23,28 @@
     </div>
 </div>
 
-<div id="global-header" style="height: 61px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 15px; flex: none; z-index: 1000; width: 100vw; box-sizing: border-box;">
+<div id="global-header" style="height: 61px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 15px 0 0; flex: none; z-index: 1000; width: 100vw; box-sizing: border-box;">
     <div style="display: flex; align-items: center; gap: 15px;">
         <img id="brand-logo-map" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
         <span id="map-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
     </div>
     
-    <div id="header-actions-wrapper" style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
-        <div id="header-csv-upload" class="header-dropzone">
-            <i class="fa-solid fa-cloud-arrow-up"></i> 
-            <span class="hide-mobile-text">Upload CSV</span>
+    <div id="header-actions-wrapper" style="margin-left: 15px; display: flex; align-items: center; gap: 10px; flex: 1;">
+        <div id="header-combined-action" class="header-combined-action">
+            <div class="header-combined-idle"><i class="fa-solid fa-plus"></i></div>
+            <div class="header-combined-hover">
+                <button class="header-action-btn" onclick="document.getElementById('header-file-input').click()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload CSV</button>
+                <button class="header-action-btn add-order-btn" onclick="showAddOrderModal()"><i class="fa-solid fa-plus"></i> Enter Order</button>
+            </div>
             <input type="file" id="header-file-input" accept=".csv" style="display: none;">
         </div>
-        <button id="btn-add-order" class="header-action-btn add-order-btn" onclick="showAddOrderModal()">
-            <i class="fa-solid fa-plus"></i>
-        </button>
         
-        <div id="inspector-dropdown-wrapper" style="position: relative; display: none;">
+        <div id="inspector-dropdown-wrapper" style="position: relative; display: none; flex: none;">
             <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)"></select>
             <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-main); pointer-events: none; font-size: 13px;"></i>
         </div>
         
-        <button id="btn-undo-incremental" onclick="undoLastAction()" disabled title="Undo">
+        <button id="btn-undo-incremental" onclick="undoLastAction()" disabled title="Undo" style="flex: none;">
             <i class="fa-solid fa-arrow-rotate-left"></i>
         </button>
     </div>
@@ -53,7 +53,7 @@
 <div id="app-body">
     
     <div id="empty-state-container">
-        <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
             <div id="main-dropzone" class="upload-dropzone" style="width: 100%; max-width: 600px; height: 300px; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
                 <input type="file" id="main-file-input" accept=".csv" style="display: none;">
                 <div style="background: rgba(37, 99, 235, 0.1); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
@@ -61,6 +61,12 @@
                 </div>
                 <div class="dropzone-title" style="font-size: 24px; font-weight: bold; color: var(--text-main); margin-bottom: 10px; pointer-events: none;">Ready to Route</div>
                 <div class="dropzone-sub" style="font-size: 16px; color: var(--text-muted); pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
+            </div>
+            <div style="margin-top: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                <span style="font-size: 14px; color: var(--text-muted); font-weight: bold; text-transform: uppercase;">OR</span>
+                <button class="header-action-btn add-order-btn" onclick="showAddOrderModal()" style="height: 44px; padding: 0 24px; font-size: 16px;">
+                    <i class="fa-solid fa-plus"></i> Enter Order
+                </button>
             </div>
         </div>
     </div>
