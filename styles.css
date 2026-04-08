@@ -1,9 +1,9 @@
-/* Dashboard - V15.7 */
+/* Dashboard - V15.8 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added styles for new Add Order dropdown menu. */
-/* 2. Added styles for global drop overlay. */
-/* 3. Removed dead classes for old header buttons. */
+/* 1. Added invisible ::before bridge to .add-dropdown-menu to prevent hover breaking. */
+/* 2. Removed #global-drop-overlay classes entirely. */
+/* 3. Added .drag-override-empty logic to reuse #empty-state-container. */
 
 :root { 
     --blue: #2563eb; 
@@ -24,21 +24,18 @@
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
 body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; flex-direction: column; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
 
-/* GLOBAL DRAG AND DROP OVERLAY */
-#global-drop-overlay {
-    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-    z-index: 999999; display: none; align-items: center; justify-content: center;
-}
-#global-drop-overlay.drag-active { display: flex; }
-
-/* EMPTY STATE LOGIC */
+/* EMPTY STATE LOGIC (INCLUDING GLOBAL DRAG-AND-DROP) */
 #empty-state-container { display: none; }
-body.empty-state-active #empty-state-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; background: var(--bg-base); z-index: 50; }
-body.empty-state-active #map-wrapper,
-body.empty-state-active #sidebar,
-body.empty-state-active #resizer,
-body.empty-state-active #mobile-fab-toggle { display: none !important; }
+body.empty-state-active #empty-state-container,
+body.drag-override-empty #empty-state-container { 
+    display: flex; flex-direction: column; width: 100vw; height: 100vh; background: var(--bg-base); z-index: 50; 
+}
+body.empty-state-active #map-wrapper, body.drag-override-empty #map-wrapper,
+body.empty-state-active #sidebar, body.drag-override-empty #sidebar,
+body.empty-state-active #resizer, body.drag-override-empty #resizer,
+body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab-toggle { 
+    display: none !important; 
+}
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
@@ -127,6 +124,10 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     background: var(--bg-panel); border: 1px solid var(--border-color);
     border-radius: 6px; flex-direction: column; min-width: 180px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 1000; overflow: hidden;
+}
+/* INVISIBLE BRIDGE: Prevents hover from breaking between button and menu */
+.add-dropdown-menu::before {
+    content: ''; position: absolute; top: -15px; left: 0; right: 0; height: 15px;
 }
 .add-dropdown-item {
     padding: 12px 15px; color: var(--text-main); font-size: 14px; font-weight: bold;
