@@ -1,10 +1,8 @@
-/* Dashboard - V15.7 */
+/* Dashboard - V15.8 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added Global App-Wide Drag-and-Drop listeners. */
-/* 2. Added logic for the new Add Order Hover Menu (hidden file input). */
-/* 3. Implemented updatePrioritySliderUI() to visually disable slider on Route 1. */
-/* 4. Removed dead search bar logic (filterList). */
+/* 1. Added document-level event listeners for drag and drop. */
+/* 2. Replaced the old global-drop-overlay with .drag-override-empty class toggling. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, performUpload, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1229,22 +1227,21 @@ if (hiddenFileInput) {
 }
 
 // Global Drag and Drop Overlay Logic
-const globalDropOverlay = document.getElementById('global-drop-overlay');
 let dragCounter = 0;
 
 document.addEventListener('dragenter', (e) => {
     e.preventDefault();
     dragCounter++;
-    if (dragCounter === 1 && globalDropOverlay) {
-        globalDropOverlay.classList.add('drag-active');
+    if (dragCounter === 1) {
+        document.body.classList.add('drag-override-empty');
     }
 });
 
 document.addEventListener('dragleave', (e) => {
     e.preventDefault();
     dragCounter--;
-    if (dragCounter === 0 && globalDropOverlay) {
-        globalDropOverlay.classList.remove('drag-active');
+    if (dragCounter === 0) {
+        document.body.classList.remove('drag-override-empty');
     }
 });
 
@@ -1253,7 +1250,7 @@ document.addEventListener('dragover', (e) => { e.preventDefault(); });
 document.addEventListener('drop', (e) => {
     e.preventDefault();
     dragCounter = 0;
-    if (globalDropOverlay) globalDropOverlay.classList.remove('drag-active');
+    document.body.classList.remove('drag-override-empty');
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         handleFileSelection(e.dataTransfer.files[0]);
