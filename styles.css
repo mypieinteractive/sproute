@@ -1,4 +1,4 @@
-/* Dashboard - V15.4 */
+/* Dashboard - V15.5 */
 /* FILE: styles.css */
 
 :root { 
@@ -268,12 +268,12 @@ input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cur
     flex: none; 
     z-index: 100; 
     transition: background-color 0.2s; 
-    background-clip: padding-box; /* Ensures the background color doesn't bleed into the top border */
+    background-clip: padding-box; 
 }
 #resizer:hover, #resizer.active { background-color: var(--blue); }
 body.view-manager #resizer { 
     display: block; 
-    border-top: 61px solid var(--bg-header); /* Masks the top 61px to blend seamlessly into the header */
+    border-top: 61px solid var(--bg-header); /* Masks the line in the header */
 }
 body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; cursor: row-resize; flex: none; background-color: var(--border-color); margin: 0; padding: 0; position: relative; z-index: 100; border-top: 1px solid #111; border-bottom: 1px solid #111; }
 body.view-managermobile #resizer::after { content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 35px; height: 3px; background: #777; border-radius: 3px; }
@@ -458,7 +458,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 .boxdraw { background: rgba(37, 99, 235, 0.3); border: 1px solid var(--blue); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
 
-#modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; }
+#modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center; }
 .modal-box { background: var(--bg-panel); color: var(--text-main); padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid var(--border-color); }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
