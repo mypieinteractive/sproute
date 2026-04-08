@@ -1,7 +1,5 @@
-/* Dashboard - V15.3 */
+/* Dashboard - V15.4 */
 /* FILE: styles.css */
-/* Changes: */
-/* 1. Updated --bg-base and --bg-header to #171717 to match Glide background. */
 
 :root { 
     --blue: #2563eb; 
@@ -261,9 +259,22 @@ input[type=range] { -webkit-appearance: none; width: 100%; background: transpare
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--blue); cursor: pointer; margin-top: -6px; }
 input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: var(--border-color); border-radius: 2px; }
 
-#resizer { width: 6px; background-color: var(--border-color); cursor: col-resize; display: none; flex: none; z-index: 100; transition: background-color 0.2s; }
+/* RESIZER STYLES */
+#resizer { 
+    width: 6px; 
+    background-color: var(--border-color); 
+    cursor: col-resize; 
+    display: none; 
+    flex: none; 
+    z-index: 100; 
+    transition: background-color 0.2s; 
+    background-clip: padding-box; /* Ensures the background color doesn't bleed into the top border */
+}
 #resizer:hover, #resizer.active { background-color: var(--blue); }
-body.view-manager #resizer { display: block; }
+body.view-manager #resizer { 
+    display: block; 
+    border-top: 61px solid var(--bg-header); /* Masks the top 61px to blend seamlessly into the header */
+}
 body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; cursor: row-resize; flex: none; background-color: var(--border-color); margin: 0; padding: 0; position: relative; z-index: 100; border-top: 1px solid #111; border-bottom: 1px solid #111; }
 body.view-managermobile #resizer::after { content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 35px; height: 3px; background: #777; border-radius: 3px; }
 
@@ -276,7 +287,21 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
 #map-wrapper.shift-down .marker, #map-wrapper.shift-down .marker .pin-visual { cursor: pointer !important; }
 
-#route-summary { padding: 10px 12px; background: #000; color: #fff; display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; border-bottom: 1px solid #222; flex: none; z-index: 10; }
+#route-summary { 
+    padding: 0 15px; 
+    background: var(--bg-panel); 
+    color: var(--text-main); 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    font-size: 13px; 
+    font-weight: bold; 
+    border-bottom: 1px solid var(--border-color); 
+    flex: none; 
+    z-index: 10; 
+    height: 53px; 
+    box-sizing: border-box;
+}
 .summary-left { display: flex; align-items: center; gap: 12px; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
@@ -284,7 +309,16 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .header-action-btn { height: 36px; padding: 0 16px; width: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
 .header-action-btn:active { opacity: 0.7; }
 
-#search-container { display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); }
+#search-container { 
+    display: flex; 
+    align-items: center; 
+    gap: 10px; 
+    padding: 0 15px; 
+    border-bottom: 1px solid var(--border-color); 
+    background: var(--bg-panel); 
+    height: 53px; 
+    box-sizing: border-box;
+}
 #search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
 #search-input::placeholder { color: var(--text-muted); }
 
