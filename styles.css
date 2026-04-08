@@ -1,9 +1,10 @@
-/* Dashboard - V15.8 */
+/* Dashboard - V15.9 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added invisible ::before bridge to .add-dropdown-menu to prevent hover breaking. */
-/* 2. Removed #global-drop-overlay classes entirely. */
-/* 3. Added .drag-override-empty logic to reuse #empty-state-container. */
+/* 1. Added custom dark scrollbar for the stops list. */
+/* 2. Increased hover menu bridge height to 25px to prevent menu disappearance. */
+/* 3. Styled the new address search header input. */
+/* 4. Resized .glide-row .insp-select to match screenshot perfectly. */
 
 :root { 
     --blue: #2563eb; 
@@ -24,7 +25,13 @@
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
 body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; flex-direction: column; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
 
-/* EMPTY STATE LOGIC (INCLUDING GLOBAL DRAG-AND-DROP) */
+/* Scrollbar Customization */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* EMPTY STATE LOGIC */
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
@@ -99,7 +106,6 @@ body.view-managermobile .glide-row, body.view-managermobilesplit .glide-row { pa
 body.view-managermobile .col-num, body.view-managermobilesplit .col-num { margin-left: 2px; width: 26px; }
 body.view-managermobile .num-badge, body.view-managermobilesplit .num-badge { width: 22px; height: 22px; font-size: 11px; }
 body.view-managermobile .endpoint-controls-wrapper, body.view-managermobilesplit .endpoint-controls-wrapper { padding-left: 4px; }
-body.view-managermobile .endpoint-label-text, body.view-managermobilesplit .endpoint-label-text { display: none !important; }
 
 @media (max-width: 450px) { .hide-mobile-text { display: none !important; } }
 
@@ -111,8 +117,6 @@ body.view-managermobile .header-action-btn, body.view-managermobilesplit .header
     }
     body.view-managermobile .header-action-btn, body.view-managermobilesplit .header-action-btn { padding: 6px 8px; }
 }
-
-@container sidebar (max-width: 500px) { .endpoint-label-text { display: none !important; } }
 
 body.tier-individual .col-insp { display: none !important; }
 body.manager-all-inspectors #routing-controls { display: none !important; }
@@ -126,9 +130,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 1000; overflow: hidden;
 }
 /* INVISIBLE BRIDGE: Prevents hover from breaking between button and menu */
-.add-dropdown-menu::before {
-    content: ''; position: absolute; top: -15px; left: 0; right: 0; height: 15px;
-}
+.add-dropdown-menu::before { content: ''; position: absolute; top: -25px; left: 0; right: 0; height: 25px; }
 .add-dropdown-item {
     padding: 12px 15px; color: var(--text-main); font-size: 14px; font-weight: bold;
     display: flex; align-items: center; gap: 10px; cursor: pointer; transition: 0.2s;
@@ -167,7 +169,7 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .route-view-btn:hover { opacity: 1; background: var(--bg-hover); }
 .route-view-btn.active { opacity: 1; border-color: var(--blue); background: rgba(37, 99, 235, 0.1); color: var(--blue); }
 
-/* Unified Input Select (Used for Inspector Dropdown AND Detail/Compact Dropdown) */
+/* Unified Input Select (Header Level) */
 .insp-select {
     background-color: var(--bg-panel); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; 
     background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23888888%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); 
@@ -176,6 +178,19 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .insp-select:focus { outline: none; border-color: var(--blue); }
 .insp-select option { background: var(--bg-panel); color: var(--text-main); }
 .insp-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* List Row Specific Assignee Select (Matches Screenshot) */
+.glide-row .insp-select {
+    background-color: #242528;
+    border: 1px solid #3a3b3d;
+    border-radius: 4px;
+    padding: 4px 24px 4px 8px;
+    color: #e0e0e0;
+    font-weight: bold;
+    font-size: 13px;
+    height: 28px;
+    background-position: right 6px center;
+}
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--blue); cursor: pointer; margin-top: -6px; }
@@ -284,10 +299,18 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .col-addr { flex: 1 1 auto; min-width: 0; padding-right: 6px; font-weight: 500; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 
-.meta-text { font-size: 11px; font-weight: normal; color: var(--text-main); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-.compact .meta-text { display: none; }
-.type-text { font-size: 11px; font-weight: normal; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-.compact .type-text { display: none; }
+/* Address Input Header styling */
+.address-header-input {
+    background: transparent; border: 1px solid transparent; color: var(--text-muted);
+    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 4px 24px 4px 4px;
+    border-radius: 4px; transition: 0.2s; outline: none; flex: 1;
+}
+.address-header-input::placeholder { color: var(--text-muted); }
+.address-header-input:focus, .address-header-input:not(:placeholder-shown) {
+    background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-main);
+}
+.clear-search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
+.clear-search-icon:hover { color: var(--text-main); }
 
 .col-app { width: 45px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-client { width: 55px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
