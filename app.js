@@ -3194,6 +3194,8 @@ window.clearSearch = function() {
     }
 };
 
+let currentSearchValue = '';
+
 function drawRoute() { 
     const layerIds = [
         'route-line-0-clean', 'route-line-0-dirty',
