@@ -1,12 +1,8 @@
-/**
- * Dashboard - V15.2
- * FILE: app.js
- * Changes: 
- * 1. Populated #empty-state-header dynamically with companyLogo and displayName in loadData().
- * 2. Toggled document.body.classList "empty-state-active" when a manager view has zero active orders.
- * 3. Removed obsolete createDropzone() function and references in the render loop.
- * 4. Bound the main full-screen upload dropzone events to the handleFileSelection() handler.
- */
+/* Dashboard - V15.3 */
+/* FILE: app.js */
+/* Changes: */
+/* 1. Pre-applied empty-state-active to document.body for manager views to prevent UI flash on load. */
+/* 2. Updated html2canvas backgroundColor to #171717. */
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -328,6 +324,9 @@ function silentSaveRouteState() {
 }
 
 document.body.className = `view-${viewMode} manager-all-inspectors`;
+if (isManagerView) {
+    document.body.classList.add('empty-state-active');
+}
 if (viewMode === 'managermobilesplit') {
     document.body.classList.add('split-show-map');
 }
@@ -1353,7 +1352,7 @@ function handleOpenEmailModal() {
         try {
             const canvasSnapshot = await html2canvas(mapWrapper, { 
                 useCORS: true, 
-                backgroundColor: '#121212',
+                backgroundColor: '#171717',
                 scale: 1 
             });
             mapBase64 = canvasSnapshot.toDataURL('image/jpeg', 0.85); 
