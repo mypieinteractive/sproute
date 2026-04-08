@@ -1,8 +1,9 @@
 /* Dashboard - V15.6 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Cleaned up DOM references to match the new unified Global Header layout. */
-/* 2. Removed applyBranding function as logos/names were stripped from the UI per user request. */
+/* 1. Removed search bar logic (filterList) and DOM references to search-container. */
+/* 2. Removed references to old route-summary visibility toggles. */
+/* 3. Added updatePrioritySliderUI() to handle the visual disabled state of the slider. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, performUpload, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -69,9 +70,8 @@ export function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = AppState.historyStack.length === 0;
 }
 
-// Emptied applyBranding because logos/names were removed in V1.2 index.html
 export function applyBranding(logoUrl, brandName) {
-    // No-op
+    // No-op - Logos and brand names removed from UI
 }
 
 export function updateHeaderUI() {
@@ -158,6 +158,22 @@ export function updateRouteButtonColors() {
     }
 }
 
+export function updatePrioritySliderUI() {
+    const priorityContainer = document.getElementById('priority-container');
+    const sliderPriority = document.getElementById('slider-priority');
+    if (priorityContainer && sliderPriority) {
+        if (AppState.currentRouteCount === 1) {
+            priorityContainer.style.opacity = '0.4';
+            priorityContainer.style.pointerEvents = 'none';
+            sliderPriority.disabled = true;
+        } else {
+            priorityContainer.style.opacity = '1';
+            priorityContainer.style.pointerEvents = 'auto';
+            sliderPriority.disabled = false;
+        }
+    }
+}
+
 export function updateRoutingUI() {
     const isDirty = AppState.dirtyRoutes.size > 0;
     const routingControls = document.getElementById('routing-controls');
@@ -170,6 +186,8 @@ export function updateRoutingUI() {
     const btnSend = document.getElementById('btn-header-send-route');
 
     [btnGen, btnRecalc, btnRestore, optInspBtn, btnSend].forEach(btn => { if (btn) btn.style.display = 'none'; });
+    
+    updatePrioritySliderUI();
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         if(routingControls) routingControls.style.display = 'none';
@@ -305,8 +323,6 @@ export function render() {
     const addBtn = document.getElementById('btn-add-order');
     if (uploadBtn) uploadBtn.style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
     if (addBtn) addBtn.style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
-
-    if (document.getElementById('search-container')) document.getElementById('search-container').style.display = (Config.isManagerView && activeStops.length === 0) ? 'none' : 'flex';
 
     if (Config.isManagerView) {
         const header = document.createElement('div');
@@ -1151,11 +1167,6 @@ window.toggleSelectAll = function(cb) {
     AppState.selectedIds.clear();
     if (cb.checked) AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter)).forEach(s => AppState.selectedIds.add(s.id));
     updateSelectionUI();
-};
-
-window.filterList = function() {
-    const q = document.getElementById('search-input').value.toLowerCase(); 
-    document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none');
 };
 
 window.handleInspectorChange = async function(e, rowId, selectEl) {
