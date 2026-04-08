@@ -1,13 +1,12 @@
-/* Dashboard - V15.4 */
+/* Dashboard - V15.6 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Extracted all DOM manipulation, rendering, modals, and user interactions into a dedicated UI module. */
-/* 2. Re-linked HTML inline events (onclick) to the window object. */
-/* 3. Integrated SortableJS logic and DOM reordering. */
+/* 1. Cleaned up DOM references to match the new unified Global Header layout. */
+/* 2. Removed applyBranding function as logos/names were stripped from the UI per user request. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, performUpload, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
-import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance } from './map.js';
+import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers } from './map.js';
 
 // --- Overlays & Modals ---
 
@@ -70,42 +69,18 @@ export function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = AppState.historyStack.length === 0;
 }
 
+// Emptied applyBranding because logos/names were removed in V1.2 index.html
 export function applyBranding(logoUrl, brandName) {
-    const mapLogo = document.getElementById('brand-logo-map');
-    const emptyLogo = document.getElementById('empty-brand-logo');
-    const isCompanyTier = document.body.classList.contains('tier-company');
-
-    if (isCompanyTier && logoUrl) {
-        if (mapLogo) mapLogo.src = logoUrl;
-        if (emptyLogo) { emptyLogo.src = logoUrl; emptyLogo.style.display = 'block'; }
-    } else {
-        const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
-        if (mapLogo) mapLogo.src = sprouteLogoUrl;
-        if (emptyLogo) { emptyLogo.src = sprouteLogoUrl; emptyLogo.style.display = 'block'; }
-    }
-    
-    const mapDriverEl = document.getElementById('map-driver-name');
-    if (mapDriverEl) mapDriverEl.innerText = brandName;
-    
-    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
-    if (sidebarDriverEl && !isCompanyTier) sidebarDriverEl.innerText = brandName;
-
-    const emptyBrandName = document.getElementById('empty-brand-name');
-    if (emptyBrandName) emptyBrandName.innerText = brandName;
+    // No-op
 }
 
 export function updateHeaderUI() {
     if (!Config.isManagerView) return;
-    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
 
-    if (isCompanyTier) {
-        if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
-        if (filterSelectWrap) filterSelectWrap.style.display = 'block';
-    } else {
-        if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
-        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
+    if (filterSelectWrap) {
+        filterSelectWrap.style.display = isCompanyTier ? 'block' : 'none';
     }
 }
 
@@ -292,7 +267,6 @@ export function updateRoutingUI() {
         if (!showRecalc && !showOpt && !showRestore) {
             if(routingControls) routingControls.style.display = 'none';
         }
-        if (document.getElementById('sidebar-brand')) document.getElementById('sidebar-brand').style.display = (showRecalc || showOpt || showRestore) ? 'flex' : 'none';
     }
 }
 
@@ -325,7 +299,13 @@ export function render() {
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
     
     document.body.classList.toggle('empty-state-active', Config.isManagerView && activeStops.length === 0);
-    if (document.getElementById('header-actions-wrapper')) document.getElementById('header-actions-wrapper').style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
+    
+    // Hide Upload/Add Order buttons for inspectors
+    const uploadBtn = document.getElementById('header-csv-upload');
+    const addBtn = document.getElementById('btn-add-order');
+    if (uploadBtn) uploadBtn.style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
+    if (addBtn) addBtn.style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
+
     if (document.getElementById('search-container')) document.getElementById('search-container').style.display = (Config.isManagerView && activeStops.length === 0) ? 'none' : 'flex';
 
     if (Config.isManagerView) {
@@ -481,26 +461,25 @@ export function render() {
         if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
     }
 
-    import('./map.js').then(module => {
-        module.renderMapMarkers({
-            activeStops, 
-            endpointsToDraw: buildEndpointsToDraw(activeStops),
-            isManagerView: Config.isManagerView, 
-            currentInspectorFilter: AppState.currentInspectorFilter,
-            currentRouteCount: AppState.currentRouteCount, 
-            allStops: AppState.stops, 
-            inspectors: AppState.inspectors,
-            onMarkerClick: (id, isShift) => {
-                if (!isShift) AppState.selectedIds.clear();
-                AppState.selectedIds.has(id) ? AppState.selectedIds.delete(id) : AppState.selectedIds.add(id);
-                updateSelectionUI();
-                document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        });
+    renderMapMarkers({
+        activeStops, 
+        endpointsToDraw: buildEndpointsToDraw(activeStops),
+        isManagerView: Config.isManagerView, 
+        currentInspectorFilter: AppState.currentInspectorFilter,
+        currentRouteCount: AppState.currentRouteCount, 
+        allStops: AppState.stops, 
+        inspectors: AppState.inspectors,
+        onMarkerClick: (id, isShift) => {
+            if (!isShift) AppState.selectedIds.clear();
+            AppState.selectedIds.has(id) ? AppState.selectedIds.delete(id) : AppState.selectedIds.add(id);
+            updateSelectionUI();
+            document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     });
 
     updateSelectionUI();
-// Force Mapbox to recalculate its layout after the DOM flex structure settles
+    
+    // Force Mapbox layout recalculation after the DOM flex structure settles
     setTimeout(() => { resizeMap(); }, 150);
 }
 
@@ -833,7 +812,6 @@ function checkEndpointModified() {
     const sOrig = eps.start?.address || '';
     const eOrig = eps.end?.address || '';
     if ((sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim())) markRouteDirty('endpoints', 0);
-    // Needs global function from app.js to trigger updateRoutingUI, or we triggerFullRender
     triggerFullRender();
 }
 
