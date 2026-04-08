@@ -6,7 +6,7 @@
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
     isActiveStop, timeToMins, calculateClusters 
-} from './backend/logic.js';
+} from './logic.js';
 
 import { 
     initMap, renderMapMarkers, drawRouteMap, updateMarkerColorsMap, 
