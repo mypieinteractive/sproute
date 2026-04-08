@@ -1,4 +1,4 @@
-/* Dashboard - V15.7 */
+/* Dashboard - V15.8 */
 /* FILE: styles.css */
 
 :root { 
@@ -43,7 +43,6 @@ body.empty-state-active #mobile-fab-toggle { display: none !important; }
 body.view-inspector #app-body { flex-direction: column; }
 body.view-inspector #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
 body.view-inspector #sidebar { height: 65vh; min-height: 65vh; width: 100%; }
-body.view-inspector #route-summary { display: none !important; }
 
 /* Move map buttons to bottom right for Inspector and ManagerMobile */
 body.view-inspector .map-overlay-btns, 
@@ -60,14 +59,12 @@ body.view-managermobilesplit .map-overlay-btns {
 body.view-manager #app-body { flex-direction: row; }
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
 body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100%; border-left: none; flex: none; }
-body.view-manager #summary-metrics { display: none !important; } 
 
 /* MANAGER MOBILE VIEW */
 body.view-managermobile #app-body { flex-direction: column; }
 body.view-managermobile #map-wrapper { height: 40vh; width: 100vw; flex: none; position: relative; z-index: 10; }
 body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: hidden; }
 body.view-managermobile #stop-list { overflow-y: auto; overflow-x: hidden; height: 100%; }
-body.view-managermobile #summary-metrics { display: none !important; } 
 
 /* MANAGER MOBILE SPLIT VIEW */
 body.view-managermobilesplit #app-body {
@@ -78,18 +75,15 @@ body.view-managermobilesplit #map-wrapper,
 body.view-managermobilesplit #sidebar {
     display: contents;
 }
-body.view-managermobilesplit #route-summary { order: 3; }
 body.view-managermobilesplit #mobile-view-toggle { order: 4; display: flex !important; }
 body.view-managermobilesplit #routing-controls { order: 5; }
 body.view-managermobilesplit #route-view-toggles { order: 6; }
-body.view-managermobilesplit #search-container { order: 7; }
 body.view-managermobilesplit #stop-list { order: 8; overflow-y: auto; flex: 1; min-height: 0; }
 body.view-managermobilesplit #map-container { order: 9; flex: 1; min-height: 0; position: relative; }
 body.view-managermobilesplit #resizer { display: none; }
 
 /* Toggling logic */
 body.view-managermobilesplit.split-show-map #stop-list,
-body.view-managermobilesplit.split-show-map #search-container,
 body.view-managermobilesplit.split-show-map #routing-controls,
 body.view-managermobilesplit.split-show-map #route-view-toggles {
     display: none !important;
@@ -147,8 +141,6 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 
 /* COMBINED HEADER ACTION BUTTON STYLES */
 .header-combined-action {
-    flex: 1;
-    min-width: 60px;
     height: 38px;
     border: 1.5px dashed var(--border-color);
     border-radius: 6px;
@@ -160,6 +152,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     transition: all 0.2s;
     position: relative;
     overflow: hidden;
+    padding: 0 16px;
 }
 .header-combined-action:hover, .header-combined-action.drag-active {
     border-color: var(--blue);
@@ -205,10 +198,6 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 .header-combined-hover .add-order-btn:hover { background: rgba(16, 185, 129, 0.25); }
 
 /* Mobile Overrides for Header */
-body.view-managermobile #map-driver-name,
-body.view-managermobilesplit #map-driver-name {
-    display: none !important;
-}
 body.view-managermobile .header-action-btn,
 body.view-managermobilesplit .header-action-btn {
     padding: 6px 10px;
@@ -268,16 +257,37 @@ body.view-managermobilesplit .list-subheading {
 .route-view-btn:hover { opacity: 1; background: var(--bg-hover); }
 .route-view-btn.active { opacity: 1; border-color: var(--blue); background: rgba(37, 99, 235, 0.1); color: var(--blue); }
 
-/* DYNAMIC WIDTH DROPDOWN */
-#inspector-filter {
+/* Global Header Dropdown Specific Styling */
+.header-insp-select {
     background: transparent; color: var(--text-main); font-size: 15px; font-weight: bold;
     border: 1px solid var(--border-color); padding: 0 30px 0 12px; border-radius: 6px; cursor: pointer;
     outline: none; width: auto; max-width: 100%; height: 38px; display: flex; align-items: center;
-    appearance: none; -webkit-appearance: none; background-image: none;
+    appearance: none; -webkit-appearance: none; background-image: none; margin: 0;
 }
-#inspector-filter option { background: var(--bg-panel); color: var(--text-main); }
-#inspector-filter:focus { border-color: var(--blue); }
-#inspector-filter:disabled { opacity: 0.6; cursor: not-allowed; }
+.header-insp-select option { background: var(--bg-panel); color: var(--text-main); }
+.header-insp-select:focus { border-color: var(--blue); }
+.header-insp-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Invisible Address Search Input */
+.header-search-wrapper { position: relative; display: flex; align-items: center; width: 100%; }
+.header-search-input { 
+    width: 100%; background: transparent; border: 1px solid transparent; color: var(--text-muted); 
+    font-weight: bold; font-size: 12px; text-transform: uppercase; padding: 4px 20px 4px 0px; 
+    outline: none; border-radius: 4px; transition: 0.2s; cursor: text; 
+}
+.header-search-input:focus, .header-search-input:not(:placeholder-shown) { 
+    border-color: var(--border-color); background: var(--bg-base); color: var(--text-main); 
+    text-transform: none; padding-left: 8px; 
+}
+.header-search-input::placeholder { color: var(--text-muted); text-transform: uppercase; }
+.clear-search-btn { 
+    position: absolute; right: 8px; color: var(--text-muted); cursor: pointer; font-size: 14px; 
+    opacity: 0; pointer-events: none; transition: opacity 0.2s; 
+}
+.header-search-input:focus + .clear-search-btn, .header-search-input:not(:placeholder-shown) + .clear-search-btn { 
+    opacity: 1; pointer-events: auto; 
+}
+.clear-search-btn:hover { color: var(--red); }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--blue); cursor: pointer; margin-top: -6px; }
@@ -310,68 +320,22 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
 #map-wrapper.shift-down .marker, #map-wrapper.shift-down .marker .pin-visual { cursor: pointer !important; }
 
-#route-summary { 
-    padding: 0 15px; 
-    background: var(--bg-panel); 
-    color: var(--text-main); 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    font-size: 13px; 
-    font-weight: bold; 
-    border-bottom: 1px solid var(--border-color); 
-    flex: none; 
-    z-index: 10; 
-    height: 53px; 
-    box-sizing: border-box;
-}
-.summary-left { display: flex; align-items: center; gap: 15px; }
-.summary-right { display: flex; align-items: center; gap: 15px; }
-#order-stats { font-size: 12px; text-align: right; }
-
-/* ROUTING CONTROLS REVERTED TO COLUMN */
-#routing-controls { 
-    padding: 15px; 
-    background: var(--bg-panel); 
-    border-bottom: 1px solid var(--border-color); 
-    flex-direction: column; 
-    gap: 15px;
-    z-index: 10; 
-    flex: none; 
-}
-#route-divider-group { width: 100%; display: flex; gap: 8px; }
-#priority-container { width: 100%; display: flex; flex-direction: column; justify-content: flex-start; }
-
-#search-container { 
-    display: flex; 
-    align-items: center; 
-    gap: 10px; 
-    padding: 0 15px; 
-    border-bottom: 1px solid var(--border-color); 
-    background: var(--bg-panel); 
-    height: 53px; 
-    box-sizing: border-box;
-}
-#search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
-#search-input::placeholder { color: var(--text-muted); }
-
 /* Restyled Global Undo Button */
 #btn-undo-incremental { 
     background: transparent; 
-    border: 1px solid var(--border-color); 
+    border: 1px solid transparent; 
     color: var(--text-main); 
-    padding: 0 12px; 
-    height: 38px; 
-    border-radius: 6px; 
+    padding: 0 15px; 
+    height: 100%; 
     cursor: pointer; 
-    font-size: 16px; 
-    transition: color 0.2s, border-color 0.2s; 
+    font-size: 18px; 
+    transition: color 0.2s, background 0.2s; 
     display: flex; 
     align-items: center; 
     justify-content: center; 
 }
-#btn-undo-incremental:hover:not(:disabled) { color: var(--blue); border-color: var(--blue); }
-#btn-undo-incremental:disabled { color: var(--text-muted); border-color: var(--border-color); opacity: 0.3; cursor: not-allowed; }
+#btn-undo-incremental:hover:not(:disabled) { color: var(--blue); background: var(--bg-hover); }
+#btn-undo-incremental:disabled { color: var(--text-muted); opacity: 0.3; cursor: not-allowed; }
 
 .rocker { display: flex; background: #222; border-radius: 6px; padding: 2px; cursor: pointer; }
 .rocker div { padding: 4px 10px; cursor: pointer; border-radius: 4px; transition: 0.2s; color: var(--text-muted); font-weight: normal; font-size: 15px; }
@@ -388,6 +352,19 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 #sidebar { display: flex; flex-direction: column; background: var(--bg-panel); z-index: 10; container-type: inline-size; container-name: sidebar; overflow-x: hidden; }
 #stop-list { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; position: relative; }
+
+/* ROUTING CONTROLS REVERTED TO COLUMN */
+#routing-controls { 
+    padding: 15px; 
+    background: var(--bg-panel); 
+    border-bottom: 1px solid var(--border-color); 
+    flex-direction: column; 
+    gap: 15px;
+    z-index: 10; 
+    flex: none; 
+}
+#route-divider-group { width: 100%; display: flex; gap: 8px; }
+#priority-container { width: 100%; display: flex; flex-direction: column; justify-content: flex-start; }
 
 @container sidebar (max-width: 600px) { .col-client { display: none !important; } }
 @container sidebar (max-width: 500px) { .col-app { display: none !important; } }
@@ -488,6 +465,12 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* Constrained to ~3 chars width and anchored left of the handle */
 .col-client { width: 55px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-type { display: none; } /* Disabled as per V4.1 rules */
+
+/* Original List Inspector Dropdown Formatting Preserved */
+.insp-select { width: 100%; background-color: var(--bg-panel); color: var(--text-main); border: 1px solid var(--border-color); padding: 6px 20px 6px 6px; border-radius: 4px; font-size: 13px; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23888888%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); background-repeat: no-repeat; background-position: right 6px center; background-size: 10px auto; }
+.insp-select:focus { outline: none; border-color: var(--blue); }
+.insp-select option { background: var(--bg-panel); color: var(--text-main); }
+.insp-select:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
