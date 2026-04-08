@@ -444,15 +444,12 @@ function sortByEta(a, b) {
 
 function updateHeaderUI() {
     if (!isManagerView) return;
-    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
 
     if (isCompanyTier) {
-        if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
         if (filterSelectWrap) filterSelectWrap.style.display = 'block';
     } else {
-        if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
         if (filterSelectWrap) filterSelectWrap.style.display = 'none';
     }
 }
@@ -907,33 +904,21 @@ async function loadData() {
             }
 
             const mapLogo = document.getElementById('brand-logo-map');
-            const emptyLogo = document.getElementById('empty-brand-logo');
-
             const isCompanyTier = document.body.classList.contains('tier-company');
 
             if (isCompanyTier && data.companyLogo) {
                 if (mapLogo) mapLogo.src = data.companyLogo;
-                if (emptyLogo) { emptyLogo.src = data.companyLogo; emptyLogo.style.display = 'block'; }
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
                 if (mapLogo) mapLogo.src = sprouteLogoUrl;
-                if (emptyLogo) { emptyLogo.src = sprouteLogoUrl; emptyLogo.style.display = 'block'; }
             }
             
             let displayName = data.displayName || 'Sproute'; 
             const mapDriverEl = document.getElementById('map-driver-name');
             if (mapDriverEl) mapDriverEl.innerText = displayName;
-            
-            const sidebarDriverEl = document.getElementById('sidebar-driver-name');
-            if (sidebarDriverEl && !isCompanyTier) {
-                sidebarDriverEl.innerText = displayName;
-            }
 
-            const emptyBrandName = document.getElementById('empty-brand-name');
-            if (emptyBrandName) emptyBrandName.innerText = displayName;
-
-            updateInspectorDropdown(); 
-            updateRouteButtonColors();
+         if (typeof updateInspectorDropdown === 'function') updateInspectorDropdown(); 
+            if (typeof updateRouteButtonColors === 'function') updateRouteButtonColors();
             
             let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
             if (!hasValidStops && data.companyAddress) {
