@@ -69,7 +69,7 @@ export function renderMapMarkers(params) {
             const el = document.createElement('div');
             el.className = `marker ${s.status.toLowerCase().replace(' ', '-')}`; 
             
-            // Add search string for address filtering
+            // NEW: Add search string for address filtering
             const searchStr = `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`;
             el.setAttribute('data-search', searchStr);
             
@@ -158,6 +158,7 @@ export function updateMapSelectionStyles(selectedIdsSet) {
     }); 
 }
 
+// NEW: Instantly hide/show map pins when the user types in the address search bar
 export function filterMarkersMap(query) {
     markers.forEach(m => {
         if (m._stopId) {
