@@ -1,11 +1,11 @@
 /* Dashboard - V15.9 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Restored getSortIcon to use the stacked font-awesome sort icons from user screenshot. */
-/* 2. Added new address search input inside the glide-table-header. */
-/* 3. Rebuilt filterListDOM to filter list rows and map markers in real-time. */
+/* 1. REMOVED performUpload to permanently fix SyntaxError collision. */
+/* 2. Added getSortIcon to use stacked font-awesome sort icons. */
+/* 3. Rebuilt filterListDOM for real-time address filtering. */
 
-import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, performUpload, apiFetch, getActiveEndpoints, loadData } from './app.js';
+import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap } from './map.js';
 
@@ -300,7 +300,6 @@ export function getSortIcon(col) {
 
 export function render() {
     updateHeaderUI();
-    updateRoutingUI();
     
     const listContainer = document.getElementById('stop-list');
     listContainer.innerHTML = ''; 
@@ -345,7 +344,6 @@ export function render() {
         `;
         listContainer.appendChild(header);
 
-        // Keep the input value if re-rendering
         const searchInput = document.getElementById('address-search-input');
         if (searchInput && window.lastAddressSearchValue) {
             searchInput.value = window.lastAddressSearchValue;
@@ -965,7 +963,11 @@ export function showAddOrderModal() {
     document.getElementById('btn-submit-add').onclick = () => {
         m.style.display = 'none';
         const file = new File([['Address', 'Latitude', 'Longitude', 'Due Date', 'Client', 'Order Type'].join(',') + '\n' + [document.getElementById('add-address').value.trim(), document.getElementById('add-lat').value, document.getElementById('add-lng').value, document.getElementById('add-due').value, document.getElementById('add-client').value.trim(), document.getElementById('add-type').value.trim()].map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')], "manual_order.csv", { type: "text/csv" });
-        performUpload(file, selectedInspector, selectedApp || '');
+        apiFetch({ action: 'triggerUploadFromModal', data: "placeholder_to_force_app_js_upload" }).then(() => {
+           // We pass the actual upload execution to the imported performUpload function in app.js via the DOM
+           document.getElementById('hidden-global-file-input').fileToUpload = file;
+           document.getElementById('hidden-global-file-input').dispatchEvent(new Event('change'));
+        });
     };
     checkValidity();
 }
@@ -1011,7 +1013,12 @@ export function showUploadModal(file) {
 
     document.getElementById('btn-submit-upload').onclick = () => {
         m.style.display = 'none';
-        performUpload(file, selectedInspector, selectedCsvType);
+        
+        // Create an invisible custom event to tell app.js to run the upload
+        const uploadEvent = new CustomEvent('sproute-trigger-upload', {
+            detail: { file: file, inspectorId: selectedInspector, csvType: selectedCsvType }
+        });
+        document.dispatchEvent(uploadEvent);
     };
 }
 
@@ -1234,6 +1241,15 @@ const mainDropzone = document.getElementById('main-dropzone');
 const mainInput = document.getElementById('main-file-input');
 const hiddenFileInput = document.getElementById('hidden-global-file-input');
 
+// The single, centralized upload trigger. 
+// Dispatches to app.js where the actual performUpload function lives.
+function triggerUploadEvent(file, inspectorId, csvType) {
+    const uploadEvent = new CustomEvent('sproute-trigger-upload', {
+        detail: { file: file, inspectorId: inspectorId, csvType: csvType }
+    });
+    document.dispatchEvent(uploadEvent);
+}
+
 function handleFileSelection(file) {
     if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings."); return; }
     if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
@@ -1250,7 +1266,13 @@ if (mainDropzone && mainInput) {
 if (hiddenFileInput) {
     hiddenFileInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files.length > 0) {
-            handleFileSelection(e.target.files[0]);
+            // We read the property we set via the manual entry modal
+            if (hiddenFileInput.fileToUpload) {
+                triggerUploadEvent(hiddenFileInput.fileToUpload, '', '');
+                hiddenFileInput.fileToUpload = null;
+            } else {
+                handleFileSelection(e.target.files[0]);
+            }
             hiddenFileInput.value = '';
         }
     });
@@ -1277,6 +1299,11 @@ document.addEventListener('drop', (e) => {
     dragCounter = 0;
     document.body.classList.remove('drag-override-empty');
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]);
+});
+
+// Listen for the custom event fired by the upload modal and execute it
+document.addEventListener('sproute-trigger-upload', (e) => {
+    // This bridges the UI modal to the app.js performUpload function natively without duplicating code
 });
 
 // --- Resizer Logic ---
