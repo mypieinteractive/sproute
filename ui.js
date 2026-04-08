@@ -1,9 +1,10 @@
-/* Dashboard - V15.6 */
+/* Dashboard - V15.7 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Removed search bar logic (filterList) and DOM references to search-container. */
-/* 2. Removed references to old route-summary visibility toggles. */
-/* 3. Added updatePrioritySliderUI() to handle the visual disabled state of the slider. */
+/* 1. Added Global App-Wide Drag-and-Drop listeners. */
+/* 2. Added logic for the new Add Order Hover Menu (hidden file input). */
+/* 3. Implemented updatePrioritySliderUI() to visually disable slider on Route 1. */
+/* 4. Removed dead search bar logic (filterList). */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, performUpload, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -71,7 +72,7 @@ export function updateUndoUI() {
 }
 
 export function applyBranding(logoUrl, brandName) {
-    // No-op - Logos and brand names removed from UI
+    // No-op - Logos and brand names removed from UI per V1.4 logic
 }
 
 export function updateHeaderUI() {
@@ -318,11 +319,9 @@ export function render() {
     
     document.body.classList.toggle('empty-state-active', Config.isManagerView && activeStops.length === 0);
     
-    // Hide Upload/Add Order buttons for inspectors
-    const uploadBtn = document.getElementById('header-csv-upload');
-    const addBtn = document.getElementById('btn-add-order');
-    if (uploadBtn) uploadBtn.style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
-    if (addBtn) addBtn.style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
+    // Hide Hover Menu (+/Upload) wrapper for inspectors
+    const addMenuWrapper = document.getElementById('add-menu-wrapper');
+    if (addMenuWrapper) addMenuWrapper.style.display = Config.viewMode === 'inspector' ? 'none' : 'block';
 
     if (Config.isManagerView) {
         const header = document.createElement('div');
@@ -349,7 +348,6 @@ export function render() {
     const processStop = (s, displayIndex, showHandle) => {
         const item = document.createElement('div');
         item.id = `item-${s.id}`;
-        item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
         if (Config.viewMode === 'inspector' && s.hiddenInInspector) item.classList.add('hidden-unrouted');
         
         let urgencyClass = '';
@@ -1131,6 +1129,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- UI Utilities Bound to Window ---
 
+window.setDisplayMode = function(mode) {
+    AppState.currentDisplayMode = mode;
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
+};
+
 window.setRouteViewFilter = function(val) {
     AppState.currentRouteViewFilter = val;
     document.getElementById('view-rall-btn')?.classList.toggle('active', val === 'all');
@@ -1153,14 +1156,7 @@ window.handleInspectorFilterChange = function(val) {
     document.getElementById('view-rall-btn')?.classList.add('active');
     for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
     updateInspectorDropdown(); 
-    if (val !== 'all' && window.setRoutes) { /* Call recalculate if needed */ }
     updateRouteButtonColors(); triggerFullRender();
-};
-
-window.setDisplayMode = function(mode) {
-    AppState.currentDisplayMode = mode;
-    document.getElementById('btn-detailed')?.classList.toggle('active', mode === 'detailed'); document.getElementById('btn-compact')?.classList.toggle('active', mode === 'compact');
-    document.querySelectorAll('.stop-item, .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
 };
 
 window.toggleSelectAll = function(cb) {
@@ -1204,23 +1200,65 @@ window.handleOpenEmailModal = handleOpenEmailModal;
 window.resetMapView = resetMapBounds;
 
 // --- Drag & Drop Initialization ---
-const headerDropzone = document.getElementById('header-csv-upload'); const headerInput = document.getElementById('header-file-input');
-const mainDropzone = document.getElementById('main-dropzone'); const mainInput = document.getElementById('main-file-input');
-const initDropzone = (dropzone, input) => {
-    if (dropzone && input) {
-        dropzone.onclick = () => input.click();
-        dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('drag-active'); dropzone.style.borderColor = 'var(--blue)'; dropzone.style.backgroundColor = 'var(--bg-hover)'; };
-        dropzone.ondragleave = (e) => { e.preventDefault(); dropzone.classList.remove('drag-active'); dropzone.style.borderColor = 'var(--border-color)'; dropzone.style.backgroundColor = 'transparent'; };
-        dropzone.ondrop = (e) => { e.preventDefault(); dropzone.classList.remove('drag-active'); dropzone.style.borderColor = 'var(--border-color)'; dropzone.style.backgroundColor = 'transparent'; if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]); };
-        input.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); input.value = ''; } };
-    }
-};
-initDropzone(headerDropzone, headerInput); initDropzone(mainDropzone, mainInput);
+const mainDropzone = document.getElementById('main-dropzone'); 
+const mainInput = document.getElementById('main-file-input');
+const hiddenFileInput = document.getElementById('hidden-global-file-input');
 
 function handleFileSelection(file) {
     if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings."); return; }
     if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
 }
+
+// Wire the main empty-state dropzone
+if (mainDropzone && mainInput) {
+    mainDropzone.onclick = () => mainInput.click();
+    mainDropzone.ondragover = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--blue)'; mainDropzone.style.backgroundColor = 'var(--bg-hover)'; };
+    mainDropzone.ondragleave = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; };
+    mainDropzone.ondrop = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]); };
+    mainInput.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); mainInput.value = ''; } };
+}
+
+// Wire the hidden file input from the Add Menu
+if (hiddenFileInput) {
+    hiddenFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+            hiddenFileInput.value = '';
+        }
+    });
+}
+
+// Global Drag and Drop Overlay Logic
+const globalDropOverlay = document.getElementById('global-drop-overlay');
+let dragCounter = 0;
+
+document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1 && globalDropOverlay) {
+        globalDropOverlay.classList.add('drag-active');
+    }
+});
+
+document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0 && globalDropOverlay) {
+        globalDropOverlay.classList.remove('drag-active');
+    }
+});
+
+document.addEventListener('dragover', (e) => { e.preventDefault(); });
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    if (globalDropOverlay) globalDropOverlay.classList.remove('drag-active');
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFileSelection(e.dataTransfer.files[0]);
+    }
+});
 
 // --- Resizer Logic ---
 const resizerEl = document.getElementById('resizer'); const sidebarEl = document.getElementById('sidebar'); const mapWrapEl = document.getElementById('map-wrapper');
