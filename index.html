@@ -23,14 +23,44 @@
     </div>
 </div>
 
-<div id="global-header" style="height: 61px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 15px 0 0; flex: none; z-index: 1000; width: 100vw; box-sizing: border-box;">
-    <div style="display: flex; align-items: center; gap: 15px;">
-        <img id="brand-logo-map" src="https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 36px; width: auto;" alt="Brand Logo">
-        <span id="map-driver-name" style="font-size: 20px; font-weight: bold; color: var(--text-main); letter-spacing: 0.5px;"></span>
-    </div>
+<div id="global-header" style="background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 0 0 15px; flex: none; z-index: 1000; width: 100vw; box-sizing: border-box; min-height: 53px;">
     
-    <div id="header-actions-wrapper" style="margin-left: 15px; display: flex; align-items: center; gap: 10px; flex: 1;">
-        <div id="header-combined-action" class="header-combined-action">
+    <div id="header-action-container" style="display: flex; gap: 8px; align-items: center;">
+        <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
+            <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
+        </button>
+        <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="display:none; background:#444; color:white;">
+            <i class="fa-solid fa-calculator"></i> <span>Re-Calculate</span>
+        </button>
+        <button id="btn-header-optimize-insp" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:#2C3D4F; color:white;">
+            <i class="fa-solid fa-route"></i> <span>Re-Optimize</span>
+        </button>
+        <button id="btn-header-send-route" class="header-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
+            <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
+        </button>
+        <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
+            <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
+        </button>
+    </div>
+
+    <div id="header-actions-wrapper" style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+        
+        <div id="summary-metrics" style="display: flex; gap: 8px; font-size: 13px; font-weight: bold; color: var(--text-main);">
+            <span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span>
+        </div>
+        
+        <div id="order-stats" style="display: flex; gap: 8px; font-size: 13px; font-weight: bold;">
+            <span id="stat-total">0 Orders</span> | 
+            <span id="stat-due" style="color:var(--orange)">0 Due Today</span> | 
+            <span id="stat-past" style="color:var(--red)">0 Past Due</span>
+        </div>
+
+        <div class="rocker" style="margin: 0 10px;">
+            <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
+            <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
+        </div>
+
+        <div id="header-combined-action" class="header-combined-action" style="margin: 4px 0;">
             <div class="header-combined-idle"><i class="fa-solid fa-plus"></i></div>
             <div class="header-combined-hover">
                 <button class="header-action-btn" onclick="document.getElementById('header-file-input').click()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload CSV</button>
@@ -38,13 +68,13 @@
             </div>
             <input type="file" id="header-file-input" accept=".csv" style="display: none;">
         </div>
-        
+
         <div id="inspector-dropdown-wrapper" style="position: relative; display: none; flex: none;">
-            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)"></select>
+            <select id="inspector-filter" class="header-insp-select" onchange="handleInspectorFilterChange(this.value)"></select>
             <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-main); pointer-events: none; font-size: 13px;"></i>
         </div>
-        
-        <button id="btn-undo-incremental" onclick="undoLastAction()" disabled title="Undo" style="flex: none;">
+
+        <button id="btn-undo-incremental" onclick="undoLastAction()" disabled title="Undo">
             <i class="fa-solid fa-arrow-rotate-left"></i>
         </button>
     </div>
@@ -72,36 +102,6 @@
     </div>
 
     <div id="map-wrapper">
-        <div id="route-summary">
-            <div class="summary-left" style="gap: 15px;">
-                <div id="header-action-container" style="display: flex; gap: 8px; align-items: center;">
-                    <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
-                        <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
-                    </button>
-                    <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="display:none; background:#444; color:white;">
-                        <i class="fa-solid fa-calculator"></i> <span>Re-Calculate</span>
-                    </button>
-                    <button id="btn-header-optimize-insp" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:#2C3D4F; color:white;">
-                        <i class="fa-solid fa-route"></i> <span>Re-Optimize</span>
-                    </button>
-                    <button id="btn-header-send-route" class="header-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
-                        <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
-                    </button>
-                    <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
-                        <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
-                    </button>
-                </div>
-                <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
-            </div>
-            <div class="summary-right">
-                <div id="order-stats">
-                    <span id="stat-total">0 Orders</span> | 
-                    <span id="stat-due" style="color:var(--orange)">0 Due Today</span> | 
-                    <span id="stat-past" style="color:var(--red)">0 Past Due</span>
-                </div>
-            </div>
-        </div>
-
         <div id="routing-controls" style="display: none;">
             <div id="route-divider-group">
                 <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
@@ -172,14 +172,6 @@
             <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
             <button class="route-view-btn" id="view-r1-btn" onclick="setRouteViewFilter(1)">Route 2</button>
             <button class="route-view-btn" id="view-r2-btn" onclick="setRouteViewFilter(2)">Route 3</button>
-        </div>
-
-        <div id="search-container">
-            <input type="text" id="search-input" placeholder="Search address or client..." onkeyup="filterList()">
-            <div class="rocker">
-                <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
-                <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
-            </div>
         </div>
         
         <div id="stop-list"></div>
