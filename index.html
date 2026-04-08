@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 
-<body style="display: flex; flex-direction: column; height: 100vh; overflow: hidden; margin: 0;" class="view-manager manager-all-inspectors empty-state-active">
+<body class="view-manager manager-all-inspectors empty-state-active">
 
 <div id="processing-overlay" style="display: flex;">
     <div class="spinner-container">
@@ -44,27 +44,41 @@
     </div>
 
     <div id="header-right-controls" style="display: flex; align-items: center; gap: 15px;">
-        <div class="rocker" style="margin: 0;">
-            <div id="btn-detailed" class="active" onclick="setDisplayMode('detailed')">Detailed</div>
-            <div id="btn-compact" onclick="setDisplayMode('compact')">Compact</div>
+        
+        <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold; padding-right: 15px; border-right: 1px solid var(--border-color);">
+            <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+            <div id="order-stats">
+                <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
+                <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
+                <span id="stat-past" style="color: var(--red);">0 Past Due</span>
+            </div>
+        </div>
+
+        <div style="position: relative; display: flex; align-items: center;">
+            <select id="display-mode-select" class="insp-select" onchange="setDisplayMode(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; font-weight: bold; appearance: none; background-image: none;">
+                <option value="detailed">Detailed</option>
+                <option value="compact">Compact</option>
+            </select>
+            <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; color: var(--text-main); pointer-events: none; font-size: 12px;"></i>
         </div>
 
         <div id="inspector-dropdown-wrapper" style="position: relative; display: none;">
-            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 15px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; background-image: none; appearance: none;"></select>
-            <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-main); pointer-events: none; font-size: 13px;"></i>
+            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; appearance: none; background-image: none;"></select>
+            <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; color: var(--text-main); pointer-events: none; font-size: 12px;"></i>
         </div>
+        <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 0; white-space: nowrap;">&lt;- Select an Inspector</span>
 
         <button id="btn-undo-incremental" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 5px;">
             <i class="fa-solid fa-arrow-rotate-left"></i>
         </button>
 
-        <div id="header-csv-upload" class="header-dropzone" style="cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(255,255,255,0.05); border: 1px dashed var(--border-color); border-radius: 6px; color: var(--text-main); font-weight: bold;">
+        <div id="header-csv-upload" class="header-dropzone" style="cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(255,255,255,0.05); border: 1px dashed var(--border-color); border-radius: 6px; color: var(--text-main); font-weight: bold; height: 38px; box-sizing: border-box;">
             <i class="fa-solid fa-cloud-arrow-up"></i> 
             <span class="hide-mobile-text">Upload CSV</span>
             <input type="file" id="header-file-input" accept=".csv" style="display: none;">
         </div>
 
-        <button id="btn-add-order" class="header-action-btn add-order-btn" onclick="showAddOrderModal()" style="padding: 8px 12px; border-radius: 6px;">
+        <button id="btn-add-order" class="header-action-btn add-order-btn" onclick="showAddOrderModal()" style="padding: 8px 12px; border-radius: 6px; height: 38px;">
             <i class="fa-solid fa-plus"></i>
         </button>
     </div>
@@ -85,19 +99,6 @@
     </div>
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
-        <div id="route-summary" style="border-top: none;">
-            <div class="summary-left">
-                <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
-            </div>
-            <div class="summary-right">
-                <div id="order-stats">
-                    <span id="stat-total">0 Orders</span> | 
-                    <span id="stat-due" style="color:var(--orange)">0 Due Today</span> | 
-                    <span id="stat-past" style="color:var(--red)">0 Past Due</span>
-                </div>
-            </div>
-        </div>
-
         <div id="routing-controls" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; gap: 20px; z-index: 10; flex: none;">
             <div id="route-divider-group" style="display:flex; gap:8px; flex: 1;">
                 <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
@@ -123,7 +124,7 @@
                 </div>
             </div>
 
-            <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center;">
+            <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; transition: opacity 0.2s;">
                 <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:4px;">Priority Weighting</label>
                 <div style="display:flex; align-items:center; gap:10px;">
                     <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
@@ -150,19 +151,14 @@
     <div id="resizer"></div>
 
     <div id="sidebar" style="display: flex; flex-direction: column;">
-        <div id="route-view-toggles" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; gap: 8px;">
+        <div id="route-view-toggles" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; gap: 8px; flex-shrink: 0;">
             <button class="route-view-btn active" id="view-rall-btn" onclick="setRouteViewFilter('all')">All Routes</button>
             <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
             <button class="route-view-btn" id="view-r1-btn" onclick="setRouteViewFilter(1)">Route 2</button>
             <button class="route-view-btn" id="view-r2-btn" onclick="setRouteViewFilter(2)">Route 3</button>
         </div>
-
-        <div id="search-container">
-            <input type="text" id="search-input" placeholder="Search address or client..." onkeyup="filterList()" style="width: 100%;">
-            <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 12px; white-space: nowrap;">&lt;- Select an Inspector</span>
-        </div>
         
-        <div id="stop-list" style="flex: 1; overflow-y: auto;"></div>
+        <div id="stop-list" style="flex: 1; overflow-y: auto; position: relative;"></div>
     </div>
 </div>
 
