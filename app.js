@@ -3430,7 +3430,7 @@ function initSortable() {
     }
 }
 
-const headerDropzone = document.getElementById('header-csv-upload');
+const headerDropzone = document.getElementById('header-combined-action');
 const headerInput = document.getElementById('header-file-input');
 if (headerDropzone && headerInput) {
     headerDropzone.onclick = () => headerInput.click();
