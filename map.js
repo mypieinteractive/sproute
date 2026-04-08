@@ -1,9 +1,8 @@
-/* Dashboard - V15.4 */
+/* Dashboard - V15.6 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Extracted Mapbox GL JS engine logic into a dedicated ES Module. */
-/* 2. Encapsulated lasso tool, marker rendering, and route drawing into pure, controllable functions. */
-/* 3. Uses callbacks to communicate lasso/click selections back to app.js state. */
+/* 1. Added data-search attribute to markers for real-time address filtering. */
+/* 2. Added filterMarkersMap to hide/show markers based on the input query. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 
@@ -12,11 +11,10 @@ let markers = [];
 let initialBounds = null;
 let isFirstMapRender = true;
 
-// Lasso State
 let start_pos = null;
 let box_el = null;
 let canvas = null;
-let onSelectionCallback = null; // Callback for when lasso or map click happens
+let onSelectionCallback = null; 
 
 export function initMap(token, config, selectionCallback) {
     mapboxgl.accessToken = token;
@@ -31,20 +29,15 @@ export function initMap(token, config, selectionCallback) {
         }
     }, { passive: true });
 
-    // Click on empty space to clear selection
     map.on('click', (e) => { 
         if (e.originalEvent.target.classList.contains('mapboxgl-canvas')) { 
             if (onSelectionCallback) onSelectionCallback({ action: 'clear' });
         } 
     });
 
-    // Setup Lasso Tool
     canvas = map.getCanvasContainer();
     canvas.addEventListener('mousedown', onCanvasMouseDown, true);
 
-    // --- THE FIX: Add a ResizeObserver ---
-    // This constantly watches the map's parent container. If the sidebar 
-    // opens, closes, or flexbox shifts, it forces Mapbox to perfectly fill the space.
     const mapContainer = document.getElementById(config.container);
     if (mapContainer && window.ResizeObserver) {
         const ro = new ResizeObserver(() => {
@@ -56,27 +49,10 @@ export function initMap(token, config, selectionCallback) {
     return map;
 }
 
-export function getMapInstance() {
-    return map;
-}
-
-export function resizeMap() {
-    if (map) map.resize();
-}
-
-export function focusMapPin(lng, lat) {
-    if (map && lng && lat) {
-        map.flyTo({ center: [lng, lat] });
-    }
-}
-
-export function resetMapBounds() {
-    if (map && initialBounds) {
-        map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 });
-    }
-}
-
-// --- Marker Rendering ---
+export function getMapInstance() { return map; }
+export function resizeMap() { if (map) map.resize(); }
+export function focusMapPin(lng, lat) { if (map && lng && lat) map.flyTo({ center: [lng, lat] }); }
+export function resetMapBounds() { if (map && initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 
 export function renderMapMarkers(params) {
     const {
@@ -88,16 +64,18 @@ export function renderMapMarkers(params) {
     markers = [];
     const bounds = new mapboxgl.LngLatBounds();
 
-    // Draw Stop Markers
     activeStops.forEach((s, index) => {
         if (s.lng && s.lat) {
             const el = document.createElement('div');
             el.className = `marker ${s.status.toLowerCase().replace(' ', '-')}`; 
             
+            // Add search string for address filtering
+            const searchStr = `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`;
+            el.setAttribute('data-search', searchStr);
+            
             const style = getVisualStyle(s, isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
             el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};"><span>${index + 1}</span></div>`;
 
-            // Urgency warning flags
             const today = new Date(); today.setHours(0,0,0,0);
             let urgencyClass = '';
             if (s.dueDate) {
@@ -124,7 +102,6 @@ export function renderMapMarkers(params) {
         }
     });
 
-    // Draw Endpoint Markers
     endpointsToDraw.forEach(ep => {
         let inspColor = '#ffffff';
         if (ep.driverId) {
@@ -152,7 +129,6 @@ export function renderMapMarkers(params) {
         bounds.extend([ep.lng, ep.lat]);
     });
 
-    // Fit Bounds
     if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
         initialBounds = bounds; 
         map.fitBounds(bounds, { padding: 50, maxZoom: 15, animate: !isFirstMapRender }); 
@@ -162,7 +138,7 @@ export function renderMapMarkers(params) {
 
 export function updateMarkerColorsMap(allStops, isManagerView, currentInspectorFilter, currentRouteCount, inspectors) {
     markers.forEach(m => {
-        if (!m._stopId) return; // Skip endpoints
+        if (!m._stopId) return; 
         const stopData = allStops.find(st => String(st.id) === String(m._stopId));
         if (stopData) {
             const visualStyle = getVisualStyle(stopData, isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
@@ -178,10 +154,18 @@ export function updateMarkerColorsMap(allStops, isManagerView, currentInspectorF
 
 export function updateMapSelectionStyles(selectedIdsSet) {
     markers.forEach(m => { 
-        if(m._stopId) {
-            m.getElement().classList.toggle('bulk-selected', selectedIdsSet.has(m._stopId)); 
-        }
+        if(m._stopId) m.getElement().classList.toggle('bulk-selected', selectedIdsSet.has(m._stopId)); 
     }); 
+}
+
+export function filterMarkersMap(query) {
+    markers.forEach(m => {
+        if (m._stopId) {
+            const el = m.getElement();
+            const searchStr = el.getAttribute('data-search') || '';
+            el.style.display = searchStr.includes(query) ? 'flex' : 'none';
+        }
+    });
 }
 
 // --- Route Drawing ---
@@ -218,7 +202,6 @@ export function drawRouteMap(params) {
             let rStart = activeEndpoints.start;
             let rEnd = activeEndpoints.end;
 
-            // Handle All Inspectors override
             if (isManagerView && currentInspectorFilter === 'all' && dId !== 'unassigned') {
                 const insp = inspectors.find(i => String(i.id) === String(dId));
                 if (insp) {
@@ -244,17 +227,14 @@ export function drawRouteMap(params) {
 
     map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
     
-    // Core Route
     map.addLayer({ "id": "route-line-0-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-0-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
 
-    // Route 2
     map.addLayer({ "id": "route-line-1-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-1-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1 } }); 
     map.addLayer({ "id": "route-line-1-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
     map.addLayer({ "id": "route-line-1-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
 
-    // Route 3
     map.addLayer({ "id": "route-line-2-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
     map.addLayer({ "id": "route-line-2-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1 } }); 
     map.addLayer({ "id": "route-line-2-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
