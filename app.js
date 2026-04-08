@@ -2597,6 +2597,10 @@ function render() {
     updateRoutingUI();
     
     const listContainer = document.getElementById('stop-list');
+
+const searchInputEl = document.getElementById('search-input');
+    if (searchInputEl) currentSearchValue = searchInputEl.value;
+    
     listContainer.innerHTML = ''; 
     markers.forEach(m => m.remove()); 
     markers = [];
@@ -2650,18 +2654,25 @@ function render() {
         const appSortClick = isAllInspectors ? `onclick="sortTable('app')"` : '';
         const appSortIcon = isAllInspectors ? getSortIcon('app') : '';
 
-        header.innerHTML = `
+header.innerHTML = `
             <div class="col-num">
                 <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
             </div>
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
-            <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
+            <div class="col-addr" style="padding-right: 10px;">
+                <div class="header-search-wrapper">
+                    <input type="text" id="search-input" class="header-search-input" placeholder="Address" value="${currentSearchValue}" onkeyup="filterList()" autocomplete="off">
+                    <i class="fa-solid fa-xmark clear-search-btn" onclick="clearSearch()"></i>
+                </div>
+            </div>
             <div class="col-app ${appSortClass}" ${appSortClick}>App ${appSortIcon}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
             <div class="col-handle" style="visibility:${hasRouted ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
         `;
+
+        
         listContainer.appendChild(header);
     }
     
@@ -3174,6 +3185,14 @@ function focusPin(id) { const tgt = stops.find(s=>String(s.id)===String(id)); if
 function focusTile(id) { document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
+
+window.clearSearch = function() {
+    const input = document.getElementById('search-input');
+    if (input) {
+        input.value = '';
+        filterList();
+    }
+};
 
 function drawRoute() { 
     const layerIds = [
