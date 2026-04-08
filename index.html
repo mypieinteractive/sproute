@@ -1,3 +1,7 @@
+<!-- Dashboard - V15.4  -->
+<!-- FILE: index.html  -->
+<!-- Changes: Updated the sources for the split app.js code -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,6 +42,13 @@
             <div class="dropzone-sub" style="font-size: 16px; color: var(--text-muted); pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
         </div>
     </div>
+</div>
+
+<div id="drag-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(18, 18, 18, 0.9); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; border: 4px dashed var(--blue);">
+    <div style="background: rgba(37, 99, 235, 0.1); padding: 40px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
+        <i class="fa-solid fa-file-csv" style="font-size: 80px; color: var(--blue);"></i>
+    </div>
+    <div style="font-size: 32px; font-weight: bold; color: white; pointer-events: none;">Drop CSV to Upload</div>
 </div>
 
 <div id="map-wrapper">
@@ -245,5 +256,6 @@
 </div>
 
 <script src="app.js"></script>
+    
 </body>
 </html>
