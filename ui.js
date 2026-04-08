@@ -1,12 +1,13 @@
-/* Dashboard - V15.8 */
+/* Dashboard - V15.9 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added document-level event listeners for drag and drop. */
-/* 2. Replaced the old global-drop-overlay with .drag-override-empty class toggling. */
+/* 1. Restored getSortIcon to use the stacked font-awesome sort icons from user screenshot. */
+/* 2. Added new address search input inside the glide-table-header. */
+/* 3. Rebuilt filterListDOM to filter list rows and map markers in real-time. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, performUpload, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
-import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers } from './map.js';
+import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap } from './map.js';
 
 // --- Overlays & Modals ---
 
@@ -70,7 +71,7 @@ export function updateUndoUI() {
 }
 
 export function applyBranding(logoUrl, brandName) {
-    // No-op - Logos and brand names removed from UI per V1.4 logic
+    // No-op
 }
 
 export function updateHeaderUI() {
@@ -176,7 +177,6 @@ export function updatePrioritySliderUI() {
 export function updateRoutingUI() {
     const isDirty = AppState.dirtyRoutes.size > 0;
     const routingControls = document.getElementById('routing-controls');
-    const hintEl = document.getElementById('inspector-select-hint');
 
     const btnGen = document.getElementById('btn-header-generate');
     const btnRecalc = document.getElementById('btn-header-recalc');
@@ -192,19 +192,9 @@ export function updateRoutingUI() {
         if(routingControls) routingControls.style.display = 'none';
         const routeToggles = document.getElementById('route-view-toggles');
         if(routeToggles) routeToggles.style.display = 'none';
-        
-        let showHint = false;
-        const allValidStops = AppState.stops.filter(s => s.status !== 'Deleted' && s.status !== 'Cancelled');
-        for (const insp of AppState.inspectors) {
-            if (allValidStops.filter(s => String(s.driverId) === String(insp.id)).length > 2) {
-                showHint = true; break;
-            }
-        }
-        if (hintEl) hintEl.style.display = (showHint && Config.viewMode !== 'managermobile' && Config.viewMode !== 'managermobilesplit') ? 'block' : 'none';
         return;
     }
 
-    if (hintEl) hintEl.style.display = 'none';
     let currentState = 'Pending';
     let targetStops = Config.isManagerView ? AppState.stops.filter(s => String(s.driverId) === String(AppState.currentInspectorFilter)) : AppState.stops;
     
@@ -300,6 +290,12 @@ export function drawRoute() {
     });
 }
 
+// --- Restored Sort Icon Logic ---
+export function getSortIcon(col) {
+    if (AppState.currentSort.col !== col) return '<i class="fa-solid fa-sort" style="opacity:0.3; margin-left:4px;"></i>';
+    return AppState.currentSort.asc ? '<i class="fa-solid fa-sort-up" style="margin-left:4px; color:var(--blue);"></i>' : '<i class="fa-solid fa-sort-down" style="margin-left:4px; color:var(--blue);"></i>';
+}
+
 // --- Rendering Engine ---
 
 export function render() {
@@ -317,7 +313,6 @@ export function render() {
     
     document.body.classList.toggle('empty-state-active', Config.isManagerView && activeStops.length === 0);
     
-    // Hide Hover Menu (+/Upload) wrapper for inspectors
     const addMenuWrapper = document.getElementById('add-menu-wrapper');
     if (addMenuWrapper) addMenuWrapper.style.display = Config.viewMode === 'inspector' ? 'none' : 'block';
 
@@ -326,7 +321,7 @@ export function render() {
         header.className = 'glide-table-header';
         header.style.position = 'sticky'; header.style.top = '0'; header.style.zIndex = '20'; header.style.marginTop = '-1px';
         
-        const sortIcon = (col) => isAllInspectors ? (AppState.currentSort.col === col ? (AppState.currentSort.asc ? '🔼' : '🔽') : '↕️') : '';
+        const sortIcon = (col) => isAllInspectors ? getSortIcon(col) : '';
         const sortClass = isAllInspectors ? 'sortable' : '';
         const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
 
@@ -335,17 +330,34 @@ export function render() {
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
-            <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
+            
+            <div class="col-addr" style="display:flex; align-items:center;">
+                <div style="position:relative; flex:1; display:flex; align-items:center;">
+                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
+                    <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none;"></i>
+                </div>
+                <div class="${sortClass}" ${sortClick('address')} style="margin-left:4px; padding:4px;">${sortIcon('address')}</div>
+            </div>
+
             <div class="col-app ${sortClass}" ${sortClick('app')}>App ${sortIcon('app')}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
             <div class="col-handle" style="visibility:${hasRouted ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
         `;
         listContainer.appendChild(header);
+
+        // Keep the input value if re-rendering
+        const searchInput = document.getElementById('address-search-input');
+        if (searchInput && window.lastAddressSearchValue) {
+            searchInput.value = window.lastAddressSearchValue;
+            const clearIcon = document.getElementById('clear-search-icon');
+            if (clearIcon) clearIcon.style.display = window.lastAddressSearchValue ? 'block' : 'none';
+        }
     }
 
     const processStop = (s, displayIndex, showHandle) => {
         const item = document.createElement('div');
         item.id = `item-${s.id}`;
+        item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
         if (Config.viewMode === 'inspector' && s.hiddenInInspector) item.classList.add('hidden-unrouted');
         
         let urgencyClass = '';
@@ -491,7 +503,8 @@ export function render() {
 
     updateSelectionUI();
     
-    // Force Mapbox layout recalculation after the DOM flex structure settles
+    if (window.lastAddressSearchValue) { window.filterListDOM(window.lastAddressSearchValue); }
+
     setTimeout(() => { resizeMap(); }, 150);
 }
 
@@ -1197,6 +1210,25 @@ window.showAddOrderModal = showAddOrderModal;
 window.handleOpenEmailModal = handleOpenEmailModal;
 window.resetMapView = resetMapBounds;
 
+window.filterListDOM = function(val) {
+    window.lastAddressSearchValue = val; 
+    const q = val.toLowerCase();
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el => {
+        const searchAttr = el.getAttribute('data-search') || '';
+        el.style.display = searchAttr.includes(q) ? 'flex' : 'none';
+    });
+    const clearIcon = document.getElementById('clear-search-icon');
+    if(clearIcon) clearIcon.style.display = q ? 'block' : 'none';
+    filterMarkersMap(q);
+};
+
+window.clearAddressSearch = function() {
+    window.lastAddressSearchValue = '';
+    const inp = document.getElementById('address-search-input');
+    if(inp) inp.value = '';
+    window.filterListDOM('');
+};
+
 // --- Drag & Drop Initialization ---
 const mainDropzone = document.getElementById('main-dropzone'); 
 const mainInput = document.getElementById('main-file-input');
@@ -1207,7 +1239,6 @@ function handleFileSelection(file) {
     if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
 }
 
-// Wire the main empty-state dropzone
 if (mainDropzone && mainInput) {
     mainDropzone.onclick = () => mainInput.click();
     mainDropzone.ondragover = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--blue)'; mainDropzone.style.backgroundColor = 'var(--bg-hover)'; };
@@ -1216,7 +1247,6 @@ if (mainDropzone && mainInput) {
     mainInput.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); mainInput.value = ''; } };
 }
 
-// Wire the hidden file input from the Add Menu
 if (hiddenFileInput) {
     hiddenFileInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -1226,23 +1256,18 @@ if (hiddenFileInput) {
     });
 }
 
-// Global Drag and Drop Overlay Logic
+// Global Drag and Drop Override Logic
 let dragCounter = 0;
-
 document.addEventListener('dragenter', (e) => {
     e.preventDefault();
     dragCounter++;
-    if (dragCounter === 1) {
-        document.body.classList.add('drag-override-empty');
-    }
+    if (dragCounter === 1) document.body.classList.add('drag-override-empty');
 });
 
 document.addEventListener('dragleave', (e) => {
     e.preventDefault();
     dragCounter--;
-    if (dragCounter === 0) {
-        document.body.classList.remove('drag-override-empty');
-    }
+    if (dragCounter === 0) document.body.classList.remove('drag-override-empty');
 });
 
 document.addEventListener('dragover', (e) => { e.preventDefault(); });
@@ -1251,10 +1276,7 @@ document.addEventListener('drop', (e) => {
     e.preventDefault();
     dragCounter = 0;
     document.body.classList.remove('drag-override-empty');
-    
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        handleFileSelection(e.dataTransfer.files[0]);
-    }
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]);
 });
 
 // --- Resizer Logic ---
