@@ -1064,36 +1064,44 @@ function handleEndpointBlur(type, inputEl) {
     }, 200);
 }
 
+let isSelectingEndpoint = false;
 async function selectEndpoint(type, address, lat, lng, inputEl) {
-    const inspId = isManagerView ? currentInspectorFilter : driverParam;
-    const insp = inspectors.find(i => String(i.id) === String(inspId));
-    const activeStops = stops.filter(s => isActiveStop(s));
-    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
+    if (isSelectingEndpoint) return;
+    isSelectingEndpoint = true;
+    
+    try {
+        const inspId = isManagerView ? currentInspectorFilter : driverParam;
+        const insp = inspectors.find(i => String(i.id) === String(inspId));
+        const activeStops = stops.filter(s => isActiveStop(s));
+        const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
 
-    if (isManagerView && hasRouted) {
-        const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
-        if (!proceed) {
-            const eps = getActiveEndpoints();
-            if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
-            return;
+        if (isManagerView && hasRouted) {
+            const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
+            if (!proceed) {
+                const eps = getActiveEndpoints();
+                if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
+                return;
+            }
         }
-    }
-    
-    let epObj = { address, lat, lng };
-    if (type === 'start') routeStart = epObj;
-    if (type === 'end') routeEnd = epObj;
+        
+        let epObj = { address, lat, lng };
+        if (type === 'start') routeStart = epObj;
+        if (type === 'end') routeEnd = epObj;
 
-    if (insp) {
-        if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
-        if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
-    }
-    
-    if (isManagerView && hasRouted) {
-        await executeRouteReset(insp.id);
-    } else {
-        markRouteDirty('endpoints', 0);
-        render(); drawRoute(); updateSummary();
-        saveEndpointToBackend(type, address, lat, lng);
+        if (insp) {
+            if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
+            if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
+        }
+        
+        if (isManagerView && hasRouted) {
+            if (typeof executeRouteReset === 'function') await executeRouteReset(insp.id);
+        } else {
+            markRouteDirty('endpoints', 0);
+            render(); drawRoute(); updateSummary();
+            if (typeof saveEndpointToBackend === 'function') saveEndpointToBackend(type, address, lat, lng);
+        }
+    } finally {
+        isSelectingEndpoint = false;
     }
 }
 
@@ -2920,16 +2928,22 @@ function render() {
         bounds.extend([ep.lng, ep.lat]);
     });
 
-    if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
+  if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
         initialBounds = bounds; 
-        map.fitBounds(bounds, { padding: 50, maxZoom: 15, animate: !isFirstMapRender }); 
-        if (isFirstMapRender) isFirstMapRender = false;
     }
     
     updateSelectionUI();
-    initSortable(); 
+    if (typeof initSortable === 'function') initSortable(); 
     
-    setTimeout(() => { if (map) map.resize(); }, 150);
+    setTimeout(() => { 
+        if (map) {
+            map.resize(); 
+            if (initialBounds) {
+                map.fitBounds(initialBounds, { padding: 50, maxZoom: 15, animate: !isFirstMapRender });
+                if (isFirstMapRender) isFirstMapRender = false;
+            }
+        }
+    }, 150);
 }
 
 function updateSummary() {
