@@ -1,7 +1,8 @@
-/* Dashboard - V15.9 */
+/* Dashboard - V1.6 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Restored sortTable functionality and bound to window. */
+/* 1. Consolidated performUpload strictly into this file to fix SyntaxError crashes. */
+/* 2. Re-injected and bound sortTable to window to fix header sorting. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -460,6 +461,43 @@ export async function toggleComplete(e, id) {
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         await apiFetch(payload);
     } catch(err) { console.error("Toggle Complete Error", err); }
+}
+
+export async function performUpload(file, inspectorId, csvType, overrideLock = false) {
+    UI.showOverlay("Uploading CSV...", "Processing order data locally");
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const text = e.target.result;
+        try {
+            UI.showOverlay("Syncing...", "Sending data to server");
+            let payload = { action: 'uploadCsv', csvData: text, adminId: Config.adminParam, driverId: inspectorId, companyId: Config.companyParam || '', csvType: csvType };
+            if (!Config.isManagerView) payload.routeId = Config.routeId; if (overrideLock) payload.overrideLock = true;
+            
+            const res = await apiFetch(payload); const data = await res.json();
+            
+            if (data.success) {
+                if (Config.isManagerView && inspectorId && inspectorId !== 'all') {
+                    AppState.currentInspectorFilter = String(inspectorId); sessionStorage.setItem('sproute_inspector_filter', AppState.currentInspectorFilter);
+                    document.body.classList.remove('manager-all-inspectors'); document.body.classList.add('manager-single-inspector');
+                }
+                
+                if (data.unmatchedAddresses && data.unmatchedAddresses.length > 0) {
+                    UI.hideOverlay(); AppState.unmatchedAddressesQueue = data.unmatchedAddresses; AppState.currentUnmatchedIndex = 0; AppState.currentUploadDriverId = inspectorId; UI.openUnmatchedModal();
+                } else { 
+                    await loadData(); 
+                    UI.hideOverlay();
+                }
+            } else if (data.status === 'size_limit') {
+                UI.hideOverlay(); await UI.customAlert("The uploaded file is too large. Please reduce rows and try again.");
+            } else if (data.status === 'confirm_hijack') {
+                UI.hideOverlay(); const proceed = await UI.customConfirm(data.message || "This route is currently locked by another admin. Overwrite it?");
+                if (proceed) performUpload(file, inspectorId, csvType, true); 
+            } else { throw new Error(data.error || "Upload failed"); }
+        } catch (err) {
+            console.error(err); UI.hideOverlay(); await UI.customAlert("An error occurred during the upload. Please try again.");
+        }
+    };
+    reader.readAsText(file);
 }
 
 // --- Restored Sort Logic ---
