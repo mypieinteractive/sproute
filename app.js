@@ -1,9 +1,9 @@
 
-/* Dashboard - V15.3 */
+/* Dashboard - V15.7 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Pre-applied empty-state-active to document.body for manager views to prevent UI flash on load. */
-/* 2. Updated html2canvas backgroundColor to #171717. */
+/* 1. User-entered snippets to match Gemini changes */
+
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -3451,29 +3451,36 @@ function initSortable() {
     }
 }
 
-const headerDropzone = document.getElementById('header-combined-action');
+let globalDragCounter = 0;
+document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    globalDragCounter++;
+    const overlay = document.getElementById('drag-overlay');
+    if (overlay) overlay.style.display = 'flex';
+});
+document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    globalDragCounter--;
+    if (globalDragCounter === 0) {
+        const overlay = document.getElementById('drag-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+});
+document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+});
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    globalDragCounter = 0;
+    const overlay = document.getElementById('drag-overlay');
+    if (overlay) overlay.style.display = 'none';
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFileSelection(e.dataTransfer.files[0]);
+    }
+});
+
 const headerInput = document.getElementById('header-file-input');
-if (headerDropzone && headerInput) {
-    headerDropzone.onclick = () => headerInput.click();
-    headerDropzone.ondragover = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.add('drag-active');
-    };
-    headerDropzone.ondragleave = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.remove('drag-active');
-    };
-    headerDropzone.ondragleave = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.remove('drag-active');
-    };
-    headerDropzone.ondrop = (e) => {
-        e.preventDefault();
-        headerDropzone.classList.remove('drag-active');
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
-    };
+if (headerInput) {
     headerInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
@@ -3482,29 +3489,8 @@ if (headerDropzone && headerInput) {
     };
 }
 
-// Full Screen Dropzone Wiring
-const mainDropzone = document.getElementById('main-dropzone');
 const mainInput = document.getElementById('main-file-input');
-if (mainDropzone && mainInput) {
-    mainDropzone.onclick = () => mainInput.click();
-    mainDropzone.ondragover = (e) => {
-        e.preventDefault();
-        mainDropzone.style.borderColor = 'var(--blue)';
-        mainDropzone.style.backgroundColor = 'var(--bg-hover)';
-    };
-    mainDropzone.ondragleave = (e) => {
-        e.preventDefault();
-        mainDropzone.style.borderColor = 'var(--border-color)';
-        mainDropzone.style.backgroundColor = 'transparent';
-    };
-    mainDropzone.ondrop = (e) => {
-        e.preventDefault();
-        mainDropzone.style.borderColor = 'var(--border-color)';
-        mainDropzone.style.backgroundColor = 'transparent';
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelection(e.dataTransfer.files[0]);
-        }
-    };
+if (mainInput) {
     mainInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
