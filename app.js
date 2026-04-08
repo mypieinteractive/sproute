@@ -1,7 +1,7 @@
-/* Dashboard - V15.6 */
+/* Dashboard - V15.9 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added explicit call to UI.updatePrioritySliderUI() when route counts change. */
+/* 1. Restored sortTable functionality and bound to window. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -462,38 +462,24 @@ export async function toggleComplete(e, id) {
     } catch(err) { console.error("Toggle Complete Error", err); }
 }
 
-export async function performUpload(file, inspectorId, csvType, overrideLock = false) {
-    UI.showOverlay("Uploading CSV...", "Processing order data locally");
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        const text = e.target.result;
-        try {
-            UI.showOverlay("Syncing...", "Sending data to server");
-            let payload = { action: 'uploadCsv', csvData: text, adminId: Config.adminParam, driverId: inspectorId, companyId: Config.companyParam || '', csvType: csvType };
-            if (!Config.isManagerView) payload.routeId = Config.routeId; if (overrideLock) payload.overrideLock = true;
-            
-            const res = await apiFetch(payload); const data = await res.json();
-            
-            if (data.success) {
-                if (Config.isManagerView && inspectorId && inspectorId !== 'all') {
-                    AppState.currentInspectorFilter = String(inspectorId); sessionStorage.setItem('sproute_inspector_filter', AppState.currentInspectorFilter);
-                    document.body.classList.remove('manager-all-inspectors'); document.body.classList.add('manager-single-inspector');
-                }
-                
-                if (data.unmatchedAddresses && data.unmatchedAddresses.length > 0) {
-                    UI.hideOverlay(); AppState.unmatchedAddressesQueue = data.unmatchedAddresses; AppState.currentUnmatchedIndex = 0; AppState.currentUploadDriverId = inspectorId; UI.openUnmatchedModal();
-                } else { await loadData(); }
-            } else if (data.status === 'size_limit') {
-                UI.hideOverlay(); await UI.customAlert("The uploaded file is too large. Please reduce rows and try again.");
-            } else if (data.status === 'confirm_hijack') {
-                UI.hideOverlay(); const proceed = await UI.customConfirm(data.message || "This route is currently locked by another admin. Overwrite it?");
-                if (proceed) performUpload(file, inspectorId, csvType, true); 
-            } else { throw new Error(data.error || "Upload failed"); }
-        } catch (err) {
-            console.error(err); UI.hideOverlay(); await UI.customAlert("An error occurred during the upload. Please try again.");
-        } finally { UI.showOverlay("Processing...", "Syncing data with the server"); }
-    };
-    reader.readAsText(file);
+// --- Restored Sort Logic ---
+export function sortTable(col) {
+    if (AppState.currentSort.col === col) AppState.currentSort.asc = !AppState.currentSort.asc;
+    else { AppState.currentSort.col = col; AppState.currentSort.asc = true; }
+
+    AppState.stops.sort((a, b) => {
+        let valA = a[col] || ''; let valB = b[col] || '';
+        if (col === 'dueDate') {
+            valA = valA ? new Date(valA).getTime() : Number.MAX_SAFE_INTEGER;
+            valB = valB ? new Date(valB).getTime() : Number.MAX_SAFE_INTEGER;
+        } else {
+            valA = String(valA).toLowerCase(); valB = String(valB).toLowerCase();
+        }
+        if (valA < valB) return AppState.currentSort.asc ? -1 : 1;
+        if (valA > valB) return AppState.currentSort.asc ? 1 : -1;
+        return 0;
+    });
+    UI.render(); 
 }
 
 // --- Local Actions ---
@@ -518,7 +504,7 @@ export function setRoutes(num) {
         UI.updateRouteTimes();
     }
     UI.updateSelectionUI(); 
-    UI.updatePrioritySliderUI(); // Added explicit slider toggle logic
+    UI.updatePrioritySliderUI();
 }
 
 export function moveSelectedToRoute(cIdx) {
@@ -537,7 +523,7 @@ export function moveSelectedToRoute(cIdx) {
     triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
 }
 
-window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute;
+window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute; window.sortTable = sortTable;
 
 export function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
