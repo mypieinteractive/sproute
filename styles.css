@@ -1,4 +1,4 @@
-/* Dashboard - V15.5 */
+/* Dashboard - V15.6 */
 /* FILE: styles.css */
 
 :root { 
@@ -18,7 +18,9 @@
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
-body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
+body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; flex-direction: column; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
+
+#app-body { flex: 1; display: flex; width: 100vw; min-height: 0; position: relative; }
 
 /* Safe hiding logic for the priority slider wrapper when route count is 1 */
 body[data-route-count="1"] .priority-wrapper, 
@@ -29,7 +31,7 @@ body[data-route-count="1"] #priority-container {
 
 /* EMPTY STATE LOGIC */
 #empty-state-container { display: none; }
-body.empty-state-active #empty-state-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; background: var(--bg-base); z-index: 50; }
+body.empty-state-active #empty-state-container { display: flex; flex-direction: column; width: 100%; height: 100%; background: var(--bg-base); z-index: 50; }
 body.empty-state-active #map-wrapper,
 body.empty-state-active #sidebar,
 body.empty-state-active #resizer,
@@ -38,7 +40,7 @@ body.empty-state-active #mobile-fab-toggle { display: none !important; }
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
 /* VIEW MODES */
-body.view-inspector { flex-direction: column; }
+body.view-inspector #app-body { flex-direction: column; }
 body.view-inspector #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
 body.view-inspector #sidebar { height: 65vh; min-height: 65vh; width: 100%; }
 body.view-inspector #route-summary { display: none !important; }
@@ -55,31 +57,27 @@ body.view-managermobilesplit .map-overlay-btns {
 }
 
 /* MANAGER VIEW */
-body.view-manager { flex-direction: row; }
-body.view-manager #map-wrapper { flex: 1; height: 100vh; width: auto; }
-body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100vh; border-left: none; flex: none; }
+body.view-manager #app-body { flex-direction: row; }
+body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
+body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100%; border-left: none; flex: none; }
 body.view-manager #summary-metrics { display: none !important; } 
 
 /* MANAGER MOBILE VIEW */
-body.view-managermobile { flex-direction: column; overflow: hidden; height: 100vh; }
+body.view-managermobile #app-body { flex-direction: column; }
 body.view-managermobile #map-wrapper { height: 40vh; width: 100vw; flex: none; position: relative; z-index: 10; }
 body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: hidden; }
 body.view-managermobile #stop-list { overflow-y: auto; overflow-x: hidden; height: 100%; }
 body.view-managermobile #summary-metrics { display: none !important; } 
 
 /* MANAGER MOBILE SPLIT VIEW */
-body.view-managermobilesplit {
+body.view-managermobilesplit #app-body {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    height: 100vh;
 }
 body.view-managermobilesplit #map-wrapper,
 body.view-managermobilesplit #sidebar {
     display: contents;
 }
-body.view-managermobilesplit #map-header { order: 1; }
-body.view-managermobilesplit #sidebar-brand { order: 2; border-bottom: 1px solid #111; }
 body.view-managermobilesplit #route-summary { order: 3; }
 body.view-managermobilesplit #mobile-view-toggle { order: 4; display: flex !important; }
 body.view-managermobilesplit #routing-controls { order: 5; }
@@ -252,7 +250,7 @@ body.view-managermobilesplit .list-subheading {
 #inspector-filter {
     background: var(--bg-panel); color: var(--text-main); font-size: 16px; font-weight: bold;
     border: 1px solid var(--border-color); padding: 6px 10px; border-radius: 6px; cursor: pointer;
-    outline: none; max-width: 65%;
+    outline: none; max-width: 65%; height: 38px;
 }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
@@ -273,7 +271,6 @@ input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cur
 #resizer:hover, #resizer.active { background-color: var(--blue); }
 body.view-manager #resizer { 
     display: block; 
-    border-top: 61px solid var(--bg-header); /* Masks the line in the header */
 }
 body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; cursor: row-resize; flex: none; background-color: var(--border-color); margin: 0; padding: 0; position: relative; z-index: 100; border-top: 1px solid #111; border-bottom: 1px solid #111; }
 body.view-managermobile #resizer::after { content: ''; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 35px; height: 3px; background: #777; border-radius: 3px; }
@@ -302,12 +299,25 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
     height: 53px; 
     box-sizing: border-box;
 }
-.summary-left { display: flex; align-items: center; gap: 12px; }
+.summary-left { display: flex; align-items: center; gap: 15px; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
 
 .header-action-btn { height: 36px; padding: 0 16px; width: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
 .header-action-btn:active { opacity: 0.7; }
+
+/* ROUTING CONTROLS REVERTED TO COLUMN */
+#routing-controls { 
+    padding: 15px; 
+    background: var(--bg-panel); 
+    border-bottom: 1px solid var(--border-color); 
+    flex-direction: column; 
+    gap: 15px;
+    z-index: 10; 
+    flex: none; 
+}
+#route-divider-group { width: 100%; display: flex; gap: 8px; }
+#priority-container { width: 100%; display: flex; flex-direction: column; justify-content: flex-start; }
 
 #search-container { 
     display: flex; 
@@ -322,10 +332,23 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 #search-input { flex: 1; min-width: 0; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-base); color: var(--text-main); }
 #search-input::placeholder { color: var(--text-muted); }
 
-/* Incremental Undo Button */
-#btn-undo-incremental { background: transparent; border: none; color: var(--text-main); padding: 8px; cursor: pointer; font-size: 18px; transition: color 0.2s; display: flex; align-items: center; justify-content: center; }
-#btn-undo-incremental:hover:not(:disabled) { color: var(--blue); }
-#btn-undo-incremental:disabled { color: var(--text-muted); opacity: 0.3; cursor: not-allowed; }
+/* Restyled Global Undo Button */
+#btn-undo-incremental { 
+    background: transparent; 
+    border: 1px solid var(--border-color); 
+    color: var(--text-main); 
+    padding: 0 12px; 
+    height: 38px; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    font-size: 16px; 
+    transition: color 0.2s, border-color 0.2s; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+}
+#btn-undo-incremental:hover:not(:disabled) { color: var(--blue); border-color: var(--blue); }
+#btn-undo-incremental:disabled { color: var(--text-muted); border-color: var(--border-color); opacity: 0.3; cursor: not-allowed; }
 
 .rocker { display: flex; background: #222; border-radius: 6px; padding: 2px; cursor: pointer; }
 .rocker div { padding: 4px 10px; cursor: pointer; border-radius: 4px; transition: 0.2s; color: var(--text-muted); font-weight: normal; font-size: 15px; }
