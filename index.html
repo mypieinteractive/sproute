@@ -15,6 +15,15 @@
 
 <body class="view-manager manager-all-inspectors empty-state-active">
 
+<div id="global-drop-overlay">
+    <div class="upload-dropzone" style="width: 100%; max-width: 600px; height: 300px; border: 2px dashed var(--blue); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-panel); pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <div style="background: rgba(37, 99, 235, 0.1); padding: 30px; border-radius: 50%; margin-bottom: 20px;">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--blue);"></i>
+        </div>
+        <div style="font-size: 24px; font-weight: bold; color: var(--text-main); margin-bottom: 10px;">Drop CSV to Upload</div>
+    </div>
+</div>
+
 <div id="processing-overlay" style="display: flex;">
     <div class="spinner-container">
         <div class="loader"></div>
@@ -54,17 +63,15 @@
             </div>
         </div>
 
-        <div style="position: relative; display: flex; align-items: center;">
-            <select id="display-mode-select" class="insp-select" onchange="setDisplayMode(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; font-weight: bold; appearance: none; background-image: none;">
+        <div style="display: flex; align-items: center;">
+            <select id="display-mode-select" class="insp-select" onchange="setDisplayMode(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; font-weight: bold; height: 38px;">
                 <option value="detailed">Detailed</option>
                 <option value="compact">Compact</option>
             </select>
-            <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; color: var(--text-main); pointer-events: none; font-size: 12px;"></i>
         </div>
 
-        <div id="inspector-dropdown-wrapper" style="position: relative; display: none;">
-            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; appearance: none; background-image: none;"></select>
-            <i class="fa-solid fa-chevron-down" style="position: absolute; right: 10px; color: var(--text-main); pointer-events: none; font-size: 12px;"></i>
+        <div id="inspector-dropdown-wrapper" style="display: none;">
+            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; height: 38px;"></select>
         </div>
         <span id="inspector-select-hint" style="display:none; color: var(--orange); font-size: 13px; font-weight: bold; margin-left: 0; white-space: nowrap;">&lt;- Select an Inspector</span>
 
@@ -72,15 +79,20 @@
             <i class="fa-solid fa-arrow-rotate-left"></i>
         </button>
 
-        <div id="header-csv-upload" class="header-dropzone" style="cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(255,255,255,0.05); border: 1px dashed var(--border-color); border-radius: 6px; color: var(--text-main); font-weight: bold; height: 38px; box-sizing: border-box;">
-            <i class="fa-solid fa-cloud-arrow-up"></i> 
-            <span class="hide-mobile-text">Upload CSV</span>
-            <input type="file" id="header-file-input" accept=".csv" style="display: none;">
+        <div id="add-menu-wrapper" style="position: relative;">
+            <div class="header-action-btn" style="background: #2C3D4F; color: white; padding: 8px 16px; border-radius: 6px; height: 38px; cursor: default;">
+                <i class="fa-solid fa-plus"></i>
+            </div>
+            <div class="add-dropdown-menu">
+                <div class="add-dropdown-item" onclick="document.getElementById('hidden-global-file-input').click()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload CSV
+                </div>
+                <div class="add-dropdown-item" onclick="showAddOrderModal()">
+                    <i class="fa-solid fa-pen-to-square"></i> Manual Entry
+                </div>
+            </div>
         </div>
-
-        <button id="btn-add-order" class="header-action-btn add-order-btn" onclick="showAddOrderModal()" style="padding: 8px 12px; border-radius: 6px; height: 38px;">
-            <i class="fa-solid fa-plus"></i>
-        </button>
+        <input type="file" id="hidden-global-file-input" accept=".csv" style="display: none;">
     </div>
 </div>
 <div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
