@@ -500,6 +500,8 @@ export function render() {
     });
 
     updateSelectionUI();
+// Force Mapbox to recalculate its layout after the DOM flex structure settles
+    setTimeout(() => { resizeMap(); }, 150);
 }
 
 function buildEndpointsToDraw(activeStops) {
