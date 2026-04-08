@@ -1,0 +1,1252 @@
+/* Dashboard - V15.4 */
+/* FILE: ui.js */
+/* Changes: */
+/* 1. Extracted all DOM manipulation, rendering, modals, and user interactions into a dedicated UI module. */
+/* 2. Re-linked HTML inline events (onclick) to the window object. */
+/* 3. Integrated SortableJS logic and DOM reordering. */
+
+import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, performUpload, apiFetch, getActiveEndpoints, loadData } from './app.js';
+import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
+import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance } from './map.js';
+
+// --- Overlays & Modals ---
+
+export function showOverlay(title = "Processing...", subtext = "Syncing data with the server") {
+    const overlay = document.getElementById('processing-overlay');
+    if (overlay) {
+        const titleEl = overlay.querySelector('.loading-text');
+        const subtextEl = overlay.querySelector('.loading-subtext');
+        if (titleEl) titleEl.innerText = title;
+        if (subtextEl) subtextEl.innerText = subtext;
+        overlay.style.display = 'flex';
+    }
+}
+
+export function hideOverlay() {
+    const overlay = document.getElementById('processing-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+export function customAlert(msg) {
+    return new Promise(resolve => {
+        const m = document.getElementById('modal-overlay');
+        const mc = document.getElementById('modal-content');
+        mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
+        m.style.display = 'flex';
+        mc.innerHTML = `
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0;">Alert</h3>
+                <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
+                <div style="display:flex; justify-content:flex-end;">
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-alert-ok">OK</button>
+                </div>
+            </div>`;
+        document.getElementById('modal-alert-ok').onclick = () => { m.style.display = 'none'; resolve(); };
+    });
+}
+
+export function customConfirm(msg) {
+    return new Promise(resolve => {
+        const m = document.getElementById('modal-overlay');
+        const mc = document.getElementById('modal-content');
+        mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
+        m.style.display = 'flex';
+        mc.innerHTML = `
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0;">Confirm</h3>
+                <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:#444; color:white; cursor:pointer;" id="modal-confirm-cancel">Cancel</button>
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold; cursor:pointer;" id="modal-confirm-ok">OK</button>
+                </div>
+            </div>`;
+        document.getElementById('modal-confirm-ok').onclick = () => { m.style.display = 'none'; resolve(true); };
+        document.getElementById('modal-confirm-cancel').onclick = () => { m.style.display = 'none'; resolve(false); };
+    });
+}
+
+export function updateUndoUI() {
+    const undoBtn = document.getElementById('btn-undo-incremental');
+    if (undoBtn) undoBtn.disabled = AppState.historyStack.length === 0;
+}
+
+export function applyBranding(logoUrl, brandName) {
+    const mapLogo = document.getElementById('brand-logo-map');
+    const emptyLogo = document.getElementById('empty-brand-logo');
+    const isCompanyTier = document.body.classList.contains('tier-company');
+
+    if (isCompanyTier && logoUrl) {
+        if (mapLogo) mapLogo.src = logoUrl;
+        if (emptyLogo) { emptyLogo.src = logoUrl; emptyLogo.style.display = 'block'; }
+    } else {
+        const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
+        if (mapLogo) mapLogo.src = sprouteLogoUrl;
+        if (emptyLogo) { emptyLogo.src = sprouteLogoUrl; emptyLogo.style.display = 'block'; }
+    }
+    
+    const mapDriverEl = document.getElementById('map-driver-name');
+    if (mapDriverEl) mapDriverEl.innerText = brandName;
+    
+    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
+    if (sidebarDriverEl && !isCompanyTier) sidebarDriverEl.innerText = brandName;
+
+    const emptyBrandName = document.getElementById('empty-brand-name');
+    if (emptyBrandName) emptyBrandName.innerText = brandName;
+}
+
+export function updateHeaderUI() {
+    if (!Config.isManagerView) return;
+    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
+    const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
+    const isCompanyTier = document.body.classList.contains('tier-company');
+
+    if (isCompanyTier) {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
+        if (filterSelectWrap) filterSelectWrap.style.display = 'block';
+    } else {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
+        if (filterSelectWrap) filterSelectWrap.style.display = 'none';
+    }
+}
+
+export function updateInspectorDropdown() {
+    const filterSelect = document.getElementById('inspector-filter');
+    if (!filterSelect || !Config.isManagerView) return;
+
+    const validInspectorIds = new Set();
+    AppState.stops.forEach(s => {
+        if (s.driverId) validInspectorIds.add(String(s.driverId));
+    });
+
+    if (AppState.currentInspectorFilter !== 'all' && !validInspectorIds.has(String(AppState.currentInspectorFilter))) {
+        AppState.currentInspectorFilter = 'all';
+        sessionStorage.setItem('sproute_inspector_filter', 'all');
+        document.body.classList.add('manager-all-inspectors');
+        document.body.classList.remove('manager-single-inspector');
+    }
+
+    let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
+    
+    AppState.inspectors.forEach((i, idx) => { 
+        if (validInspectorIds.has(String(i.id)) && isTrueInspector(i.isInspector)) {
+            const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
+            filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: bold;">${i.name}</option>`; 
+        }
+    });
+    
+    filterSelect.innerHTML = filterHtml;
+    filterSelect.value = AppState.currentInspectorFilter;
+    
+    if (AppState.currentInspectorFilter !== 'all') {
+        const inspIdx = AppState.inspectors.findIndex(i => String(i.id) === String(AppState.currentInspectorFilter));
+        if (inspIdx > -1) filterSelect.style.color = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
+    } else {
+        filterSelect.style.color = 'var(--text-main)';
+    }
+}
+
+export function updateRouteButtonColors() {
+    if (!Config.isManagerView) return;
+    
+    let baseColor = MASTER_PALETTE[0];
+    if (AppState.currentInspectorFilter !== 'all') {
+        const inspIdx = AppState.inspectors.findIndex(i => String(i.id) === String(AppState.currentInspectorFilter));
+        if (inspIdx > -1) baseColor = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
+    }
+
+    const mr1 = document.getElementById('move-r1-btn');
+    const mr2 = document.getElementById('move-r2-btn');
+    const mr3 = document.getElementById('move-r3-btn');
+    if (mr1) mr1.style.borderLeftColor = baseColor;
+    if (mr2) mr2.style.borderLeftColor = '#000000';
+    if (mr3) mr3.style.borderLeftColor = '#ffffff';
+
+    for(let i=1; i<=3; i++) {
+        const btn = document.getElementById(`rbtn-${i}`);
+        if (btn) btn.style.setProperty('--route-color', baseColor);
+        
+        const ind = document.getElementById(`rbtn-ind-${i}`);
+        if (ind) {
+            ind.innerHTML = '';
+            for(let c=0; c<i; c++) {
+                let bgHex = baseColor;
+                if (c === 1) bgHex = '#000000';
+                if (c === 2) bgHex = '#ffffff';
+                
+                const circle = document.createElement('div');
+                circle.className = 'rbtn-circle';
+                circle.style.backgroundColor = bgHex; 
+                circle.style.border = `2px solid ${baseColor}`;
+                ind.appendChild(circle);
+            }
+        }
+    }
+}
+
+export function updateRoutingUI() {
+    const isDirty = AppState.dirtyRoutes.size > 0;
+    const routingControls = document.getElementById('routing-controls');
+    const hintEl = document.getElementById('inspector-select-hint');
+
+    const btnGen = document.getElementById('btn-header-generate');
+    const btnRecalc = document.getElementById('btn-header-recalc');
+    const btnRestore = document.getElementById('btn-header-restore');
+    const optInspBtn = document.getElementById('btn-header-optimize-insp');
+    const btnSend = document.getElementById('btn-header-send-route');
+
+    [btnGen, btnRecalc, btnRestore, optInspBtn, btnSend].forEach(btn => { if (btn) btn.style.display = 'none'; });
+
+    if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
+        if(routingControls) routingControls.style.display = 'none';
+        const routeToggles = document.getElementById('route-view-toggles');
+        if(routeToggles) routeToggles.style.display = 'none';
+        
+        let showHint = false;
+        const allValidStops = AppState.stops.filter(s => s.status !== 'Deleted' && s.status !== 'Cancelled');
+        for (const insp of AppState.inspectors) {
+            if (allValidStops.filter(s => String(s.driverId) === String(insp.id)).length > 2) {
+                showHint = true; break;
+            }
+        }
+        if (hintEl) hintEl.style.display = (showHint && Config.viewMode !== 'managermobile' && Config.viewMode !== 'managermobilesplit') ? 'block' : 'none';
+        return;
+    }
+
+    if (hintEl) hintEl.style.display = 'none';
+    let currentState = 'Pending';
+    let targetStops = Config.isManagerView ? AppState.stops.filter(s => String(s.driverId) === String(AppState.currentInspectorFilter)) : AppState.stops;
+    
+    const hasActiveRoutesUI = targetStops.some(s => isRouteAssigned(s.status));
+    
+    if (targetStops.length > 0) {
+        const routedStops = targetStops.filter(s => isRouteAssigned(s.status));
+        const targetStop = routedStops.length > 0 ? routedStops[0] : targetStops[0];
+        let rs = (targetStop.routeState || 'Pending').toLowerCase();
+        
+        if (rs === 'queued') currentState = 'Queued';
+        else if (rs === 'ready') currentState = 'Ready';
+        else if (rs === 'staging') currentState = 'Staging';
+        else if (rs === 'staging-endpoint') currentState = 'Staging-endpoint';
+    }
+
+    if (isDirty && hasActiveRoutesUI) currentState = AppState.dirtyRoutes.has('endpoints_0') ? 'Staging-endpoint' : 'Staging';
+
+    let maxCluster = -1;
+    targetStops.forEach(s => {
+        if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster;
+    });
+
+    const togglesEl = document.getElementById('route-view-toggles');
+    if (maxCluster > 0) {
+        if(togglesEl) togglesEl.style.display = 'flex';
+        if (document.getElementById('view-r1-btn')) document.getElementById('view-r1-btn').style.display = maxCluster >= 1 ? 'block' : 'none';
+        if (document.getElementById('view-r2-btn')) document.getElementById('view-r2-btn').style.display = maxCluster >= 2 ? 'block' : 'none';
+    } else {
+        if(togglesEl) togglesEl.style.display = 'none';
+        if (AppState.currentRouteViewFilter !== 'all') {
+            AppState.currentRouteViewFilter = 'all';
+            document.getElementById('view-rall-btn')?.classList.add('active');
+            for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
+        }
+    }
+
+    let isCurrentViewDirty = false;
+    if (isDirty) {
+        if (AppState.currentRouteViewFilter === 'all') isCurrentViewDirty = true;
+        else {
+            let inspKey = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+            let rKey = `${inspKey}_${AppState.currentRouteViewFilter}`;
+            if (AppState.dirtyRoutes.has(rKey) || AppState.dirtyRoutes.has('endpoints_0') || AppState.dirtyRoutes.has('all')) isCurrentViewDirty = true;
+        }
+    }
+
+    if (Config.isManagerView) {
+        const unroutedCount = targetStops.filter(s => !isRouteAssigned(s.status)).length;
+        if (currentState === 'Pending' && unroutedCount > 0 && btnGen) {
+            btnGen.style.display = 'flex';
+            document.getElementById('btn-header-generate-text').innerText = "Optimize";
+        } else if (currentState === 'Ready' && btnSend && !isCurrentViewDirty) {
+            btnSend.style.display = 'flex';
+        } else if ((currentState === 'Staging' || currentState === 'Staging-endpoint') && isCurrentViewDirty) {
+            if (btnRecalc) btnRecalc.style.display = 'flex';
+            if (optInspBtn) optInspBtn.style.display = 'flex';
+        }
+
+        if (routingControls) routingControls.style.display = (currentState === 'Pending' && unroutedCount > 0) ? 'flex' : 'none';
+
+    } else {
+        if(routingControls) routingControls.style.display = 'flex';
+        let showRecalc = false, showOpt = false, showRestore = false;
+
+        if (isDirty) {
+            showRecalc = true;
+            if (AppState.dirtyRoutes.has('endpoints_0') || AppState.PERMISSION_REOPTIMIZE) showOpt = true;
+        } else if (AppState.isAlteredRoute) {
+            if(btnRestore) btnRestore.style.display = 'flex'; 
+            showRestore = true;
+        }
+        
+        if(btnRecalc) btnRecalc.style.display = showRecalc ? 'flex' : 'none';
+        if(optInspBtn) optInspBtn.style.display = showOpt ? 'flex' : 'none';
+
+        if (!showRecalc && !showOpt && !showRestore) {
+            if(routingControls) routingControls.style.display = 'none';
+        }
+        if (document.getElementById('sidebar-brand')) document.getElementById('sidebar-brand').style.display = (showRecalc || showOpt || showRestore) ? 'flex' : 'none';
+    }
+}
+
+export function drawRoute() {
+    drawRouteMap({
+        routedStops: Config.isManagerView ? AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && isRouteAssigned(s.status)) : AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter)),
+        dirtyRoutes: AppState.dirtyRoutes,
+        activeEndpoints: getActiveEndpoints(),
+        isManagerView: Config.isManagerView,
+        currentInspectorFilter: AppState.currentInspectorFilter,
+        inspectors: AppState.inspectors,
+        allStops: AppState.stops,
+        currentRouteCount: AppState.currentRouteCount
+    });
+}
+
+// --- Rendering Engine ---
+
+export function render() {
+    updateHeaderUI();
+    updateRoutingUI();
+    
+    const listContainer = document.getElementById('stop-list');
+    listContainer.innerHTML = ''; 
+    
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const isSingleInspector = Config.isManagerView && AppState.currentInspectorFilter !== 'all';
+    const isAllInspectors = Config.isManagerView && AppState.currentInspectorFilter === 'all';
+    const activeStops = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
+    const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
+    
+    document.body.classList.toggle('empty-state-active', Config.isManagerView && activeStops.length === 0);
+    if (document.getElementById('header-actions-wrapper')) document.getElementById('header-actions-wrapper').style.display = Config.viewMode === 'inspector' ? 'none' : 'flex';
+    if (document.getElementById('search-container')) document.getElementById('search-container').style.display = (Config.isManagerView && activeStops.length === 0) ? 'none' : 'flex';
+
+    if (Config.isManagerView) {
+        const header = document.createElement('div');
+        header.className = 'glide-table-header';
+        header.style.position = 'sticky'; header.style.top = '0'; header.style.zIndex = '20'; header.style.marginTop = '-1px';
+        
+        const sortIcon = (col) => isAllInspectors ? (AppState.currentSort.col === col ? (AppState.currentSort.asc ? '🔼' : '🔽') : '↕️') : '';
+        const sortClass = isAllInspectors ? 'sortable' : '';
+        const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
+
+        header.innerHTML = `
+            <div class="col-num"><input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)"></div>
+            <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
+            <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
+            <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
+            <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
+            <div class="col-app ${sortClass}" ${sortClick('app')}>App ${sortIcon('app')}</div>
+            <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
+            <div class="col-handle" style="visibility:${hasRouted ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
+        `;
+        listContainer.appendChild(header);
+    }
+
+    const processStop = (s, displayIndex, showHandle) => {
+        const item = document.createElement('div');
+        item.id = `item-${s.id}`;
+        item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
+        if (Config.viewMode === 'inspector' && s.hiddenInInspector) item.classList.add('hidden-unrouted');
+        
+        let urgencyClass = '';
+        if (s.dueDate) {
+            const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0); 
+            if (dueTime < today) urgencyClass = 'past-due'; 
+            else if (dueTime.getTime() === today.getTime()) urgencyClass = 'due-today'; 
+        }
+        const dueFmt = s.dueDate ? `${new Date(s.dueDate).getMonth()+1}/${new Date(s.dueDate).getDate()}` : "N/A";
+        const isRoutedStop = isRouteAssigned(s.status);
+        const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
+        let etaTime = (!isRoutedStop || AppState.dirtyRoutes.has(routeKey) || AppState.dirtyRoutes.has('all')) ? '--' : (s.eta || '--');
+
+        if (Config.isManagerView) {
+            item.className = `glide-row ${s.status.toLowerCase().replace(' ', '-')} ${AppState.currentDisplayMode}`;
+            let inspectorHtml = `<div class="col-insp" style="display: ${isSingleInspector ? 'none' : 'block'};">${s.driverName || Config.driverParam || 'Unassigned'}</div>`;
+            
+            if (AppState.inspectors.length > 0) {
+                const optionsHtml = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map((insp) => {
+                    const originalIdx = AppState.inspectors.indexOf(insp);
+                    const color = MASTER_PALETTE[originalIdx % MASTER_PALETTE.length];
+                    return `<option value="${insp.id}" style="color: ${color}; font-weight: bold;" ${String(s.driverId) === String(insp.id) ? 'selected' : ''}>${insp.name}</option>`;
+                }).join('');
+                
+                let currentInspColor = 'var(--text-main)';
+                if (s.driverId) {
+                    const dIdx = AppState.inspectors.findIndex(i => String(i.id) === String(s.driverId));
+                    if (dIdx > -1) currentInspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
+                }
+
+                inspectorHtml = `
+                    <div class="col-insp" onclick="event.stopPropagation()" style="display: ${isSingleInspector ? 'none' : 'block'};">
+                        <select class="insp-select" onchange="handleInspectorChange(event, '${s.id}', this)" style="color: ${currentInspColor}; font-weight: bold;" ${!AppState.PERMISSION_MODIFY ? 'disabled' : ''}>
+                            ${!s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : ''}
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                `;
+            }
+
+            const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
+            const handleHtml = `<div class="col-handle ${showHandle ? 'handle' : ''}" style="visibility:${showHandle ? 'visible' : 'hidden'};">${showHandle ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
+            let metaHtml = (Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit') ? `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>` : '';
+
+            item.innerHTML = `
+                <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
+                <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">${etaTime}</div>
+                <div class="col-due ${urgencyClass}">${dueFmt}</div>
+                ${inspectorHtml}
+                <div class="col-addr">
+                    <div class="addr-text">${(s.address||'').split(',')[0]}</div>
+                    ${metaHtml}
+                    <div class="type-text">${s.type || ''}</div>
+                </div>
+                <div class="col-app">${s.app || '--'}</div>
+                <div class="col-client">${s.client || '--'}</div>
+                ${handleHtml}
+            `;
+        } else {
+            item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${AppState.currentDisplayMode}`;
+            const distFmt = s.dist ? parseFloat(s.dist).toFixed(1) : "0.0";
+            const metaDisplay = (!isRoutedStop || AppState.dirtyRoutes.has(routeKey) || AppState.dirtyRoutes.has('all')) ? `-- | ${distFmt} mi` : `${etaTime} | ${distFmt} mi`;
+            
+            item.innerHTML = `
+                <div class="stop-sidebar ${urgencyClass}">${displayIndex}</div>
+                <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
+                <div class="stop-content">
+                    <b>${(s.address||'').split(',')[0]}</b>
+                    <div class="row-meta">${metaDisplay}</div>
+                    <div class="row-details">${s.type || ''}</div>
+                </div>
+                <div class="due-date-container ${urgencyClass}">${dueFmt}</div>
+                <div class="stop-actions">
+                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>
+                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
+                </div>
+            `;
+        }
+        
+        item.onclick = (e) => {
+            if (!e.shiftKey) AppState.selectedIds.clear();
+            AppState.selectedIds.has(s.id) ? AppState.selectedIds.delete(s.id) : AppState.selectedIds.add(s.id);
+            updateSelectionUI(); document.getElementById(`item-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
+        return item;
+    };
+
+    if (isSingleInspector || !Config.isManagerView) {
+        const unroutedStops = activeStops.filter(s => !isRouteAssigned(s.status));
+        const routedStops = activeStops.filter(s => isRouteAssigned(s.status));
+        let eps = getActiveEndpoints();
+
+        listContainer.appendChild(createEndpointRow('start', eps.start));
+
+        if (unroutedStops.length > 0) {
+            const unroutedDiv = document.createElement('div');
+            unroutedDiv.id = 'unrouted-list'; unroutedDiv.style.minHeight = '30px'; 
+            listContainer.appendChild(unroutedDiv);
+            if (Config.isManagerView) {
+                const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
+                unroutedDiv.appendChild(el); 
+            }
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted)); });
+        }
+        
+        if (routedStops.length > 0) {
+            const uniqueClusters = [...new Set(routedStops.map(s => s.cluster === 'X' ? 0 : (s.cluster || 0)))].sort();
+            uniqueClusters.forEach(clusterId => {
+                const cStops = routedStops.filter(s => (s.cluster === 'X' ? 0 : (s.cluster || 0)) === clusterId);
+                if (cStops.length > 0) {
+                    const routedDiv = document.createElement('div');
+                    routedDiv.id = Config.isManagerView ? `routed-list-${clusterId}` : `driver-list-${clusterId}`;
+                    routedDiv.className = 'routed-group-container'; routedDiv.style.minHeight = '30px';
+                    listContainer.appendChild(routedDiv);
+                    routedDiv.appendChild(createRouteSubheading(clusterId, cStops)); 
+                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
+                }
+            });
+        }
+        listContainer.appendChild(createEndpointRow('end', eps.end));
+    } else {
+        const mainDiv = document.createElement('div');
+        mainDiv.id = 'main-list-container';
+        listContainer.appendChild(mainDiv);
+        if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+    }
+
+    import('./map.js').then(module => {
+        module.renderMapMarkers({
+            activeStops, 
+            endpointsToDraw: buildEndpointsToDraw(activeStops),
+            isManagerView: Config.isManagerView, 
+            currentInspectorFilter: AppState.currentInspectorFilter,
+            currentRouteCount: AppState.currentRouteCount, 
+            allStops: AppState.stops, 
+            inspectors: AppState.inspectors,
+            onMarkerClick: (id, isShift) => {
+                if (!isShift) AppState.selectedIds.clear();
+                AppState.selectedIds.has(id) ? AppState.selectedIds.delete(id) : AppState.selectedIds.add(id);
+                updateSelectionUI();
+                document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    });
+
+    updateSelectionUI();
+}
+
+function buildEndpointsToDraw(activeStops) {
+    let endpointsToDraw = [];
+    const pushEndpoint = (lng, lat, dId, type) => {
+        if (lng && lat) {
+            let existing = endpointsToDraw.find(e => e.lng === lng && e.lat === lat && String(e.driverId) === String(dId));
+            if (existing) {
+                if (type === 'start') existing.isStart = true;
+                if (type === 'end') existing.isEnd = true;
+            } else endpointsToDraw.push({ lng, lat, driverId: dId, isStart: type === 'start', isEnd: type === 'end' });
+        }
+    };
+
+    if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
+        const activeDriverIds = new Set(activeStops.map(s => String(s.driverId)));
+        AppState.inspectors.forEach(insp => {
+            if (activeDriverIds.has(String(insp.id))) {
+                pushEndpoint(parseFloat(insp.startLng), parseFloat(insp.startLat), insp.id, 'start');
+                pushEndpoint(parseFloat(insp.endLng || insp.startLng), parseFloat(insp.endLat || insp.startLat), insp.id, 'end');
+            }
+        });
+    } else {
+        let eps = getActiveEndpoints();
+        let cInsp = AppState.inspectors.find(i => String(i.id) === String(Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam));
+        if (eps.start && eps.start.lng && eps.start.lat) pushEndpoint(parseFloat(eps.start.lng), parseFloat(eps.start.lat), cInsp?.id, 'start');
+        if (eps.end && eps.end.lng && eps.end.lat) pushEndpoint(parseFloat(eps.end.lng), parseFloat(eps.end.lat), cInsp?.id, 'end');
+    }
+    return endpointsToDraw;
+}
+
+export function updateSummary() {
+    const active = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.status !== 'Completed');
+
+    let totalMi = 0, totalSecs = 0, dueToday = 0, pastDue = 0;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    active.forEach(s => {
+        const distVal = parseFloat(s.dist || 0);
+        if (!isNaN(distVal)) totalMi += distVal;
+        totalSecs += parseFloat(s.durationSecs || 0);
+        
+        if(s.dueDate) {
+            const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
+            if(dueTime < today) pastDue++;
+            else if(dueTime.getTime() === today.getTime()) dueToday++;
+        }
+    });
+    
+    let totalHrs = active.length > 0 ? ((totalSecs + (active.length * AppState.COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
+    
+    if (document.getElementById('sum-dist')) document.getElementById('sum-dist').innerText = `${totalMi.toFixed(1)} mi`;
+    if (document.getElementById('sum-time')) document.getElementById('sum-time').innerText = `${totalHrs} hrs`;
+    if (document.getElementById('stat-total')) document.getElementById('stat-total').innerText = `${active.length} Orders`;
+    if (document.getElementById('stat-due')) document.getElementById('stat-due').innerText = `${dueToday} Due Today`;
+    if (document.getElementById('stat-past')) document.getElementById('stat-past').innerText = `${pastDue} Past Due`;
+}
+
+export function updateRouteTimes() {
+    if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return;
+    const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.lng && s.lat);
+    for(let i=0; i<3; i++) {
+        const clusterStops = activeStops.filter(s => s.cluster === i);
+        let totalSecs = 0;
+        clusterStops.forEach(s => totalSecs += parseFloat(s.durationSecs || 0));
+        const hrs = clusterStops.length > 0 ? ((totalSecs + (clusterStops.length * AppState.COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
+        if(document.getElementById(`rtime-${i+1}`)) document.getElementById(`rtime-${i+1}`).innerText = clusterStops.length > 0 ? `${hrs} hrs` : '-- hrs';
+    }
+}
+
+export function createRouteSubheading(clusterNum, clusterStops) {
+    let totalMi = 0, dueToday = 0, pastDue = 0, totalSecs = 0;
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    clusterStops.forEach(s => {
+        if (!isNaN(parseFloat(s.dist || 0))) totalMi += parseFloat(s.dist);
+        totalSecs += parseFloat(s.durationSecs || 0);
+        if(s.dueDate) {
+            const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
+            if(dueTime < today) pastDue++;
+            else if(dueTime.getTime() === today.getTime()) dueToday++;
+        }
+    });
+
+    let hrs = clusterStops.length > 0 ? ((totalSecs + (clusterStops.length * AppState.COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : 0;
+    let dueText = pastDue > 0 ? `<span style="color:var(--red)">${pastDue} Past Due</span>` : (dueToday > 0 ? `<span style="color:var(--orange)">${dueToday} Due Today</span>` : `0 Due`);
+    
+    const el = document.createElement('div');
+    el.className = 'list-subheading';
+    el.innerHTML = `<span>ROUTE ${clusterNum + 1}</span><span class="route-summary-text">${totalMi.toFixed(1)} mi | ${hrs} hrs | ${clusterStops.length} stops | ${dueText}</span>`;
+    return el;
+}
+
+export function createEndpointRow(type, endpointData) {
+    const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
+    const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
+    const el = document.createElement('div');
+    el.className = 'stop-item static-endpoint compact';
+    el.innerHTML = `
+        <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-main); font-size:18px;">${type === 'start' ? '🏠' : '🏁'}</div>
+        <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
+            <div style="position:relative; width:100%; flex:1;">
+                <input type="text" id="input-endpoint-${type}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+            </div>
+        </div>
+        <div class="stop-actions" style="width: 40px;"></div>
+    `;
+    return el;
+}
+
+export function updateSelectionUI() { 
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el=>el.classList.remove('selected')); 
+    AppState.selectedIds.forEach(id => {
+        const row = document.getElementById(`item-${id}`); 
+        if (row) row.classList.add('selected');
+    });
+
+    const has = AppState.selectedIds.size > 0; 
+    let hasRouted = false;
+    AppState.selectedIds.forEach(id => {
+        const s = AppState.stops.find(st => String(st.id) === String(id));
+        if (s && isRouteAssigned(s.status)) hasRouted = true;
+    });
+
+    const selectAllCb = document.getElementById('bulk-select-all');
+    if (selectAllCb) {
+        const activeStops = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
+        selectAllCb.checked = (activeStops.length > 0 && AppState.selectedIds.size === activeStops.length);
+    }
+    
+    if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').style.display = (has && AppState.PERMISSION_MODIFY && Config.isManagerView) ? 'block' : 'none'; 
+    if (document.getElementById('bulk-unroute-btn')) document.getElementById('bulk-unroute-btn').style.display = (hasRouted && AppState.PERMISSION_MODIFY) ? 'block' : 'none'; 
+
+    for(let i=1; i<=3; i++) {
+        const btn = document.getElementById(`move-r${i}-btn`);
+        if(btn) {
+            if(Config.isManagerView && AppState.currentInspectorFilter !== 'all' && has && i <= AppState.currentRouteCount && AppState.currentRouteCount > 1) {
+                let allInTargetRoute = true;
+                AppState.selectedIds.forEach(id => {
+                    const s = AppState.stops.find(st => String(st.id) === String(id));
+                    if (s && s.cluster !== (i - 1)) allInTargetRoute = false;
+                });
+                btn.style.display = allInTargetRoute ? 'none' : 'block';
+            } else {
+                btn.style.display = 'none';
+            }
+        }
+    }
+}
+
+// --- SortableJS Integration ---
+
+let sortableInstances = [];
+let sortableUnrouted = null;
+
+export function initSortable() {
+    sortableInstances.forEach(inst => inst.destroy());
+    sortableInstances = [];
+    if (sortableUnrouted) { sortableUnrouted.destroy(); sortableUnrouted = null; }
+
+    if (!AppState.PERMISSION_MODIFY) return;
+
+    if (Config.isManagerView && AppState.currentInspectorFilter !== 'all') {
+        const unroutedEl = document.getElementById('unrouted-list');
+
+        document.querySelectorAll('.routed-group-container').forEach(routedEl => {
+            const inst = Sortable.create(routedEl, {
+                group: 'manager-routes', handle: '.handle', filter: '.static-endpoint, .list-subheading', animation: 150,
+                onStart: () => pushToHistory(),
+                onEnd: async (evt) => {
+                    const hasActiveRoutes = AppState.stops.some(st => isRouteAssigned(st.status));
+                    const stopId = evt.item.id.replace('item-', '');
+                    const stop = AppState.stops.find(s => String(s.id) === String(stopId));
+                    
+                    if (stop) {
+                        const dId = stop.driverId;
+                        let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
+                        if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
+                        
+                        let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
+                        if (matchNew) {
+                            stop.cluster = parseInt(matchNew[2]);
+                            stop.manualCluster = true;
+                            if (hasActiveRoutes) {
+                                stop.status = 'Routed'; stop.routeState = 'Staging';
+                                markRouteDirty(dId, stop.cluster);
+                            }
+                        }
+                    }
+
+                    if (evt.to.id === 'unrouted-list') {
+                        const idx = AppState.stops.findIndex(s => String(s.id) === String(stopId));
+                        let dId = null;
+                        if (idx > -1) {
+                            dId = AppState.stops[idx].driverId;
+                            AppState.stops[idx].status = 'Pending'; AppState.stops[idx].routeState = 'Pending';
+                            AppState.stops[idx].cluster = 'X'; AppState.stops[idx].manualCluster = false;
+                            AppState.stops[idx].eta = ''; AppState.stops[idx].dist = 0; AppState.stops[idx].durationSecs = 0;
+                            if (Config.viewMode === 'inspector') AppState.stops[idx].hiddenInInspector = true;
+                        }
+                        
+                        showOverlay();
+                        try {
+                            let unroutePayload = { 
+                                action: 'updateOrder', rowId: stopId, driverId: dId, 
+                                updates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam
+                            };
+                            if (!Config.isManagerView) unroutePayload.routeId = Config.routeId;
+                            await apiFetch(unroutePayload);
+                        } catch (e) { console.error(e); }
+                        finally { hideOverlay(); }
+                    }
+                    
+                    reorderStopsFromDOM(); triggerFullRender(); updateRouteTimes(); silentSaveRouteState();
+                }
+            });
+            sortableInstances.push(inst);
+        });
+        
+        if (unroutedEl) {
+            sortableUnrouted = Sortable.create(unroutedEl, {
+                group: 'manager-routes', sort: false, handle: '.handle', filter: '.list-subheading', animation: 150, onStart: () => pushToHistory()
+            });
+        }
+    } else if (!Config.isManagerView) {
+        document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
+            const inst = Sortable.create(el, {
+                delay: 200, delayOnTouchOnly: true, filter: '.static-endpoint, .list-subheading', animation: 150, onStart: () => pushToHistory(),
+                onEnd: (evt) => {
+                    const hasActiveRoutes = AppState.stops.some(st => isRouteAssigned(st.status));
+                    const stopId = evt.item.id.replace('item-', '');
+                    const stop = AppState.stops.find(s => String(s.id) === String(stopId));
+                    if (stop) {
+                        const dId = stop.driverId;
+                        let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
+                        if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
+                        
+                        let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
+                        if (matchNew) {
+                            stop.cluster = parseInt(matchNew[2]); stop.manualCluster = true;
+                            if (hasActiveRoutes) { stop.status = 'Routed'; stop.routeState = 'Staging'; markRouteDirty(dId, stop.cluster); }
+                        }
+                    }
+                    reorderStopsFromDOM(); triggerFullRender(); updateRouteTimes(); silentSaveRouteState();
+                }
+            });
+            sortableInstances.push(inst);
+        });
+    }
+}
+
+export function reorderStopsFromDOM() {
+    let unroutedIds = []; let routedIds = [];
+    if (document.getElementById('unrouted-list')) unroutedIds = Array.from(document.getElementById('unrouted-list').children).map(el => el.id.replace('item-', '')).filter(Boolean);
+    document.querySelectorAll('.routed-group-container').forEach(cont => {
+        const rIds = Array.from(cont.children).map(el => el.id.replace('item-', '')).filter(Boolean);
+        routedIds = routedIds.concat(rIds);
+    });
+    if (unroutedIds.length === 0 && routedIds.length === 0 && document.getElementById('main-list-container')) {
+        routedIds = Array.from(document.getElementById('main-list-container').children).map(el => el.id.replace('item-', '')).filter(Boolean);
+    }
+    const visibleIds = new Set([...unroutedIds, ...routedIds]);
+    const otherStops = AppState.stops.filter(s => !visibleIds.has(s.id));
+    const newUnrouted = unroutedIds.map(id => AppState.stops.find(s => String(s.id) === String(id))).filter(Boolean);
+    const newRouted = routedIds.map(id => AppState.stops.find(s => String(s.id) === String(id))).filter(Boolean);
+    AppState.stops = [...otherStops, ...newUnrouted, ...newRouted];
+}
+
+// --- Endpoints & Geocoding UI ---
+
+let geocodeTimeout;
+
+export async function handleEndpointInput(e, type) {
+    checkEndpointModified();
+    clearTimeout(geocodeTimeout);
+    const val = e.target.value;
+    let dropdown = document.getElementById(`autocomplete-${type}`);
+    
+    if (!val.trim()) { 
+        if (dropdown) dropdown.innerHTML = ''; 
+        AppState.latestSuggestions[type] = null; return; 
+    }
+    
+    geocodeTimeout = setTimeout(async () => {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(val)}.json?access_token=${Config.MAPBOX_TOKEN}&country=us&types=address,poi`;
+        try {
+            AppState.frontEndApiUsage.geocode++;
+            const res = await fetch(url);
+            const data = await res.json();
+            AppState.latestSuggestions[type] = data.features.length > 0 ? data.features[0] : null;
+            renderAutocomplete(data.features, e.target, type);
+        } catch (err) { console.error("Autocomplete Error:", err); }
+    }, 300);
+}
+
+function renderAutocomplete(features, inputEl, type) {
+    let dropdown = document.getElementById(`autocomplete-${type}`);
+    if (!dropdown) {
+        dropdown = document.createElement('div'); dropdown.id = `autocomplete-${type}`; dropdown.className = 'autocomplete-dropdown';
+        dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel, #1E293B)'; dropdown.style.border = '1px solid var(--border-color, #334155)';
+        dropdown.style.zIndex = '1000'; dropdown.style.width = '100%'; dropdown.style.maxHeight = '200px'; dropdown.style.overflowY = 'auto';
+        dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        inputEl.parentNode.appendChild(dropdown);
+    }
+    dropdown.innerHTML = '';
+    if (features.length === 0) return;
+    
+    features.forEach(f => {
+        const item = document.createElement('div');
+        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color, #334155)';
+        item.style.color = 'var(--text-main, #F8FAFC)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
+        
+        item.onmouseenter = () => item.style.background = 'var(--blue, #3B82F6)';
+        item.onmouseleave = () => item.style.background = 'transparent';
+        item.onmousedown = (e) => {
+            e.preventDefault(); 
+            AppState.latestSuggestions[type] = f; 
+            inputEl.value = f.place_name; dropdown.innerHTML = '';
+            selectEndpoint(type, f.place_name, f.center[1], f.center[0], inputEl);
+        };
+        dropdown.appendChild(item);
+    });
+}
+
+function checkEndpointModified() {
+    const sVal = document.getElementById('input-endpoint-start')?.value || '';
+    const eVal = document.getElementById('input-endpoint-end')?.value || '';
+    const eps = getActiveEndpoints();
+    const sOrig = eps.start?.address || '';
+    const eOrig = eps.end?.address || '';
+    if ((sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim())) markRouteDirty('endpoints', 0);
+    // Needs global function from app.js to trigger updateRoutingUI, or we triggerFullRender
+    triggerFullRender();
+}
+
+async function selectEndpoint(type, address, lat, lng, inputEl) {
+    const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+    const insp = AppState.inspectors.find(i => String(i.id) === String(inspId));
+    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView));
+    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
+
+    if (Config.isManagerView && hasRouted) {
+        const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
+        if (!proceed) {
+            const eps = getActiveEndpoints();
+            if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
+            return;
+        }
+    }
+    
+    let epObj = { address, lat, lng };
+    if (type === 'start') AppState.routeStart = epObj;
+    if (type === 'end') AppState.routeEnd = epObj;
+
+    if (insp) {
+        if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
+        if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
+    }
+    
+    if (Config.isManagerView && hasRouted) await executeRouteReset(insp.id);
+    else {
+        markRouteDirty('endpoints', 0); triggerFullRender();
+        saveEndpointToBackend(type, address, lat, lng);
+    }
+}
+
+async function executeRouteReset(driverId) {
+    showOverlay();
+    try {
+        let payload = { action: 'resetRoute', driverId: driverId };
+        if (!Config.isManagerView) payload.routeId = Config.routeId;
+        await apiFetch(payload);
+        
+        AppState.historyStack = []; 
+        AppState.stops.forEach(s => {
+            if (String(s.driverId) === String(driverId) && isRouteAssigned(s.status)) {
+                s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending';
+            }
+        });
+        
+        AppState.routeStart = null; AppState.routeEnd = null; AppState.dirtyRoutes.clear();
+        triggerFullRender(); updateUndoUI();
+    } catch(e) { await customAlert("Error resetting the route."); } 
+    finally { hideOverlay(); }
+}
+
+async function saveEndpointToBackend(type, address, lat, lng) {
+    const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView));
+    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
+    
+    pushToHistory(); showOverlay();
+    let payload = { action: hasRouted ? 'updateEndpoint' : 'updateInspectorDefault', type, address, lat, lng, driverId: inspId };
+    if (!Config.isManagerView) payload.routeId = Config.routeId; 
+    
+    try {
+        const res = await apiFetch(payload);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+    } catch (e) {
+        console.error("Endpoint update failed:", e);
+        await customAlert("Failed to sync new address to server. Ensure connection is stable.");
+    } finally { hideOverlay(); }
+}
+
+// --- Specific Modals ---
+
+export function showAddOrderModal() {
+    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
+    mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
+
+    let isIndividual = document.body.classList.contains('tier-individual');
+    let selectedInspector = isIndividual ? (Config.adminParam || Config.driverParam) : (Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? AppState.currentInspectorFilter : (!Config.isManagerView ? Config.driverParam : null));
+    let selectedApp = null;
+
+    let inspectorHtml = '';
+    if (Config.isManagerView && AppState.currentInspectorFilter === 'all' && !isIndividual) {
+        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => `<div class="pill-btn add-insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
+        inspectorHtml = `<div class="form-group"><label>Inspector <span style="float:right; font-weight:normal;">Required</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">${inspBtns}</div></div>`;
+    }
+
+    let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
+    let appHtml = `<div class="form-group"><label>App <span style="float:right; font-weight:normal;">Optional</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
+
+    mc.innerHTML = `
+        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: bold;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="add-close-icon"></i></div>
+            ${inspectorHtml} ${appHtml}
+            <div class="form-group"><label>Address <span style="float:right; font-weight:normal;">Required</span></label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
+            <div class="grid-2-col">
+                <div class="form-group"><label>Latitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
+                <div class="form-group"><label>Longitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
+            </div>
+            <div class="form-group"><label>Due Date <span style="float:right; font-weight:normal;">Required</span></label><input type="date" id="add-due" class="form-control" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div class="grid-2-col">
+                <div class="form-group"><label>Client <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
+                <div class="form-group"><label>Order Type <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
+            </div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start; margin-top: 10px;">
+                <button id="btn-submit-add" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; opacity: 0.5;" disabled>Add Order</button>
+                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;">Cancel</button>
+            </div>
+        </div>`;
+    m.style.display = 'flex';
+
+    const checkValidity = () => {
+        const btn = document.getElementById('btn-submit-add');
+        if (selectedInspector && document.getElementById('add-address').value.trim() && document.getElementById('add-due').value) {
+            btn.disabled = false; btn.style.opacity = '1'; btn.style.background = 'var(--green)';
+        } else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = '#35475b'; }
+    };
+
+    document.querySelectorAll('.add-insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.add-insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
+    document.querySelectorAll('.add-app-pill').forEach(el => { el.onclick = () => { if (el.classList.contains('active')) { el.classList.remove('active'); selectedApp = null; } else { document.querySelectorAll('.add-app-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedApp = el.getAttribute('data-val'); } checkValidity(); }; });
+    document.getElementById('add-address').addEventListener('input', checkValidity); document.getElementById('add-due').addEventListener('input', checkValidity);
+    document.getElementById('add-close-icon').onclick = () => m.style.display = 'none'; document.getElementById('btn-cancel-add').onclick = () => m.style.display = 'none';
+
+    document.getElementById('btn-submit-add').onclick = () => {
+        m.style.display = 'none';
+        const file = new File([['Address', 'Latitude', 'Longitude', 'Due Date', 'Client', 'Order Type'].join(',') + '\n' + [document.getElementById('add-address').value.trim(), document.getElementById('add-lat').value, document.getElementById('add-lng').value, document.getElementById('add-due').value, document.getElementById('add-client').value.trim(), document.getElementById('add-type').value.trim()].map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')], "manual_order.csv", { type: "text/csv" });
+        performUpload(file, selectedInspector, selectedApp || '');
+    };
+    checkValidity();
+}
+
+export function showUploadModal(file) {
+    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
+    mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
+
+    let isIndividual = document.body.classList.contains('tier-individual');
+    let selectedInspector = isIndividual ? (Config.adminParam || Config.driverParam) : (Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? AppState.currentInspectorFilter : (!Config.isManagerView ? Config.driverParam : null));
+    let selectedCsvType = null;
+
+    let inspectorHtml = '';
+    if (Config.isManagerView && AppState.currentInspectorFilter === 'all' && !isIndividual) {
+        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => `<div class="pill-btn insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
+        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">Inspector <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
+    }
+
+    let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
+
+    mc.innerHTML = `
+        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: bold;">Process CSV File</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="upload-close-icon"></i></div>
+            <div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">File <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="background: #2a2b2d; border: 1px solid #333; padding: 12px 16px; border-radius: 6px; color: #ccc; display: flex; align-items: center; gap: 10px; font-size: 14px;"><i class="fa-solid fa-file-csv" style="font-size: 18px;"></i> ${file.name}</div></div>
+            ${inspectorHtml}
+            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">App <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start;">
+                <button id="btn-submit-upload" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; opacity: 0.5;" disabled>Submit</button>
+                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;">Cancel</button>
+            </div>
+        </div>`;
+    m.style.display = 'flex';
+
+    const checkValidity = () => {
+        const btn = document.getElementById('btn-submit-upload');
+        if (selectedInspector && selectedCsvType) { btn.disabled = false; btn.style.opacity = '1'; btn.style.background = 'var(--blue)'; } 
+        else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = '#35475b'; }
+    };
+
+    document.querySelectorAll('.insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
+    document.querySelectorAll('.app-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.app-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedCsvType = el.getAttribute('data-val'); checkValidity(); }; });
+    document.getElementById('upload-close-icon').onclick = () => m.style.display = 'none'; document.getElementById('btn-cancel-upload').onclick = () => m.style.display = 'none';
+
+    document.getElementById('btn-submit-upload').onclick = () => {
+        m.style.display = 'none';
+        performUpload(file, selectedInspector, selectedCsvType);
+    };
+}
+
+export function handleOpenEmailModal() {
+    if (AppState.currentRouteViewFilter !== 'all') { window.setRouteViewFilter('all'); }
+    const insp = AppState.inspectors.find(i => String(i.id) === String(AppState.currentInspectorFilter));
+    if (!insp) return;
+
+    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
+    mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
+    
+    mc.innerHTML = `
+        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: bold;">Customize Email Message</h3>
+            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5;">CC the Company Email<br><span style="font-size: 14px; color: #9a9a9a;">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5;">CC Me<br><span style="font-size: 14px; color: #9a9a9a;">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
+            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: #e5e5e5;">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
+            <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 15px; font-weight: bold; cursor: pointer;">Cancel</button></div>
+        </div>`;
+
+    document.getElementById('btn-cancel-dispatch').onclick = () => m.style.display = 'none';
+
+    document.getElementById('btn-submit-dispatch').onclick = async () => {
+        const btn = document.getElementById('btn-submit-dispatch');
+        btn.innerText = 'Dispatching...'; btn.disabled = true;
+
+        const mapWrapper = document.getElementById('map-wrapper');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-view-toggle');
+        const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
+
+        const bounds = new mapboxgl.LngLatBounds();
+        let lats = [], lngs = [];
+        AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && String(s.driverId) === String(AppState.currentInspectorFilter) && isRouteAssigned(s.status)).forEach(s => { if(s.lng && s.lat) { bounds.extend([s.lng, s.lat]); lngs.push(s.lng); lats.push(s.lat); } });
+        
+        let finalWidth = 800, finalHeight = 450;
+        if (lats.length > 1) {
+            const dLat = Math.max(...lats) - Math.min(...lats); const dLng = (Math.max(...lngs) - Math.min(...lngs)) * Math.cos(((Math.max(...lats) + Math.min(...lats)) / 2) * Math.PI / 180);
+            if (dLat > 0.00001 && dLng > 0.00001) { let ratio = dLng / dLat; if (ratio > 1) { finalWidth = 800; finalHeight = Math.max(350, Math.floor(800 / ratio)); } else { finalHeight = 800; finalWidth = Math.max(350, Math.floor(800 * ratio)); } }
+        }
+
+        const originalWrapperStyle = mapWrapper.style.cssText;
+        mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
+        const map = getMapInstance();
+        if (map) {
+            map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false });
+            await new Promise(resolve => { map.once('idle', resolve); setTimeout(resolve, 1200); });
+        }
+
+        let mapBase64 = '';
+        try { mapBase64 = (await html2canvas(mapWrapper, { useCORS: true, backgroundColor: '#171717', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
+
+        mapWrapper.style.cssText = originalWrapperStyle;
+        if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
+        overlaysToHide.forEach((el, index) => el.style.display = originalDisplays[index]);
+
+        try {
+            const res = await apiFetch({
+                action: "dispatchRoute", driverId: AppState.currentInspectorFilter, companyId: Config.companyParam || '', routeId: Config.isManagerView ? null : Config.routeId,
+                customBody: document.getElementById('email-body-text').value, ccCompany: document.getElementById('cc-company-checkbox').checked, addCc: document.getElementById('cc-me-checkbox').checked ? AppState.adminEmail : '', ccEmail: document.getElementById('additional-cc-email').value, mapBase64
+            });
+            const result = await res.json();
+            
+            if (result.success) {
+                m.style.display = 'none';
+                AppState.stops.forEach(s => { if (String(s.driverId) === String(AppState.currentInspectorFilter) && isRouteAssigned(s.status)) { s.routeState = 'Dispatched'; s.status = 'Dispatched'; } });
+                if (Config.isManagerView) { const filterEl = document.getElementById('inspector-filter'); if (filterEl) filterEl.value = 'all'; window.handleInspectorFilterChange('all'); } else { triggerFullRender(); }
+                const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+                setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
+            } else throw new Error("Dispatch failed");
+        } catch (e) {
+            btn.innerText = 'Submit'; btn.disabled = false;
+            await customAlert("Failed to dispatch route. Please try again.");
+        }
+    };
+}
+
+export function openUnmatchedModal() {
+    const modal = document.getElementById('unmatched-modal');
+    document.getElementById('unmatched-modal-title').textContent = `Match Addresses (${AppState.currentUnmatchedIndex + 1} of ${AppState.unmatchedAddressesQueue.length})`;
+    document.getElementById('unmatched-original-address').textContent = AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex];
+    document.getElementById('unmatched-lat').value = '';
+    document.getElementById('unmatched-lng').value = '';
+    document.getElementById('unmatched-corrected').value = '';
+    document.getElementById('unmatched-error').style.display = 'none';
+    document.getElementById('btn-unmatched-submit').textContent = 'Match Coordinates';
+    modal.style.display = 'flex';
+}
+
+async function nextUnmatchedAddress() {
+    AppState.currentUnmatchedIndex++;
+    if (AppState.currentUnmatchedIndex < AppState.unmatchedAddressesQueue.length) openUnmatchedModal();
+    else {
+        document.getElementById('unmatched-modal').style.display = 'none';
+        const toast = document.createElement('div'); toast.innerText = 'Address matching complete.'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2000);
+        await loadData(); 
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('unmatched-corrected')) document.getElementById('unmatched-corrected').addEventListener('input', (e) => { document.getElementById('btn-unmatched-submit').textContent = e.target.value.trim() !== '' ? 'Update Address' : 'Match Coordinates'; });
+    if (document.getElementById('btn-unmatched-submit')) {
+        document.getElementById('btn-unmatched-submit').addEventListener('click', async () => {
+            document.getElementById('unmatched-error').style.display = 'none'; document.getElementById('unmatched-loading-overlay').style.display = 'flex';
+            try {
+                const response = await apiFetch({ action: 'resolveUnmatchedAddress', driverId: AppState.currentUploadDriverId, companyId: Config.companyParam || '', originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex], lat: document.getElementById('unmatched-lat').value, lng: document.getElementById('unmatched-lng').value, correctedAddress: document.getElementById('unmatched-corrected').value });
+                const result = await response.json();
+                document.getElementById('unmatched-loading-overlay').style.display = 'none';
+                if (result.success) nextUnmatchedAddress();
+                else { document.getElementById('unmatched-error').textContent = result.unresolvable ? 'Address not found. Please try again or enter coordinates.' : (result.error || 'Invalid coordinates provided.'); document.getElementById('unmatched-error').style.display = 'block'; }
+            } catch (err) { document.getElementById('unmatched-loading-overlay').style.display = 'none'; document.getElementById('unmatched-error').textContent = 'Network error. Please try again.'; document.getElementById('unmatched-error').style.display = 'block'; }
+        });
+    }
+    if (document.getElementById('btn-unmatched-skip')) {
+        document.getElementById('btn-unmatched-skip').addEventListener('click', async () => {
+            if (await customConfirm("This order will be removed from the list.\n\nPress OK to delete.")) {
+                document.getElementById('unmatched-loading-overlay').style.display = 'flex';
+                try { await apiFetch({ action: 'resolveUnmatchedAddress', skip: true, driverId: AppState.currentUploadDriverId, originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex] }); } catch(e) { console.error("Skip error:", e); }
+                document.getElementById('unmatched-loading-overlay').style.display = 'none'; nextUnmatchedAddress();
+            }
+        });
+    }
+});
+
+// --- UI Utilities Bound to Window ---
+
+window.setRouteViewFilter = function(val) {
+    AppState.currentRouteViewFilter = val;
+    document.getElementById('view-rall-btn')?.classList.toggle('active', val === 'all');
+    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.toggle('active', val === i);
+    if (val !== 'all') {
+        const hiddenIds = [];
+        AppState.selectedIds.forEach(id => {
+            const s = AppState.stops.find(st => String(st.id) === String(id));
+            if (s && isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster !== val) hiddenIds.push(id);
+        });
+        hiddenIds.forEach(id => AppState.selectedIds.delete(id));
+    }
+    triggerFullRender();
+};
+
+window.handleInspectorFilterChange = function(val) {
+    AppState.currentInspectorFilter = val; sessionStorage.setItem('sproute_inspector_filter', val);
+    document.body.classList.toggle('manager-all-inspectors', val === 'all'); document.body.classList.toggle('manager-single-inspector', val !== 'all');
+    AppState.selectedIds.clear(); AppState.currentRouteViewFilter = 'all';
+    document.getElementById('view-rall-btn')?.classList.add('active');
+    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
+    updateInspectorDropdown(); 
+    if (val !== 'all' && window.setRoutes) { /* Call recalculate if needed */ }
+    updateRouteButtonColors(); triggerFullRender();
+};
+
+window.setDisplayMode = function(mode) {
+    AppState.currentDisplayMode = mode;
+    document.getElementById('btn-detailed')?.classList.toggle('active', mode === 'detailed'); document.getElementById('btn-compact')?.classList.toggle('active', mode === 'compact');
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
+};
+
+window.toggleSelectAll = function(cb) {
+    AppState.selectedIds.clear();
+    if (cb.checked) AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter)).forEach(s => AppState.selectedIds.add(s.id));
+    updateSelectionUI();
+};
+
+window.filterList = function() {
+    const q = document.getElementById('search-input').value.toLowerCase(); 
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none');
+};
+
+window.handleInspectorChange = async function(e, rowId, selectEl) {
+    e.stopPropagation(); 
+    const newDriverId = selectEl.value; const newDriverName = selectEl.options[selectEl.selectedIndex].text;
+    let idsToUpdate = [rowId];
+    if (AppState.selectedIds.has(rowId) && AppState.selectedIds.size > 1) {
+        if (await customConfirm(`Reassign all ${AppState.selectedIds.size} selected orders to ${newDriverName}?`)) idsToUpdate = Array.from(AppState.selectedIds); else return;
+    }
+    pushToHistory(); showOverlay();
+    try { 
+        idsToUpdate.forEach(id => {
+            const s = AppState.stops.find(st => String(st.id) === String(id));
+            if (s) {
+                if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
+                s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
+            }
+        });
+        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
+        if (!Config.isManagerView) payload.routeId = Config.routeId;
+        await apiFetch(payload); AppState.selectedIds.clear(); updateInspectorDropdown(); triggerFullRender(); silentSaveRouteState();
+    } catch (err) { hideOverlay(); await customAlert("Error reassigning orders. Please try again."); } 
+    finally { hideOverlay(); }
+};
+
+window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<h3>Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:bold;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:none; border-radius:6px; background:#444; color:#fff" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div>`; } else { window.launchMaps(p, la, ln, addr); } };
+window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; window.launchMaps(p, la, ln, addr); };
+window.launchMaps = function(p, la, ln, addr) { let safeAddr = encodeURIComponent(addr || "Destination"); if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; };
+
+window.handleEndpointInput = handleEndpointInput;
+window.handleEndpointKeyDown = function(e, type) { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
+window.handleEndpointBlur = function(type, inputEl) { setTimeout(() => { document.getElementById(`autocomplete-${type}`)?.remove(); }, 200); };
+window.showAddOrderModal = showAddOrderModal;
+window.handleOpenEmailModal = handleOpenEmailModal;
+window.resetMapView = resetMapBounds;
+
+// --- Drag & Drop Initialization ---
+const headerDropzone = document.getElementById('header-csv-upload'); const headerInput = document.getElementById('header-file-input');
+const mainDropzone = document.getElementById('main-dropzone'); const mainInput = document.getElementById('main-file-input');
+const initDropzone = (dropzone, input) => {
+    if (dropzone && input) {
+        dropzone.onclick = () => input.click();
+        dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('drag-active'); dropzone.style.borderColor = 'var(--blue)'; dropzone.style.backgroundColor = 'var(--bg-hover)'; };
+        dropzone.ondragleave = (e) => { e.preventDefault(); dropzone.classList.remove('drag-active'); dropzone.style.borderColor = 'var(--border-color)'; dropzone.style.backgroundColor = 'transparent'; };
+        dropzone.ondrop = (e) => { e.preventDefault(); dropzone.classList.remove('drag-active'); dropzone.style.borderColor = 'var(--border-color)'; dropzone.style.backgroundColor = 'transparent'; if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]); };
+        input.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); input.value = ''; } };
+    }
+};
+initDropzone(headerDropzone, headerInput); initDropzone(mainDropzone, mainInput);
+
+function handleFileSelection(file) {
+    if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings."); return; }
+    if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
+}
+
+// --- Resizer Logic ---
+const resizerEl = document.getElementById('resizer'); const sidebarEl = document.getElementById('sidebar'); const mapWrapEl = document.getElementById('map-wrapper');
+let isResizing = false;
+function startResize(e) { if(!Config.isManagerView) return; isResizing = true; resizerEl.classList.add('active'); document.body.style.cursor = Config.viewMode === 'managermobile' ? 'row-resize' : 'col-resize'; mapWrapEl.style.pointerEvents = 'none'; }
+resizerEl.addEventListener('mousedown', startResize); resizerEl.addEventListener('touchstart', (e) => { startResize(e.touches[0]); }, {passive: false});
+function performResize(e) {
+    if (!isResizing) return;
+    let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
+    if (Config.viewMode === 'managermobile') {
+        let newHeight = window.innerHeight - clientY; if (newHeight < 200) newHeight = 200; if (newHeight > window.innerHeight - 200) newHeight = window.innerHeight - 200;
+        sidebarEl.style.height = newHeight + 'px'; sidebarEl.style.flex = 'none'; mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px'; mapWrapEl.style.flex = 'none';
+    } else {
+        let newWidth = window.innerWidth - clientX; if (newWidth < 300) newWidth = 300; if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
+        sidebarEl.style.width = newWidth + 'px';
+    }
+}
+document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
+function stopResize() { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizerEl.classList.remove('active'); mapWrapEl.style.pointerEvents = 'auto'; resizeMap(); } }
+document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
