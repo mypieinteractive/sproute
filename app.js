@@ -1,9 +1,9 @@
-/**
- * Dashboard - V15.4
- * FILE: app.js
- * Changes: 
- * 1. Removed unused `isPollingForUpload` global variable.
- */
+
+/* Dashboard - V15.3 */
+/* FILE: app.js */
+/* Changes: */
+/* 1. Pre-applied empty-state-active to document.body for manager views to prevent UI flash on load. */
+/* 2. Updated html2canvas backgroundColor to #171717. */
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -137,6 +137,7 @@ let historyStack = [];
 let isAlteredRoute = false;
 
 let isPollingForRoute = false;
+let isPollingForUpload = false;
 let pollRetries = 0;
 
 let currentRouteViewFilter = 'all';
@@ -552,6 +553,18 @@ function updateRouteButtonColors() {
                 ind.appendChild(circle);
             }
         }
+    }
+}
+
+function isActiveStop(s) {
+    const status = (s.status || '').toLowerCase().trim();
+    if (isManagerView) {
+        if (status === 'dispatched' || status === 's') return false;
+        return (status === 'pending' || status === 'routed' || status === 'completed');
+    } else {
+        let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
+        if (s.hiddenInInspector) active = false;
+        return active;
     }
 }
 
@@ -3407,6 +3420,113 @@ function initSortable() {
             });
             sortableInstances.push(inst);
         });
+    }
+}
+
+const headerDropzone = document.getElementById('header-csv-upload');
+const headerInput = document.getElementById('header-file-input');
+if (headerDropzone && headerInput) {
+    headerDropzone.onclick = () => headerInput.click();
+    headerDropzone.ondragover = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.add('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+    };
+    headerDropzone.ondrop = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
+    headerInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+            headerInput.value = ''; 
+        }
+    };
+}
+
+// Full Screen Dropzone Wiring
+const mainDropzone = document.getElementById('main-dropzone');
+const mainInput = document.getElementById('main-file-input');
+if (mainDropzone && mainInput) {
+    mainDropzone.onclick = () => mainInput.click();
+    mainDropzone.ondragover = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--blue)';
+        mainDropzone.style.backgroundColor = 'var(--bg-hover)';
+    };
+    mainDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--border-color)';
+        mainDropzone.style.backgroundColor = 'transparent';
+    };
+    mainDropzone.ondrop = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--border-color)';
+        mainDropzone.style.backgroundColor = 'transparent';
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
+    mainInput.onchange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+            mainInput.value = ''; 
+        }
+    };
+}
+
+function openUnmatchedModal() {
+    const modal = document.getElementById('unmatched-modal');
+    const title = document.getElementById('unmatched-modal-title');
+    const origAddr = document.getElementById('unmatched-original-address');
+    const latInput = document.getElementById('unmatched-lat');
+    const lngInput = document.getElementById('unmatched-lng');
+    const correctedInput = document.getElementById('unmatched-corrected');
+    const submitBtn = document.getElementById('btn-unmatched-submit');
+    const errorMsg = document.getElementById('unmatched-error');
+
+    const currentAddr = unmatchedAddressesQueue[currentUnmatchedIndex];
+
+    title.textContent = `Match Addresses (${currentUnmatchedIndex + 1} of ${unmatchedAddressesQueue.length})`;
+    origAddr.textContent = currentAddr;
+
+    latInput.value = '';
+    lngInput.value = '';
+    correctedInput.value = '';
+    errorMsg.style.display = 'none';
+    submitBtn.textContent = 'Match Coordinates';
+
+    modal.style.display = 'flex';
+}
+
+async function nextUnmatchedAddress() {
+    currentUnmatchedIndex++;
+    if (currentUnmatchedIndex < unmatchedAddressesQueue.length) {
+        openUnmatchedModal();
+    } else {
+        document.getElementById('unmatched-modal').style.display = 'none';
+        
+        const toast = document.createElement('div');
+        toast.innerText = 'Address matching complete.';
+        toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;';
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 2000);
+
+        await loadData(); 
     }
 }
 
