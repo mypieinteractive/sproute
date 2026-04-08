@@ -1,4 +1,4 @@
-/* Dashboard - V15.6 */
+/* Dashboard - V15.7 */
 /* FILE: styles.css */
 
 :root { 
@@ -137,7 +137,78 @@ body.view-managermobilesplit .endpoint-label-text { display: none !important; }
     .hide-mobile-text { display: none !important; }
 }
 
-/* Header buttons formatting for mobile */
+@container sidebar (max-width: 500px) {
+    .endpoint-label-text { display: none !important; }
+}
+
+body.tier-individual .col-insp { display: none !important; }
+
+body.manager-all-inspectors #routing-controls { display: none !important; }
+
+/* COMBINED HEADER ACTION BUTTON STYLES */
+.header-combined-action {
+    flex: 1;
+    min-width: 60px;
+    height: 38px;
+    border: 1.5px dashed var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.header-combined-action:hover, .header-combined-action.drag-active {
+    border-color: var(--blue);
+    border-style: solid;
+    background: rgba(37, 99, 235, 0.05);
+}
+.header-combined-idle {
+    display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+    color: var(--text-muted); font-size: 18px; transition: opacity 0.2s; pointer-events: none;
+}
+.header-combined-action:hover .header-combined-idle,
+.header-combined-action.drag-active .header-combined-idle {
+    display: none;
+}
+.header-combined-hover {
+    display: none; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 100%;
+}
+.header-combined-action:hover .header-combined-hover {
+    display: flex;
+}
+
+/* Individual Action Buttons */
+.header-action-btn { height: 36px; padding: 0 16px; width: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
+.header-action-btn:active { opacity: 0.7; }
+
+/* Styling inner buttons for the combined hover state */
+.header-combined-hover .header-action-btn {
+    height: 30px;
+    font-size: 13px;
+    padding: 0 10px;
+    background: var(--bg-panel);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+.header-combined-hover .header-action-btn:hover {
+    background: var(--bg-hover);
+}
+.header-combined-hover .add-order-btn {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--green);
+    border-color: var(--green);
+}
+.header-combined-hover .add-order-btn:hover { background: rgba(16, 185, 129, 0.25); }
+
+/* Mobile Overrides for Header */
+body.view-managermobile #map-driver-name,
+body.view-managermobilesplit #map-driver-name {
+    display: none !important;
+}
 body.view-managermobile .header-action-btn,
 body.view-managermobilesplit .header-action-btn {
     padding: 6px 10px;
@@ -159,56 +230,6 @@ body.view-managermobilesplit .header-action-btn {
     body.view-managermobilesplit .header-action-btn {
         padding: 6px 8px;
     }
-}
-
-@container sidebar (max-width: 500px) {
-    .endpoint-label-text { display: none !important; }
-}
-
-body.tier-individual .col-insp { display: none !important; }
-
-body.manager-all-inspectors #routing-controls { display: none !important; }
-
-/* HEADER DROPZONE & ADD ORDER BUTTON STYLES */
-.header-dropzone {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 6px 16px;
-    border: 1.5px dashed var(--blue);
-    border-radius: 6px;
-    background: rgba(37, 99, 235, 0.05);
-    color: var(--blue);
-    cursor: pointer;
-    transition: all 0.2s;
-    height: 38px;
-    font-size: 14px;
-    font-weight: bold;
-}
-.header-dropzone:hover, .header-dropzone.drag-active {
-    background: rgba(37, 99, 235, 0.15);
-    border-style: solid;
-}
-.add-order-btn {
-    background: rgba(16, 185, 129, 0.15);
-    color: var(--green);
-    border: 1px solid var(--green);
-    padding: 0 12px;
-    height: 38px;
-    font-size: 16px;
-}
-.add-order-btn:hover { background: rgba(16, 185, 129, 0.25); }
-
-/* Mobile Overrides for Header Dropzone */
-body.view-managermobile #map-driver-name,
-body.view-managermobilesplit #map-driver-name {
-    display: none !important;
-}
-body.view-managermobile .header-dropzone,
-body.view-managermobilesplit .header-dropzone {
-    flex: 1;
-    margin-left: 10px;
 }
 
 .list-subheading {
@@ -247,11 +268,16 @@ body.view-managermobilesplit .list-subheading {
 .route-view-btn:hover { opacity: 1; background: var(--bg-hover); }
 .route-view-btn.active { opacity: 1; border-color: var(--blue); background: rgba(37, 99, 235, 0.1); color: var(--blue); }
 
+/* DYNAMIC WIDTH DROPDOWN */
 #inspector-filter {
-    background: var(--bg-panel); color: var(--text-main); font-size: 16px; font-weight: bold;
-    border: 1px solid var(--border-color); padding: 6px 10px; border-radius: 6px; cursor: pointer;
-    outline: none; max-width: 65%; height: 38px;
+    background: transparent; color: var(--text-main); font-size: 15px; font-weight: bold;
+    border: 1px solid var(--border-color); padding: 0 30px 0 12px; border-radius: 6px; cursor: pointer;
+    outline: none; width: auto; max-width: 100%; height: 38px; display: flex; align-items: center;
+    appearance: none; -webkit-appearance: none; background-image: none;
 }
+#inspector-filter option { background: var(--bg-panel); color: var(--text-main); }
+#inspector-filter:focus { border-color: var(--blue); }
+#inspector-filter:disabled { opacity: 0.6; cursor: not-allowed; }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--blue); cursor: pointer; margin-top: -6px; }
@@ -302,9 +328,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .summary-left { display: flex; align-items: center; gap: 15px; }
 .summary-right { display: flex; align-items: center; gap: 15px; }
 #order-stats { font-size: 12px; text-align: right; }
-
-.header-action-btn { height: 36px; padding: 0 16px; width: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; }
-.header-action-btn:active { opacity: 0.7; }
 
 /* ROUTING CONTROLS REVERTED TO COLUMN */
 #routing-controls { 
@@ -465,11 +488,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* Constrained to ~3 chars width and anchored left of the handle */
 .col-client { width: 55px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-type { display: none; } /* Disabled as per V4.1 rules */
-
-.insp-select { width: 100%; background-color: var(--bg-panel); color: var(--text-main); border: 1px solid var(--border-color); padding: 6px 20px 6px 6px; border-radius: 4px; font-size: 13px; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23888888%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); background-repeat: no-repeat; background-position: right 6px center; background-size: 10px auto; }
-.insp-select:focus { outline: none; border-color: var(--blue); }
-.insp-select option { background: var(--bg-panel); color: var(--text-main); }
-.insp-select:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
