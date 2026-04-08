@@ -1,9 +1,7 @@
-/*
- * Dashboard - V15.2
- * FILE: styles.css
- * Changes: 
- * 1. Added empty state visibility rules to toggle the display of `#empty-state-container` and hide main layout elements.
- */
+/* Dashboard - V15.3 */
+/* FILE: styles.css */
+/* Changes: */
+/* 1. Updated --bg-base and --bg-header to #171717 to match Glide background. */
 
 :root { 
     --blue: #2563eb; 
@@ -12,10 +10,10 @@
     --green: #10b981; 
     --purple: #8e44ad; 
     --orange: #f39c12; 
-    --bg-base: #121212;
+    --bg-base: #171717;
     --bg-panel: #1e1e1e;
     --bg-hover: #2a2a2a;
-    --bg-header: #171E26;
+    --bg-header: #171717;
     --border-color: #333333;
     --text-main: #e0e0e0;
     --text-muted: #888888;
