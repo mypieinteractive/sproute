@@ -1,9 +1,9 @@
 
-/* Dashboard - V15.7 */
+/* Dashboard - V15.3 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. User-entered snippets to match Gemini changes */
-
+/* 1. Pre-applied empty-state-active to document.body for manager views to prevent UI flash on load. */
+/* 2. Updated html2canvas backgroundColor to #171717. */
 
 function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
@@ -444,12 +444,15 @@ function sortByEta(a, b) {
 
 function updateHeaderUI() {
     if (!isManagerView) return;
+    const sidebarDriverEl = document.getElementById('sidebar-driver-name');
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
 
     if (isCompanyTier) {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'none';
         if (filterSelectWrap) filterSelectWrap.style.display = 'block';
     } else {
+        if (sidebarDriverEl) sidebarDriverEl.style.display = 'block';
         if (filterSelectWrap) filterSelectWrap.style.display = 'none';
     }
 }
@@ -904,21 +907,33 @@ async function loadData() {
             }
 
             const mapLogo = document.getElementById('brand-logo-map');
+            const emptyLogo = document.getElementById('empty-brand-logo');
+
             const isCompanyTier = document.body.classList.contains('tier-company');
 
             if (isCompanyTier && data.companyLogo) {
                 if (mapLogo) mapLogo.src = data.companyLogo;
+                if (emptyLogo) { emptyLogo.src = data.companyLogo; emptyLogo.style.display = 'block'; }
             } else {
                 const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/prospect-dashboard/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
                 if (mapLogo) mapLogo.src = sprouteLogoUrl;
+                if (emptyLogo) { emptyLogo.src = sprouteLogoUrl; emptyLogo.style.display = 'block'; }
             }
             
             let displayName = data.displayName || 'Sproute'; 
             const mapDriverEl = document.getElementById('map-driver-name');
             if (mapDriverEl) mapDriverEl.innerText = displayName;
+            
+            const sidebarDriverEl = document.getElementById('sidebar-driver-name');
+            if (sidebarDriverEl && !isCompanyTier) {
+                sidebarDriverEl.innerText = displayName;
+            }
 
-         if (typeof updateInspectorDropdown === 'function') updateInspectorDropdown(); 
-            if (typeof updateRouteButtonColors === 'function') updateRouteButtonColors();
+            const emptyBrandName = document.getElementById('empty-brand-name');
+            if (emptyBrandName) emptyBrandName.innerText = displayName;
+
+            updateInspectorDropdown(); 
+            updateRouteButtonColors();
             
             let hasValidStops = stops.filter(s => isActiveStop(s) && s.lng && s.lat).length > 0;
             if (!hasValidStops && data.companyAddress) {
@@ -1049,44 +1064,36 @@ function handleEndpointBlur(type, inputEl) {
     }, 200);
 }
 
-let isSelectingEndpoint = false;
 async function selectEndpoint(type, address, lat, lng, inputEl) {
-    if (isSelectingEndpoint) return;
-    isSelectingEndpoint = true;
+    const inspId = isManagerView ? currentInspectorFilter : driverParam;
+    const insp = inspectors.find(i => String(i.id) === String(inspId));
+    const activeStops = stops.filter(s => isActiveStop(s));
+    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
+
+    if (isManagerView && hasRouted) {
+        const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
+        if (!proceed) {
+            const eps = getActiveEndpoints();
+            if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
+            return;
+        }
+    }
     
-    try {
-        const inspId = isManagerView ? currentInspectorFilter : driverParam;
-        const insp = inspectors.find(i => String(i.id) === String(inspId));
-        const activeStops = stops.filter(s => isActiveStop(s));
-        const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
+    let epObj = { address, lat, lng };
+    if (type === 'start') routeStart = epObj;
+    if (type === 'end') routeEnd = epObj;
 
-        if (isManagerView && hasRouted) {
-            const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
-            if (!proceed) {
-                const eps = getActiveEndpoints();
-                if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
-                return;
-            }
-        }
-        
-        let epObj = { address, lat, lng };
-        if (type === 'start') routeStart = epObj;
-        if (type === 'end') routeEnd = epObj;
-
-        if (insp) {
-            if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
-            if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
-        }
-        
-        if (isManagerView && hasRouted) {
-            if (typeof executeRouteReset === 'function') await executeRouteReset(insp.id);
-        } else {
-            markRouteDirty('endpoints', 0);
-            render(); drawRoute(); updateSummary();
-            if (typeof saveEndpointToBackend === 'function') saveEndpointToBackend(type, address, lat, lng);
-        }
-    } finally {
-        isSelectingEndpoint = false;
+    if (insp) {
+        if (type === 'start') { insp.startAddress = address; insp.startLat = lat; insp.startLng = lng; }
+        if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
+    }
+    
+    if (isManagerView && hasRouted) {
+        await executeRouteReset(insp.id);
+    } else {
+        markRouteDirty('endpoints', 0);
+        render(); drawRoute(); updateSummary();
+        saveEndpointToBackend(type, address, lat, lng);
     }
 }
 
@@ -2597,10 +2604,6 @@ function render() {
     updateRoutingUI();
     
     const listContainer = document.getElementById('stop-list');
-
-const searchInputEl = document.getElementById('search-input');
-    if (searchInputEl) currentSearchValue = searchInputEl.value;
-    
     listContainer.innerHTML = ''; 
     markers.forEach(m => m.remove()); 
     markers = [];
@@ -2654,25 +2657,18 @@ const searchInputEl = document.getElementById('search-input');
         const appSortClick = isAllInspectors ? `onclick="sortTable('app')"` : '';
         const appSortIcon = isAllInspectors ? getSortIcon('app') : '';
 
-header.innerHTML = `
+        header.innerHTML = `
             <div class="col-num">
                 <input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)">
             </div>
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
-            <div class="col-addr" style="padding-right: 10px;">
-                <div class="header-search-wrapper">
-                    <input type="text" id="search-input" class="header-search-input" placeholder="Address" value="${currentSearchValue}" onkeyup="filterList()" autocomplete="off">
-                    <i class="fa-solid fa-xmark clear-search-btn" onclick="clearSearch()"></i>
-                </div>
-            </div>
+            <div class="col-addr ${sortClass}" ${sortClick('address')}>Address ${sortIcon('address')}</div>
             <div class="col-app ${appSortClass}" ${appSortClick}>App ${appSortIcon}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
             <div class="col-handle" style="visibility:${hasRouted ? 'visible' : 'hidden'};"><i class="fa-solid fa-grip-lines"></i></div>
         `;
-
-        
         listContainer.appendChild(header);
     }
     
@@ -2924,22 +2920,16 @@ header.innerHTML = `
         bounds.extend([ep.lng, ep.lat]);
     });
 
-  if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
+    if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
         initialBounds = bounds; 
+        map.fitBounds(bounds, { padding: 50, maxZoom: 15, animate: !isFirstMapRender }); 
+        if (isFirstMapRender) isFirstMapRender = false;
     }
     
     updateSelectionUI();
-    if (typeof initSortable === 'function') initSortable(); 
+    initSortable(); 
     
-    setTimeout(() => { 
-        if (map) {
-            map.resize(); 
-            if (initialBounds) {
-                map.fitBounds(initialBounds, { padding: 50, maxZoom: 15, animate: !isFirstMapRender });
-                if (isFirstMapRender) isFirstMapRender = false;
-            }
-        }
-    }, 150);
+    setTimeout(() => { if (map) map.resize(); }, 150);
 }
 
 function updateSummary() {
@@ -3185,16 +3175,6 @@ function focusPin(id) { const tgt = stops.find(s=>String(s.id)===String(id)); if
 function focusTile(id) { document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 function resetMapView() { if (initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 function filterList() { const q = document.getElementById('search-input').value.toLowerCase(); document.querySelectorAll('.stop-item, .glide-row').forEach(el => el.style.display = el.getAttribute('data-search').includes(q) ? 'flex' : 'none'); }
-
-window.clearSearch = function() {
-    const input = document.getElementById('search-input');
-    if (input) {
-        input.value = '';
-        filterList();
-    }
-};
-
-let currentSearchValue = '';
 
 function drawRoute() { 
     const layerIds = [
@@ -3451,36 +3431,29 @@ function initSortable() {
     }
 }
 
-let globalDragCounter = 0;
-document.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    globalDragCounter++;
-    const overlay = document.getElementById('drag-overlay');
-    if (overlay) overlay.style.display = 'flex';
-});
-document.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    globalDragCounter--;
-    if (globalDragCounter === 0) {
-        const overlay = document.getElementById('drag-overlay');
-        if (overlay) overlay.style.display = 'none';
-    }
-});
-document.addEventListener('dragover', (e) => {
-    e.preventDefault();
-});
-document.addEventListener('drop', (e) => {
-    e.preventDefault();
-    globalDragCounter = 0;
-    const overlay = document.getElementById('drag-overlay');
-    if (overlay) overlay.style.display = 'none';
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        handleFileSelection(e.dataTransfer.files[0]);
-    }
-});
-
+const headerDropzone = document.getElementById('header-csv-upload');
 const headerInput = document.getElementById('header-file-input');
-if (headerInput) {
+if (headerDropzone && headerInput) {
+    headerDropzone.onclick = () => headerInput.click();
+    headerDropzone.ondragover = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.add('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+    };
+    headerDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+    };
+    headerDropzone.ondrop = (e) => {
+        e.preventDefault();
+        headerDropzone.classList.remove('drag-active');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
     headerInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
@@ -3489,8 +3462,29 @@ if (headerInput) {
     };
 }
 
+// Full Screen Dropzone Wiring
+const mainDropzone = document.getElementById('main-dropzone');
 const mainInput = document.getElementById('main-file-input');
-if (mainInput) {
+if (mainDropzone && mainInput) {
+    mainDropzone.onclick = () => mainInput.click();
+    mainDropzone.ondragover = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--blue)';
+        mainDropzone.style.backgroundColor = 'var(--bg-hover)';
+    };
+    mainDropzone.ondragleave = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--border-color)';
+        mainDropzone.style.backgroundColor = 'transparent';
+    };
+    mainDropzone.ondrop = (e) => {
+        e.preventDefault();
+        mainDropzone.style.borderColor = 'var(--border-color)';
+        mainDropzone.style.backgroundColor = 'transparent';
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileSelection(e.dataTransfer.files[0]);
+        }
+    };
     mainInput.onchange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
