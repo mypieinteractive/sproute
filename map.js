@@ -42,6 +42,17 @@ export function initMap(token, config, selectionCallback) {
     canvas = map.getCanvasContainer();
     canvas.addEventListener('mousedown', onCanvasMouseDown, true);
 
+    // --- THE FIX: Add a ResizeObserver ---
+    // This constantly watches the map's parent container. If the sidebar 
+    // opens, closes, or flexbox shifts, it forces Mapbox to perfectly fill the space.
+    const mapContainer = document.getElementById(config.container);
+    if (mapContainer && window.ResizeObserver) {
+        const ro = new ResizeObserver(() => {
+            if (map) map.resize();
+        });
+        ro.observe(mapContainer);
+    }
+
     return map;
 }
 
