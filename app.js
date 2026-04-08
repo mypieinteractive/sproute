@@ -2546,6 +2546,14 @@ async function performUpload(file, inspectorId, csvType, overrideLock = false) {
             const data = await res.json();
             
             if (data.success) {
+// Auto-switch to the uploaded inspector's view
+                if (isManagerView && inspectorId && inspectorId !== 'all') {
+                    currentInspectorFilter = String(inspectorId);
+                    sessionStorage.setItem('sproute_inspector_filter', currentInspectorFilter);
+                    document.body.classList.remove('manager-all-inspectors');
+                    document.body.classList.add('manager-single-inspector');
+                }
+                
                 if (data.unmatchedAddresses && data.unmatchedAddresses.length > 0) {
                     overlay.style.display = 'none';
                     unmatchedAddressesQueue = data.unmatchedAddresses;
