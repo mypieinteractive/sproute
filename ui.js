@@ -1,4 +1,4 @@
-/* Dashboard - V15.9.7 */
+/* Dashboard - V15.9.8 */
 /* FILE: ui.js */
 /* Changes: */
 /* 1. Bypassed setDisplayMode for endpoint rows so they permanently stay at detailed height. */
@@ -313,7 +313,7 @@ export function render() {
             
             <div class="col-addr" style="display:flex; align-items:center; flex-direction:row;">
                 <div class="address-search-wrapper" style="position:relative; flex:1; display:flex; align-items:center; min-width:0;">
-                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
+                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input" style="border-bottom: 1px solid var(--border-color); background: transparent;">
                     <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
                     <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 8px; z-index: 5;"></i>
                     <div class="custom-tooltip">Click to search orders</div>
@@ -611,7 +611,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; padding: 8px 0; font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
         <div class="col-app"></div>
@@ -677,9 +677,12 @@ export function initSortable() {
         const mainListEl = document.getElementById('main-list-container');
         if (mainListEl) {
             const inst = Sortable.create(mainListEl, {
-                delay: 200, delayOnTouchOnly: false, filter: '.static-endpoint, .list-subheading', animation: 150,
+                delay: 200, delayOnTouchOnly: false,
+                filter: '.static-endpoint, .list-subheading', animation: 150,
                 onStart: () => pushToHistory(),
-                onEnd: (evt) => { reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState(); }
+                onEnd: (evt) => {
+                    reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState();
+                }
             });
             sortableInstances.push(inst);
         }
