@@ -1,8 +1,9 @@
-/* Dashboard - V17.1 */
+/* Dashboard - V17.3 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Aligned .static-endpoint strictly to 38px height to match the glide-table-header. */
-/* 2. Added explicit margin: auto, max-height, and overflow to .modal-box to ensure absolute centering globally. */
+/* 1. Reverted .modal-box to only control max-height and overflow, stripping restrictive max-widths that squished dynamic content. */
+/* 2. Added min-width: 85px and white-space: nowrap to .route-btn to prevent text stacking on shrink. */
+/* 3. Streamlined .address-header-input flex height and margins to guarantee precise identical vertical baseline alignment for headers and endpoints. */
 
 :root { 
     --blue: #2563eb; 
@@ -200,15 +201,15 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 
 .route-btn { 
     flex: 1; border: 2px solid transparent; background: var(--bg-base); 
-    border-radius: 6px; padding: 6px 10px; cursor: pointer; 
+    border-radius: 6px; padding: 6px 10px; cursor: pointer; min-width: 85px;
     transition: 0.2s; opacity: 0.6; display: flex; align-items: center; justify-content: center; gap: 8px;
 }
 .route-btn.active { border-color: var(--route-color); opacity: 1; background: rgba(255,255,255,0.05); }
 .rbtn-content { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
 .rbtn-indicator { display: flex; flex-direction: column; gap: 3px; }
 .rbtn-circle { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
-.rbtn-title { font-size: 13px; font-weight: bold; color: var(--text-main); pointer-events: none; }
-.rbtn-time { font-size: 11px; color: var(--text-muted); pointer-events: none; margin-top: 2px; }
+.rbtn-title { font-size: 13px; font-weight: bold; color: var(--text-main); pointer-events: none; white-space: nowrap; }
+.rbtn-time { font-size: 11px; color: var(--text-muted); pointer-events: none; margin-top: 2px; white-space: nowrap; }
 
 /* Route View Toggles */
 .route-view-btn {
@@ -378,10 +379,10 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* Address Input Header perfect alignment styling */
 .address-header-input {
     background: transparent !important; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
-    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 4px 0; margin-bottom: 4px;
+    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 0; margin: 0; height: 30px;
     border-radius: 0; transition: 0.2s; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
 }
-.glide-table-header .address-header-input { height: 38px; }
+.glide-table-header .address-header-input { height: 30px; }
 .address-header-input::placeholder { color: var(--text-muted); font-weight: bold; }
 .address-header-input:focus, .address-header-input:hover { border-bottom-color: var(--blue) !important; }
 .clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
@@ -406,7 +407,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 .boxdraw { background: rgba(37, 99, 235, 0.3); border: 1px solid var(--blue); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
 #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center; }
-.modal-box { background: var(--bg-panel); color: var(--text-main); padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid var(--border-color); margin: auto; max-height: 90vh; overflow-y: auto; }
+.modal-box { max-height: 90vh; overflow-y: auto; margin: auto; }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
 .grey-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; background-color: #e5e7eb; border: 1px solid #9ca3af; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; }
