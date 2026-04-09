@@ -3,10 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V17.3
+            VERSION: V17.4
             CHANGES:
-            1. Bumped version to V17.3.
-            2. Added white-space: nowrap to Priority Weighting labels to prevent them from stacking and colliding on tight screen widths.
+            1. Added min-width: 0 to #map-wrapper to prevent flexbox blowout when the browser window is resized.
+            2. Added overflow-x: auto and overflow-y: hidden to #routing-controls to allow the routing buttons to gracefully scroll if the screen becomes extremely narrow, rather than breaking the layout.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -101,7 +101,7 @@
         </div>
     </div>
 
-    <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+    <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0;">
         
         <div id="map-header">
             <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold;">
@@ -114,7 +114,7 @@
             </div>
         </div>
 
-        <div id="routing-controls" style="display: none; height: 60px; padding: 0 0 0 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box;">
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 0 0 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
             
             <div id="routing-module-wrapper" class="routing-module-wrapper" style="flex: 1; height: 100%; padding: 8px 0; box-sizing: border-box; margin-right: 15px;">
                 <div id="routing-module-core" class="routing-module-core">
