@@ -70,10 +70,15 @@ export function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = AppState.historyStack.length === 0;
 }
 
+export function applyBranding(logoUrl, brandName) {
+    // No-op
+}
+
 export function updateHeaderUI() {
     if (!Config.isManagerView) return;
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
+
     if (filterSelectWrap) {
         filterSelectWrap.style.display = isCompanyTier ? 'block' : 'none';
     }
@@ -953,10 +958,11 @@ export function showAddOrderModal() {
     document.getElementById('btn-submit-add').onclick = () => {
         m.style.display = 'none';
         const file = new File([['Address', 'Latitude', 'Longitude', 'Due Date', 'Client', 'Order Type'].join(',') + '\n' + [document.getElementById('add-address').value.trim(), document.getElementById('add-lat').value, document.getElementById('add-lng').value, document.getElementById('add-due').value, document.getElementById('add-client').value.trim(), document.getElementById('add-type').value.trim()].map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')], "manual_order.csv", { type: "text/csv" });
-        apiFetch({ action: 'triggerUploadFromModal', data: "placeholder_to_force_app_js_upload" }).then(() => {
-           document.getElementById('hidden-global-file-input').fileToUpload = file;
-           document.getElementById('hidden-global-file-input').dispatchEvent(new Event('change'));
+        
+        const uploadEvent = new CustomEvent('sproute-trigger-upload', {
+            detail: { file: file, inspectorId: selectedInspector, csvType: selectedApp || '' }
         });
+        document.dispatchEvent(uploadEvent);
     };
     checkValidity();
 }
@@ -1229,13 +1235,6 @@ const mainDropzone = document.getElementById('main-dropzone');
 const mainInput = document.getElementById('main-file-input');
 const hiddenFileInput = document.getElementById('hidden-global-file-input');
 
-function triggerUploadEvent(file, inspectorId, csvType) {
-    const uploadEvent = new CustomEvent('sproute-trigger-upload', {
-        detail: { file: file, inspectorId: inspectorId, csvType: csvType }
-    });
-    document.dispatchEvent(uploadEvent);
-}
-
 function handleFileSelection(file) {
     if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings."); return; }
     if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
@@ -1252,17 +1251,13 @@ if (mainDropzone && mainInput) {
 if (hiddenFileInput) {
     hiddenFileInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files.length > 0) {
-            if (hiddenFileInput.fileToUpload) {
-                triggerUploadEvent(hiddenFileInput.fileToUpload, '', '');
-                hiddenFileInput.fileToUpload = null;
-            } else {
-                handleFileSelection(e.target.files[0]);
-            }
+            handleFileSelection(e.target.files[0]);
             hiddenFileInput.value = '';
         }
     });
 }
 
+// Global Drag and Drop Override Logic
 let dragCounter = 0;
 document.addEventListener('dragenter', (e) => {
     e.preventDefault();
