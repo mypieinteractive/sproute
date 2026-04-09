@@ -1,8 +1,9 @@
-/* Dashboard - V1.13 */
+/* Dashboard - V1.9 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Unified .address-header-input and .endpoint-input to a strict 32px height to force absolute baseline alignment. */
-/* 2. Locked #map-header and .glide-table-header to 40px height to perfectly mirror endpoint rows. */
+/* 1. Hidden endpoint borders via CSS exclusion to maintain unified list aesthetic. */
+/* 2. Fixed #map-hint anchoring to top-left of the active map view. */
+/* 3. Updated .address-header-input with a starkly visible bottom border overlay. */
 
 :root { 
     --blue: #2563eb; 
@@ -143,19 +144,6 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 .add-dropdown-item:hover { background: var(--blue); color: white; }
 
-/* MAP HEADER (Top Map Bar) - LOCKED TO 40px */
-#map-header {
-    height: 40px;
-    background: var(--bg-header);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0 15px;
-    flex-shrink: 0;
-    z-index: 10;
-}
-
 .list-subheading {
     padding: 6px 12px; background: var(--bg-header); color: #ffffff;
     font-weight: bold; font-size: 11px; text-transform: uppercase;
@@ -163,40 +151,9 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     display: flex; justify-content: space-between; align-items: center;
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
-body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 39px; }
+body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 37px; }
 
 .route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: var(--text-main); }
-
-/* ROUTING MODULE: Wrapper, Core, Overlay, and Flush Action Buttons */
-.routing-module-wrapper { position: relative; display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; }
-.routing-module-core { display: flex; flex: 1; gap: 20px; width: 100%; align-items: center; transition: opacity 0.2s, filter 0.2s; height: 100%; }
-.routing-module-core.staging-locked { opacity: 0.5; pointer-events: none; filter: grayscale(80%); }
-
-.start-over-overlay {
-    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    opacity: 0; background: rgba(30,30,30,0.7); backdrop-filter: blur(2px); border-radius: 6px;
-    transition: 0.2s; z-index: 5; pointer-events: none;
-}
-.routing-module-wrapper:hover .start-over-overlay.active { opacity: 1; pointer-events: auto; }
-
-.btn-start-over {
-    padding: 10px 24px; font-weight: bold; background: var(--red); color: white; border: none;
-    border-radius: 6px; font-size: 14px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: transform 0.1s;
-}
-.btn-start-over:active { transform: scale(0.95); }
-
-/* Full-Height Module Action Buttons */
-.module-action-btn {
-    width: 100%; height: 100%; border: none; border-radius: 0;
-    font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    box-sizing: border-box; text-align: center; line-height: 1.2;
-}
-.module-action-btn:active { opacity: 0.8; }
-.module-action-btn:hover { filter: brightness(1.1); }
-.stacked-action-btns { display: flex; flex-direction: column; height: 100%; width: 100%; }
-.stacked-action-btns .module-action-btn { flex: 1; height: 50%; }
-.stacked-action-btns .top-half { border-bottom: 1px solid rgba(0,0,0,0.3); }
 
 .route-btn { 
     flex: 1; border: 2px solid transparent; background: var(--bg-base); 
@@ -240,14 +197,6 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
     font-size: 13px;
     height: 28px;
     background-position: right 6px center;
-}
-
-/* Strip button styling for "All Inspectors" view */
-body.manager-all-inspectors .glide-row .insp-select {
-    background-color: transparent !important;
-    border: none !important;
-    padding: 0 16px 0 0 !important;
-    height: auto !important;
 }
 
 /* Rocker Switch */
@@ -332,8 +281,8 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .stop-actions { display: flex; align-items: center; padding-right: 8px; gap: 4px; }
 .icon-btn { font-size: 28px; cursor: pointer; padding: 4px; }
 
-/* Enforce bold grey fonts for headers - LOCKED TO 40px */
-.glide-table-header { display: flex; height: 40px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
+/* Enforce bold grey fonts for headers */
+.glide-table-header { display: flex; height: 38px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
 
 /* Vertical Dividers for Header & Rows */
 .col-eta, .col-due, .col-addr, .col-app { border-right: 1px solid rgba(255, 255, 255, 0.05); }
@@ -375,29 +324,17 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .col-app { width: 55px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-client { width: 70px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; }
 
-/* STRICT 32px INPUT STYLING FOR ALIGNMENT */
-.address-header-input, .endpoint-input {
-    width: 100%; height: 32px !important; margin-bottom: 2px; padding: 0 24px 0 0 !important; 
-    background: transparent !important; border: 1px solid transparent; 
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
-    border-radius: 0; outline: none; box-sizing: border-box; text-align: left; min-width: 0;
+/* Address Input Header perfect alignment styling */
+.address-header-input {
+    background: transparent !important; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
+    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 0;
+    border-radius: 0; transition: 0.2s; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
 }
-.address-header-input { font-weight: bold; font-size: 12px; text-transform: uppercase; }
-.endpoint-input { font-weight: 400; font-size: 14px; text-transform: none; }
-.address-header-input::placeholder, .endpoint-input::placeholder { color: var(--text-muted); font-weight: bold; font-size: 12px; text-transform: uppercase; }
-
-.address-header-input:focus, .address-header-input:hover, .endpoint-input:focus, .endpoint-input:hover { border-bottom-color: var(--blue) !important; }
-.clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; margin-bottom: 2px; }
+.glide-table-header .address-header-input { height: 38px; }
+.address-header-input::placeholder { color: var(--text-muted); font-weight: bold; }
+.address-header-input:focus, .address-header-input:hover { border-bottom-color: var(--blue) !important; }
+.clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
 .clear-search-icon:hover { color: var(--text-main); }
-
-/* Custom Tooltip */
-.custom-tooltip {
-    position: absolute; top: -28px; right: 0; background: #333; color: #fff;
-    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
-    opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
-    font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-.address-search-wrapper:hover .custom-tooltip { opacity: 1; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
@@ -416,9 +353,10 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .grey-checkbox:checked { background-color: var(--blue); border-color: var(--blue); }
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
-/* Endpoints - LOCKED TO 40px */
-.static-endpoint { background-color: var(--bg-panel); border-bottom: 1px solid #282828; font-weight: bold; height: 40px !important; min-height: 40px !important; box-sizing: border-box; }
-.static-endpoint.compact { background: var(--bg-panel); min-height: 40px; }
+.static-endpoint { background-color: var(--bg-base); border-top: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color); font-weight: bold; }
+.endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3); border-radius: 0; font-weight: 400; font-size: 14px; color: var(--text-main); background-color: transparent; transition: all 0.2s ease; height: 38px; }
+.endpoint-input:focus { outline: none; border-bottom-color: var(--blue); }
+.static-endpoint.compact { background: var(--bg-panel); min-height: 45px; }
 
 .pill-btn { padding: 8px 16px; border: 1px solid #4a4a4c; border-radius: 20px; cursor: pointer; color: #ccc; font-size: 14px; background: transparent; transition: all 0.2s ease; }
 .pill-btn.active { background: rgba(59, 130, 246, 0.15); color: var(--blue); border-color: var(--blue); font-weight: bold; }
