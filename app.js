@@ -1,7 +1,7 @@
-/* Dashboard - V1.6.4 */
+/* Dashboard - V17.0 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Bound liveClusterUpdate to window object so the priority slider HTML can successfully execute it. */
+/* 1. Fresh start in new chat. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
