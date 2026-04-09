@@ -39,46 +39,17 @@
 <div id="global-header" style="padding: 0 1px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
     
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding-right: 15px;">
-        
         <div id="header-action-container">
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-main); font-weight: bold; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
             </button>
         </div>
-
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <div id="routing-action-buttons" style="display: flex; gap: 8px;">
-                <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
-                    <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
-                </button>
-                <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="display:none; background:#444; color:white;">
-                    <i class="fa-solid fa-calculator"></i> <span>Re-Calculate</span>
-                </button>
-                <button id="btn-header-optimize-insp" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:#2C3D4F; color:white;">
-                    <i class="fa-solid fa-route"></i> <span>Re-Optimize</span>
-                </button>
-                <button id="btn-header-send-route" class="header-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
-                    <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
-                </button>
-                <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
-                    <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
-                </button>
-            </div>
-            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold; border-left: 1px solid var(--border-color); padding-left: 15px;">
-                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
-                <div id="order-stats" class="hide-mobile-text">
-                    <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
-                    <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
-                    <span id="stat-past" style="color: var(--red);">0 Past Due</span>
-                </div>
-            </div>
-        </div>
+        <div style="display: flex; align-items: center; gap: 15px;"></div>
     </div>
 
     <div id="header-resizer-gap" style="width: 6px; flex: none;"></div>
 
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
-        
         <div style="display: flex; align-items: center; gap: 15px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
                 <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; height: 38px;"></select>
@@ -90,7 +61,6 @@
                 <label for="view-compact">Compact</label>
             </div>
         </div>
-
         <div id="header-right-controls">
             <div id="add-menu-wrapper" style="position: relative;">
                 <div class="header-action-btn" style="background: #2C3D4F; color: white; padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
@@ -107,7 +77,6 @@
             </div>
             <input type="file" id="hidden-global-file-input" accept=".csv" style="display: none;">
         </div>
-
     </div>
 </div>
 <div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
@@ -125,40 +94,85 @@
     </div>
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+        
+        <div id="map-header">
+            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold;">
+                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+                <div id="order-stats" class="hide-mobile-text">
+                    <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
+                    <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
+                    <span id="stat-past" style="color: var(--red);">0 Past Due</span>
+                </div>
+            </div>
+        </div>
 
-        <div id="routing-controls" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; gap: 20px; z-index: 10; flex: none;">
-            <div id="route-divider-group" style="display:flex; gap:8px; flex: 1;">
-                <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
-                    <div class="rbtn-indicator" id="rbtn-ind-1"></div>
-                    <div class="rbtn-content">
-                        <div class="rbtn-title">1 Route</div>
-                        <div class="rbtn-time" id="rtime-1">-- hrs</div>
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 0 0 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box;">
+            
+            <div id="routing-module-wrapper" class="routing-module-wrapper" style="flex: 1; height: 100%; padding: 8px 0; box-sizing: border-box; margin-right: 15px;">
+                <div id="routing-module-core" class="routing-module-core">
+                    <div id="route-divider-group" style="display:flex; gap:8px; flex: 1; height: 100%;">
+                        <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
+                            <div class="rbtn-indicator" id="rbtn-ind-1"></div>
+                            <div class="rbtn-content">
+                                <div class="rbtn-title">1 Route</div>
+                                <div class="rbtn-time" id="rtime-1">-- hrs</div>
+                            </div>
+                        </div>
+                        <div class="route-btn" onclick="setRoutes(2)" id="rbtn-2">
+                            <div class="rbtn-indicator" id="rbtn-ind-2"></div>
+                            <div class="rbtn-content">
+                                <div class="rbtn-title">2 Routes</div>
+                                <div class="rbtn-time" id="rtime-2">-- hrs</div>
+                            </div>
+                        </div>
+                        <div class="route-btn" onclick="setRoutes(3)" id="rbtn-3">
+                            <div class="rbtn-indicator" id="rbtn-ind-3"></div>
+                            <div class="rbtn-content">
+                                <div class="rbtn-title">3 Routes</div>
+                                <div class="rbtn-time" id="rtime-3">-- hrs</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
+                        <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:4px;">Priority Weighting</label>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
+                            <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
+                            <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
+                        </div>
                     </div>
                 </div>
-                <div class="route-btn" onclick="setRoutes(2)" id="rbtn-2">
-                    <div class="rbtn-indicator" id="rbtn-ind-2"></div>
-                    <div class="rbtn-content">
-                        <div class="rbtn-title">2 Routes</div>
-                        <div class="rbtn-time" id="rtime-2">-- hrs</div>
-                    </div>
-                </div>
-                <div class="route-btn" onclick="setRoutes(3)" id="rbtn-3">
-                    <div class="rbtn-indicator" id="rbtn-ind-3"></div>
-                    <div class="rbtn-content">
-                        <div class="rbtn-title">3 Routes</div>
-                        <div class="rbtn-time" id="rtime-3">-- hrs</div>
-                    </div>
+
+                <div id="start-over-overlay" class="start-over-overlay">
+                    <button class="btn-start-over" onclick="handleStartOver()"><i class="fa-solid fa-rotate-left"></i> Start Over</button>
                 </div>
             </div>
 
-            <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; transition: opacity 0.2s;">
-                <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:4px;">Priority Weighting</label>
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
-                    <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
-                    <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
+            <div id="routing-action-buttons" style="width: 140px; height: 100%; border-left: 1px solid var(--border-color); flex-shrink: 0; box-sizing: border-box;">
+                
+                <button id="btn-header-restore" class="module-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:var(--bg-hover); color:var(--text-main);">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
+                </button>
+                
+                <button id="btn-header-send-route" class="module-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
+                    <i class="fa-solid fa-paper-plane"></i> Send Route(s)
+                </button>
+                
+                <button id="btn-header-generate" class="module-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
+                    <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
+                </button>
+
+                <div id="staged-action-group" class="stacked-action-btns" style="display: none;">
+                    <button id="btn-header-recalc" class="module-action-btn top-half" onclick="handleCalculate()" style="background:#444; color:white;">
+                        <i class="fa-solid fa-calculator"></i> Re-Calculate
+                    </button>
+                    <button id="btn-header-optimize-insp" class="module-action-btn bottom-half" onclick="handleGenerateRoute()" style="background:#2C3D4F; color:white;">
+                        <i class="fa-solid fa-route"></i> Re-Optimize
+                    </button>
                 </div>
             </div>
+
         </div>
 
         <div id="map-container" style="flex: 1; position: relative; min-height: 0;">
