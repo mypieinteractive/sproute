@@ -1,9 +1,8 @@
-/* Dashboard - V1.12 */
+/* Dashboard - V1.13 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added margin-bottom: 4px to .address-header-input so the line floats below the text. */
-/* 2. Added .module-action-btn and .stacked-action-btns for full-height flush routing buttons. */
-/* 3. Forced .static-endpoint to strictly 40px height and matching background panel color. */
+/* 1. Unified .address-header-input and .endpoint-input to a strict 32px height to force absolute baseline alignment. */
+/* 2. Locked #map-header and .glide-table-header to 40px height to perfectly mirror endpoint rows. */
 
 :root { 
     --blue: #2563eb; 
@@ -144,9 +143,9 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 .add-dropdown-item:hover { background: var(--blue); color: white; }
 
-/* MAP HEADER (Top Map Bar) */
+/* MAP HEADER (Top Map Bar) - LOCKED TO 40px */
 #map-header {
-    height: 38px;
+    height: 40px;
     background: var(--bg-header);
     border-bottom: 1px solid var(--border-color);
     display: flex;
@@ -164,7 +163,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     display: flex; justify-content: space-between; align-items: center;
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
-body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 37px; }
+body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 39px; }
 
 .route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: var(--text-main); }
 
@@ -333,8 +332,8 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .stop-actions { display: flex; align-items: center; padding-right: 8px; gap: 4px; }
 .icon-btn { font-size: 28px; cursor: pointer; padding: 4px; }
 
-/* Enforce bold grey fonts for headers */
-.glide-table-header { display: flex; height: 38px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
+/* Enforce bold grey fonts for headers - LOCKED TO 40px */
+.glide-table-header { display: flex; height: 40px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
 
 /* Vertical Dividers for Header & Rows */
 .col-eta, .col-due, .col-addr, .col-app { border-right: 1px solid rgba(255, 255, 255, 0.05); }
@@ -376,16 +375,19 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .col-app { width: 55px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-client { width: 70px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; }
 
-/* Address Input Header perfect alignment styling */
-.address-header-input {
-    background: transparent !important; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
-    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 4px 0; margin-bottom: 4px;
-    border-radius: 0; transition: 0.2s; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
+/* STRICT 32px INPUT STYLING FOR ALIGNMENT */
+.address-header-input, .endpoint-input {
+    width: 100%; height: 32px !important; margin-bottom: 2px; padding: 0 24px 0 0 !important; 
+    background: transparent !important; border: 1px solid transparent; 
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
+    border-radius: 0; outline: none; box-sizing: border-box; text-align: left; min-width: 0;
 }
-.glide-table-header .address-header-input { height: 38px; }
-.address-header-input::placeholder { color: var(--text-muted); font-weight: bold; }
-.address-header-input:focus, .address-header-input:hover { border-bottom-color: var(--blue) !important; }
-.clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
+.address-header-input { font-weight: bold; font-size: 12px; text-transform: uppercase; }
+.endpoint-input { font-weight: 400; font-size: 14px; text-transform: none; }
+.address-header-input::placeholder, .endpoint-input::placeholder { color: var(--text-muted); font-weight: bold; font-size: 12px; text-transform: uppercase; }
+
+.address-header-input:focus, .address-header-input:hover, .endpoint-input:focus, .endpoint-input:hover { border-bottom-color: var(--blue) !important; }
+.clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; margin-bottom: 2px; }
 .clear-search-icon:hover { color: var(--text-main); }
 
 /* Custom Tooltip */
@@ -414,10 +416,8 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .grey-checkbox:checked { background-color: var(--blue); border-color: var(--blue); }
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
-/* Endpoints */
+/* Endpoints - LOCKED TO 40px */
 .static-endpoint { background-color: var(--bg-panel); border-bottom: 1px solid #282828; font-weight: bold; height: 40px !important; min-height: 40px !important; box-sizing: border-box; }
-.endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3); border-radius: 0; font-weight: 400; font-size: 14px; color: var(--text-main); background-color: transparent; transition: all 0.2s ease; height: 38px; }
-.endpoint-input:focus { outline: none; border-bottom-color: var(--blue); }
 .static-endpoint.compact { background: var(--bg-panel); min-height: 40px; }
 
 .pill-btn { padding: 8px 16px; border: 1px solid #4a4a4c; border-radius: 20px; cursor: pointer; color: #ccc; font-size: 14px; background: transparent; transition: all 0.2s ease; }
