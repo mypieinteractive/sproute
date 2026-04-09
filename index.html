@@ -3,10 +3,11 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V17.5
+            VERSION: V17.6
             CHANGES:
-            1. Bumped version to V17.5.
-            2. Executed a global sweep lowering heavy inline font-weight: bold styles down to font-weight: 500 for a lighter UI.
+            1. Added flex: 1 to #route-divider-group so the 1/2/3 buttons expand equally with the slider.
+            2. Shrunk #inspector-filter height to 30px to match rocker switch.
+            3. Added outline-btn class to Optimize and Send Route buttons.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -60,7 +61,7 @@
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: center; gap: 15px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: 500; height: 38px;"></select>
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 30px;"></select>
             </div>
             <div class="rocker-switch">
                 <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
@@ -118,7 +119,7 @@
             
             <div id="routing-module-wrapper" class="routing-module-wrapper" style="flex: 1; height: 100%; padding: 8px 0; box-sizing: border-box; margin-right: 15px;">
                 <div id="routing-module-core" class="routing-module-core">
-                    <div id="route-divider-group" style="display:flex; gap:8px; flex: 0 0 auto; height: 100%;">
+                    <div id="route-divider-group" style="display:flex; gap:8px; flex: 1; height: 100%;">
                         <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
                             <div class="rbtn-indicator" id="rbtn-ind-1"></div>
                             <div class="rbtn-content">
@@ -163,11 +164,11 @@
                     <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
                 </button>
                 
-                <button id="btn-header-send-route" class="module-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
+                <button id="btn-header-send-route" class="module-action-btn outline-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
                     <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
                 </button>
                 
-                <button id="btn-header-generate" class="module-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
+                <button id="btn-header-generate" class="module-action-btn outline-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
                     <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
                 </button>
 
@@ -175,7 +176,7 @@
                     <button id="btn-header-recalc" class="module-action-btn top-half" onclick="handleCalculate()" style="background:#444; color:white;">
                         <i class="fa-solid fa-calculator"></i> Re-Calculate
                     </button>
-                    <button id="btn-header-optimize-insp" class="module-action-btn bottom-half" onclick="handleGenerateRoute()" style="background:#2C3D4F; color:white;">
+                    <button id="btn-header-optimize-insp" class="module-action-btn bottom-half outline-btn" onclick="handleGenerateRoute()" style="background:#2C3D4F; color:white;">
                         <i class="fa-solid fa-route"></i> Re-Optimize
                     </button>
                 </div>
