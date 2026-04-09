@@ -1,8 +1,9 @@
-/* Dashboard - V15.9.8 */
+/* Dashboard - V15.9.9 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Bypassed setDisplayMode for endpoint rows so they permanently stay at detailed height. */
-/* 2. Added performResize logic to directly sync #header-list-zone width to slider movement. */
+/* 1. Refined updateRoutingUI to decouple the routing container from the module core. */
+/* 2. Implemented the .staging-locked class and Start Over overlay activation during 'Staging' status. */
+/* 3. Integrated the #staged-action-group segmented buttons (Re-Calc/Re-Opt) for the Staging view. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -170,30 +171,36 @@ export function updatePrioritySliderUI() {
 
 export function updateRoutingUI() {
     const routingControls = document.getElementById('routing-controls');
+    const routingModuleWrapper = document.getElementById('routing-module-wrapper');
+    const routingModuleCore = document.getElementById('routing-module-core');
+    const startOverOverlay = document.getElementById('start-over-overlay');
+    const stagedActionGroup = document.getElementById('staged-action-group');
+    
     const btnGen = document.getElementById('btn-header-generate');
-    const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
-    const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const btnSend = document.getElementById('btn-header-send-route');
 
-    [btnGen, btnRecalc, btnRestore, optInspBtn, btnSend].forEach(btn => { if (btn) btn.style.display = 'none'; });
+    // 1. Hide everything initially
+    [btnGen, btnRestore, btnSend, stagedActionGroup, routingModuleWrapper].forEach(el => { if (el) el.style.display = 'none'; });
+    if (routingControls) routingControls.style.display = 'none';
+    if (routingModuleCore) routingModuleCore.classList.remove('staging-locked');
+    if (startOverOverlay) startOverOverlay.classList.remove('active');
     updatePrioritySliderUI();
 
+    // 2. Global "All Inspectors" check (Managers only)
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
-        if (routingControls) routingControls.style.display = 'none';
         const routeToggles = document.getElementById('route-view-toggles');
         if (routeToggles) routeToggles.style.display = 'none';
         return;
     }
 
+    // 3. Filter target stops based on view
     let targetStops = Config.isManagerView ? AppState.stops.filter(s => String(s.driverId) === String(AppState.currentInspectorFilter)) : AppState.stops;
     targetStops = targetStops.filter(s => s.status !== 'Deleted' && s.status !== 'Cancelled');
 
-    if (targetStops.length === 0) {
-        if (routingControls) routingControls.style.display = 'none';
-        return;
-    }
+    if (targetStops.length === 0) return;
 
+    // 4. Determine True State (Pending, Staging, Ready)
     const unroutedCount = targetStops.filter(s => !isRouteAssigned(s.status)).length;
     let isDirty = false;
     
@@ -213,6 +220,7 @@ export function updateRoutingUI() {
         currentState = 'Staging';
     }
 
+    // 5. Route View Toggles Update
     let maxCluster = -1;
     targetStops.forEach(s => {
         if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster;
@@ -231,28 +239,33 @@ export function updateRoutingUI() {
         }
     }
 
+    // 6. Enforce UI Rules based on strict state
     if (Config.isManagerView) {
         if (currentState === 'Pending') {
             if (routingControls) routingControls.style.display = 'flex';
+            if (routingModuleWrapper) routingModuleWrapper.style.display = 'flex';
             if (btnGen) {
                 btnGen.style.display = 'flex';
                 document.getElementById('btn-header-generate-text').innerText = "Optimize";
             }
         } else if (currentState === 'Staging') {
-            if (routingControls) routingControls.style.display = 'none';
-            if (btnRecalc) btnRecalc.style.display = 'flex';
-            if (optInspBtn) optInspBtn.style.display = 'flex';
+            if (routingControls) routingControls.style.display = 'flex';
+            if (routingModuleWrapper) routingModuleWrapper.style.display = 'flex';
+            if (routingModuleCore) routingModuleCore.classList.add('staging-locked');
+            if (startOverOverlay) startOverOverlay.classList.add('active');
+            if (stagedActionGroup) stagedActionGroup.style.display = 'flex';
         } else if (currentState === 'Ready') {
-            if (routingControls) routingControls.style.display = 'none';
+            if (routingControls) routingControls.style.display = 'flex';
             if (btnSend) btnSend.style.display = 'flex';
+            if (AppState.isAlteredRoute && btnRestore) btnRestore.style.display = 'flex';
         }
     } else {
-        if (routingControls) routingControls.style.display = 'none';
-        
+        // Inspector View (Never sees routing module core, only action buttons if applicable)
         if (currentState === 'Staging') {
-            if (btnRecalc) btnRecalc.style.display = 'flex';
-            if (AppState.PERMISSION_REOPTIMIZE && optInspBtn) optInspBtn.style.display = 'flex';
+            if (routingControls) routingControls.style.display = 'flex';
+            if (stagedActionGroup) stagedActionGroup.style.display = 'flex';
         } else if (AppState.isAlteredRoute && currentState === 'Ready') {
+            if (routingControls) routingControls.style.display = 'flex';
             if (btnRestore) btnRestore.style.display = 'flex';
         }
     }
@@ -492,7 +505,6 @@ export function render() {
 
         resizeMap(); 
         
-        // Sync header list zone width to match sidebar on render
         const hlZone = document.getElementById('header-list-zone');
         const sidebar = document.getElementById('sidebar');
         if (hlZone && sidebar) {
@@ -609,9 +621,9 @@ export function createEndpointRow(type, endpointData) {
             ${labelText}
         </div>
         <div class="col-due"></div>
-        <div class="col-addr" style="display:flex; align-items:center; padding-right:6px; flex:1 1 auto; min-width:0;">
+        <div class="col-addr" style="display:flex; align-items:center; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; padding: 8px 0; font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; padding: 8px 0; font-weight:normal; text-transform:none; border-bottom:1px solid rgba(255,255,255,0.3); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
         <div class="col-app"></div>
@@ -674,18 +686,8 @@ export function initSortable() {
     if (!AppState.PERMISSION_MODIFY) return;
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
-        const mainListEl = document.getElementById('main-list-container');
-        if (mainListEl) {
-            const inst = Sortable.create(mainListEl, {
-                delay: 200, delayOnTouchOnly: false,
-                filter: '.static-endpoint, .list-subheading', animation: 150,
-                onStart: () => pushToHistory(),
-                onEnd: (evt) => {
-                    reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState();
-                }
-            });
-            sortableInstances.push(inst);
-        }
+        // Sorting is explicitly disabled in the "All Inspectors" view per specs.
+        return; 
     } else if (Config.isManagerView && AppState.currentInspectorFilter !== 'all') {
         const unroutedEl = document.getElementById('unrouted-list');
 
