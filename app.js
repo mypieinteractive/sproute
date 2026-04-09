@@ -1,7 +1,7 @@
-/* Dashboard - V1.6.5 */
+/* Dashboard - V1.6.6 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Fixed critical infinite polling bug by strictly scoping hasActiveRoutes to the target driverId in both route generation and calculation functions. */
+/* 1. Fully reverted handleGenerateRoute and handleCalculate to their stable, pre-block-button logic states. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -298,11 +298,7 @@ export async function handleGenerateRoute() {
     if (!insp) return;
     UI.showOverlay();
 
-    let stopsToOptimize = []; const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); 
-    
-    // FIX: Only consider active routes for the specific inspector being targeted
-    const hasActiveRoutes = AppState.stops.some(s => String(s.driverId) === String(insp.id) && isRouteAssigned(s.status));
-    
+    let stopsToOptimize = []; const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status));
     if (isEndpointsDirty) {
         stopsToOptimize = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat && String(s.driverId) === String(insp.id));
         if (hasActiveRoutes) stopsToOptimize = stopsToOptimize.filter(s => s.cluster !== 'X');
@@ -349,7 +345,6 @@ export async function handleGenerateRoute() {
             });
 
             AppState.isPollingForRoute = false; AppState.dirtyRoutes.clear(); triggerFullRender(); silentSaveRouteState(); 
-            UI.hideOverlay();
         } else if (data.status === 'queued' || data.success) {
             let pqPayload = { action: 'processQueue', driverId: insp.id };
             if (!Config.isManagerView) pqPayload.routeId = Config.routeId;
@@ -363,13 +358,8 @@ export async function handleGenerateRoute() {
 export async function handleCalculate() {
     UI.showOverlay();
     try {
-        const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
         const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat);
-        const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); 
-        
-        // FIX: Only consider active routes for the specific inspector being targeted
-        const hasActiveRoutes = AppState.stops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
-        
+        const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status));
         let stopsToCalculate = [];
 
         if (isEndpointsDirty) {
@@ -384,7 +374,7 @@ export async function handleCalculate() {
         if (stopsToCalculate.length === 0) { UI.hideOverlay(); AppState.dirtyRoutes.clear(); triggerFullRender(); return; }
         
         let sentClusters = [...new Set(stopsToCalculate.map(s => s.cluster))].filter(c => c !== 'X').sort(); const eps = getActiveEndpoints();
-        let payload = { action: 'calculate', driverId: inspId, driver: Config.driverParam, startTime: AppState.currentStartTime, startAddr: eps.start?.address || null, endAddr: eps.end?.address || null, isManager: Config.isManagerView, stops: stopsToCalculate.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1)) };
+        let payload = { action: 'calculate', driverId: Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam, driver: Config.driverParam, startTime: AppState.currentStartTime, startAddr: eps.start?.address || null, endAddr: eps.end?.address || null, isManager: Config.isManagerView, stops: stopsToCalculate.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1)) };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
 
         const res = await apiFetch(payload); const data = await res.json(); if (data.error) throw new Error(data.error);
