@@ -1,10 +1,8 @@
-/* Dashboard - V17.1 */
+/* Dashboard - V17.3 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated showUploadModal to format the title dynamically with the filename and removed the generic file display section below it. */
-/* 2. Added logic to dynamically change "Send Route(s)" button text depending on AppState.currentRouteCount in updateRoutingUI. */
-/* 3. Re-aligned createEndpointRow text fields to use standard .address-header-input classes securely for precise visual alignment. */
-/* 4. Synced updateRouteTimes with createRouteSubheading by removing the strict lat/lng filtering dependency so calculation bounds are identical. */
+/* 1. Adjusted performResize to bump minimum map/list resizer width to 450px to protect priority texts. */
+/* 2. Overhauled header and endpoint .col-addr HTML generation to utilize identical flex structures so width/spacing is perfectly aligned visually. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -334,9 +332,9 @@ export function render() {
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             
-            <div class="col-addr" style="display:flex; align-items:center; flex-direction:row;">
-                <div class="address-search-wrapper" style="position:relative; flex:1; display:flex; align-items:center; min-width:0;">
-                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input" style="border-bottom: 1px solid var(--border-color); background: transparent;">
+            <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
+                <div class="address-search-wrapper" style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
+                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
                     <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
                     <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 8px; z-index: 5;"></i>
                     <div class="custom-tooltip">Click to search orders</div>
@@ -631,8 +629,8 @@ export function createEndpointRow(type, endpointData) {
             ${labelText}
         </div>
         <div class="col-due"></div>
-        <div class="col-addr" style="display:flex; align-items:center; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
-            <div style="position:relative; width:100%; display:flex; align-items:center;">
+        <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
+            <div style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
                 <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; font-weight:normal; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
@@ -1331,7 +1329,7 @@ function performResize(e) {
         let newHeight = window.innerHeight - clientY; if (newHeight < 200) newHeight = 200; if (newHeight > window.innerHeight - 200) newHeight = window.innerHeight - 200;
         sidebarEl.style.height = newHeight + 'px'; sidebarEl.style.flex = 'none'; mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px'; mapWrapEl.style.flex = 'none';
     } else {
-        let newWidth = window.innerWidth - clientX; if (newWidth < 300) newWidth = 300; if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
+        let newWidth = window.innerWidth - clientX; if (newWidth < 450) newWidth = 450; if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
         sidebarEl.style.width = newWidth + 'px';
         
         // Ensure the List Zone in the global header precisely mirrors the sidebar width
