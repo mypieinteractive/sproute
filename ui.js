@@ -1,10 +1,7 @@
-/* Dashboard - V15.9.10 */
+/* Dashboard - V15.9.11 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added startOverOverlay.classList.add('active') to the 'Ready' state in updateRoutingUI. */
-/* 2. Maintained .staging-locked for both Staging and Ready states. */
-/* 3. Verified that setDisplayMode explicitly excludes .static-endpoint from receiving the compact class. */
-/* 4. Verified initSortable strictly disables drag-and-drop in 'All Inspectors' mode. */
+/* 1. Synced the handleGenerateRoute and handleCalculate fixes from app.js to prevent scope-overwrite (scoping hasActiveRoutes to driverId and firing hideOverlay). */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
