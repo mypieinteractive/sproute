@@ -3,11 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V17.2
+            VERSION: V17.3
             CHANGES:
-            1. Moved the <style> block to the top of the <head> section.
-            2. Converted the version history and file info block to use CSS commenting 
-               so that it renders visibly within standard chat interface markdown.
+            1. Bumped version to V17.3.
+            2. Added white-space: nowrap to Priority Weighting labels to prevent them from stacking and colliding on tight screen widths.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -144,11 +143,11 @@
                     </div>
 
                     <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
-                        <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:4px;">Priority Weighting</label>
+                        <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
                         <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()" style="width: 100%; margin-bottom: 4px;">
                         <div style="display:flex; justify-content:space-between; width: 100%;">
-                            <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
-                            <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
+                            <span style="font-size:12px; color:var(--text-muted); white-space: nowrap;">Efficiency</span>
+                            <span style="font-size:12px; color:var(--text-muted); white-space: nowrap;">Due Dates</span>
                         </div>
                     </div>
                 </div>
