@@ -308,7 +308,6 @@ export function render() {
         const sortClass = isAllInspectors ? 'sortable' : '';
         const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
 
-        // Added Inspector column to the right, removed .col-handle
         header.innerHTML = `
             <div class="col-num"><input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)"></div>
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
@@ -387,7 +386,6 @@ export function render() {
             const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
             let metaHtml = (Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit') ? `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>` : '';
 
-            // Rendered with Inspector column moved to the right, removed col-handle
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">${etaTime}</div>
@@ -593,7 +591,6 @@ export function createEndpointRow(type, endpointData) {
     const el = document.createElement('div');
     el.className = 'stop-item static-endpoint';
     
-    // Perfectly aligns width and elements to main row HTML via strict flexbox columns
     el.innerHTML = `
         <div class="col-num" style="display:flex; justify-content:center; align-items:center; color:var(--text-muted); font-size:16px;">
             ${icon}
@@ -604,7 +601,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color);" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
         <div class="col-app"></div>
@@ -666,14 +663,16 @@ export function initSortable() {
 
     if (!AppState.PERMISSION_MODIFY) return;
 
-    // Enforce global 200ms delay for long-press sorting across all views
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const mainListEl = document.getElementById('main-list-container');
         if (mainListEl) {
             const inst = Sortable.create(mainListEl, {
-                delay: 200, delayOnTouchOnly: false, filter: '.static-endpoint, .list-subheading', animation: 150,
+                delay: 200, delayOnTouchOnly: false,
+                filter: '.static-endpoint, .list-subheading', animation: 150,
                 onStart: () => pushToHistory(),
-                onEnd: (evt) => { reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState(); }
+                onEnd: (evt) => {
+                    reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState();
+                }
             });
             sortableInstances.push(inst);
         }
