@@ -1,10 +1,10 @@
-/* Dashboard - V15.9.4 */
+/* Dashboard - V15.9.5 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated createEndpointRow to use FontAwesome icons in the sidebar and "Start/End" text aligned with ETA. */
-/* 2. Moved the Inspector column to the right side of the list (before the handle) in the header and rows. */
-/* 3. Removed the drag handle in 'All Inspectors' mode and enabled 200ms long-press sorting. */
-/* 4. Added 'Click to search orders' hover title to the address search input. */
+/* 1. Completely removed the .col-handle (grabber) HTML from headers and rows globally. */
+/* 2. Standardized initSortable to use long-press (200ms delay) universally. */
+/* 3. Rebuilt createEndpointRow to perfectly match main row flex columns, with custom icons and aligned START/END text. */
+/* 4. Applied structural updates to Address search field, hiding default background and adding custom CSS tooltip and magnifying glass. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -178,11 +178,9 @@ export function updateRoutingUI() {
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const btnSend = document.getElementById('btn-header-send-route');
 
-    // 1. Hide everything initially
     [btnGen, btnRecalc, btnRestore, optInspBtn, btnSend].forEach(btn => { if (btn) btn.style.display = 'none'; });
     updatePrioritySliderUI();
 
-    // 2. Global "All Inspectors" check (Managers only)
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         if (routingControls) routingControls.style.display = 'none';
         const routeToggles = document.getElementById('route-view-toggles');
@@ -190,7 +188,6 @@ export function updateRoutingUI() {
         return;
     }
 
-    // 3. Filter target stops based on view
     let targetStops = Config.isManagerView ? AppState.stops.filter(s => String(s.driverId) === String(AppState.currentInspectorFilter)) : AppState.stops;
     targetStops = targetStops.filter(s => s.status !== 'Deleted' && s.status !== 'Cancelled');
 
@@ -199,7 +196,6 @@ export function updateRoutingUI() {
         return;
     }
 
-    // 4. Determine True State (Pending, Staging, Ready)
     const unroutedCount = targetStops.filter(s => !isRouteAssigned(s.status)).length;
     let isDirty = false;
     
@@ -219,7 +215,6 @@ export function updateRoutingUI() {
         currentState = 'Staging';
     }
 
-    // 5. Route View Toggles Update
     let maxCluster = -1;
     targetStops.forEach(s => {
         if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster;
@@ -238,7 +233,6 @@ export function updateRoutingUI() {
         }
     }
 
-    // 6. Enforce UI Rules based on strict state
     if (Config.isManagerView) {
         if (currentState === 'Pending') {
             if (routingControls) routingControls.style.display = 'flex';
@@ -255,7 +249,6 @@ export function updateRoutingUI() {
             if (btnSend) btnSend.style.display = 'flex';
         }
     } else {
-        // Inspector View
         if (routingControls) routingControls.style.display = 'none';
         
         if (currentState === 'Staging') {
@@ -315,16 +308,18 @@ export function render() {
         const sortClass = isAllInspectors ? 'sortable' : '';
         const sortClick = (col) => isAllInspectors ? `onclick="sortTable('${col}')"` : '';
 
-        // Added Inspector column to the right, hidden the drag handle in 'All Inspectors' mode
+        // Added Inspector column to the right, removed .col-handle
         header.innerHTML = `
             <div class="col-num"><input type="checkbox" id="bulk-select-all" class="grey-checkbox" onchange="toggleSelectAll(this)"></div>
             <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">ETA</div>
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             
             <div class="col-addr" style="display:flex; align-items:center; flex-direction:row;">
-                <div style="position:relative; flex:1; display:flex; align-items:center; min-width:0;">
-                    <input type="text" id="address-search-input" title="Click to search orders" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
-                    <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none;"></i>
+                <div class="address-search-wrapper" style="position:relative; flex:1; display:flex; align-items:center; min-width:0;">
+                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input" style="border-bottom: 1px solid var(--border-color); background: transparent;">
+                    <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
+                    <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 8px; z-index: 5;"></i>
+                    <div class="custom-tooltip">Click to search orders</div>
                 </div>
                 <div class="${sortClass}" ${sortClick('address')} style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center;">${sortIcon('address')}</div>
             </div>
@@ -332,7 +327,6 @@ export function render() {
             <div class="col-app ${sortClass}" ${sortClick('app')}>App ${sortIcon('app')}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
-            <div class="col-handle" style="visibility:${hasRouted && !isAllInspectors ? 'visible' : 'hidden'}; display:${isAllInspectors ? 'none' : 'flex'};"><i class="fa-solid fa-grip-lines"></i></div>
         `;
         listContainer.appendChild(header);
 
@@ -340,11 +334,13 @@ export function render() {
         if (searchInput && window.lastAddressSearchValue) {
             searchInput.value = window.lastAddressSearchValue;
             const clearIcon = document.getElementById('clear-search-icon');
+            const glassIcon = document.getElementById('search-glass-icon');
             if (clearIcon) clearIcon.style.display = window.lastAddressSearchValue ? 'block' : 'none';
+            if (glassIcon) glassIcon.style.display = window.lastAddressSearchValue ? 'none' : 'block';
         }
     }
 
-    const processStop = (s, displayIndex, showHandle) => {
+    const processStop = (s, displayIndex) => {
         const item = document.createElement('div');
         item.id = `item-${s.id}`;
         item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
@@ -389,13 +385,9 @@ export function render() {
             }
 
             const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
-            
-            // Handle display logic accounts for "All Inspectors" view
-            const handleVisible = showHandle && !isAllInspectors;
-            const handleHtml = `<div class="col-handle ${handleVisible ? 'handle' : ''}" style="visibility:${handleVisible ? 'visible' : 'hidden'}; display:${isAllInspectors ? 'none' : 'flex'};">${handleVisible ? '<i class="fa-solid fa-grip-lines"></i>' : ''}</div>`;
             let metaHtml = (Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit') ? `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>` : '';
 
-            // Rendered with Inspector column moved to the right
+            // Rendered with Inspector column moved to the right, removed col-handle
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">${etaTime}</div>
@@ -408,7 +400,6 @@ export function render() {
                 <div class="col-app">${s.app || '--'}</div>
                 <div class="col-client">${s.client || '--'}</div>
                 ${inspectorHtml}
-                ${handleHtml}
             `;
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${AppState.currentDisplayMode}`;
@@ -454,7 +445,7 @@ export function render() {
                 const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
                 unroutedDiv.appendChild(el); 
             }
-            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1, hasRouted)); });
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1)); });
         }
         
         if (routedStops.length > 0) {
@@ -467,7 +458,7 @@ export function render() {
                     routedDiv.className = 'routed-group-container'; routedDiv.style.minHeight = '30px';
                     listContainer.appendChild(routedDiv);
                     routedDiv.appendChild(createRouteSubheading(clusterId, cStops)); 
-                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1, true)); });
+                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1)); });
                 }
             });
         }
@@ -476,7 +467,7 @@ export function render() {
         const mainDiv = document.createElement('div');
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
-        if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1, false)));
+        if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1)));
     }
 
     renderMapMarkers({
@@ -597,25 +588,28 @@ export function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
     const icon = type === 'start' ? '<i class="fa-solid fa-location-dot"></i>' : '<i class="fa-solid fa-flag-checkered"></i>';
-    const labelText = type === 'start' ? 'Start' : 'End';
+    const labelText = type === 'start' ? 'START' : 'END';
     
     const el = document.createElement('div');
-    el.className = 'stop-item static-endpoint compact';
+    el.className = 'stop-item static-endpoint';
     
-    // Aligns the icon within the stop-sidebar, places the Start/End label perfectly in the .col-eta slot
+    // Perfectly aligns width and elements to main row HTML via strict flexbox columns
     el.innerHTML = `
-        <div class="stop-sidebar" style="background:var(--bg-header); color:var(--text-muted); font-size:16px;">
+        <div class="col-num" style="display:flex; justify-content:center; align-items:center; color:var(--text-muted); font-size:16px;">
             ${icon}
         </div>
-        <div class="col-eta" style="color: var(--text-muted); font-weight: bold; text-transform: uppercase; font-size: 12px; display: ${Config.isManagerView && AppState.currentInspectorFilter === 'all' ? 'none' : 'flex'};">
+        <div class="col-eta" style="color:var(--text-muted); font-weight:bold; display:${Config.isManagerView && AppState.currentInspectorFilter === 'all' ? 'none' : 'flex'}; justify-content:center; align-items:center; text-align:center;">
             ${labelText}
         </div>
-        <div class="stop-content" style="padding: 0 10px; flex-direction:row; align-items:center; display:flex;">
-            <div style="position:relative; width:100%; flex:1;">
-                <input type="text" id="input-endpoint-${type}" class="endpoint-input" style="font-size: 14px; width: 100%;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+        <div class="col-due"></div>
+        <div class="col-addr" style="display:flex; align-items:center; padding-right:6px; flex:1 1 auto; min-width:0;">
+            <div style="position:relative; width:100%; display:flex; align-items:center;">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color);" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
-        <div class="stop-actions" style="width: 40px;"></div>
+        <div class="col-app"></div>
+        <div class="col-client"></div>
+        <div class="col-insp" style="display:${Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? 'none' : 'flex'};"></div>
     `;
     return el;
 }
@@ -672,17 +666,14 @@ export function initSortable() {
 
     if (!AppState.PERMISSION_MODIFY) return;
 
-    // Handles the long-press delay for "All Inspectors" manual sorting
+    // Enforce global 200ms delay for long-press sorting across all views
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const mainListEl = document.getElementById('main-list-container');
         if (mainListEl) {
             const inst = Sortable.create(mainListEl, {
-                delay: 200, delayOnTouchOnly: false,
-                filter: '.static-endpoint, .list-subheading', animation: 150,
+                delay: 200, delayOnTouchOnly: false, filter: '.static-endpoint, .list-subheading', animation: 150,
                 onStart: () => pushToHistory(),
-                onEnd: (evt) => {
-                    reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState();
-                }
+                onEnd: (evt) => { reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState(); }
             });
             sortableInstances.push(inst);
         }
@@ -691,7 +682,7 @@ export function initSortable() {
 
         document.querySelectorAll('.routed-group-container').forEach(routedEl => {
             const inst = Sortable.create(routedEl, {
-                group: 'manager-routes', handle: '.handle', filter: '.static-endpoint, .list-subheading', animation: 150,
+                group: 'manager-routes', delay: 200, delayOnTouchOnly: false, filter: '.static-endpoint, .list-subheading', animation: 150,
                 onStart: () => pushToHistory(),
                 onEnd: async (evt) => {
                     const hasActiveRoutes = AppState.stops.some(st => isRouteAssigned(st.status));
@@ -745,13 +736,13 @@ export function initSortable() {
         
         if (unroutedEl) {
             sortableUnrouted = Sortable.create(unroutedEl, {
-                group: 'manager-routes', sort: false, handle: '.handle', filter: '.list-subheading', animation: 150, onStart: () => pushToHistory()
+                group: 'manager-routes', sort: false, delay: 200, delayOnTouchOnly: false, filter: '.list-subheading', animation: 150, onStart: () => pushToHistory()
             });
         }
     } else if (!Config.isManagerView) {
         document.querySelectorAll('.routed-group-container, #main-list-container').forEach(el => {
             const inst = Sortable.create(el, {
-                delay: 200, delayOnTouchOnly: true, filter: '.static-endpoint, .list-subheading', animation: 150, onStart: () => pushToHistory(),
+                delay: 200, delayOnTouchOnly: false, filter: '.static-endpoint, .list-subheading', animation: 150, onStart: () => pushToHistory(),
                 onEnd: (evt) => {
                     const hasActiveRoutes = AppState.stops.some(st => isRouteAssigned(st.status));
                     const stopId = evt.item.id.replace('item-', '');
@@ -1244,7 +1235,9 @@ window.filterListDOM = function(val) {
         el.style.display = searchAttr.includes(q) ? 'flex' : 'none';
     });
     const clearIcon = document.getElementById('clear-search-icon');
+    const glassIcon = document.getElementById('search-glass-icon');
     if(clearIcon) clearIcon.style.display = q ? 'block' : 'none';
+    if(glassIcon) glassIcon.style.display = q ? 'none' : 'block';
     filterMarkersMap(q);
 };
 
