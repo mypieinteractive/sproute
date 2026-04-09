@@ -1,9 +1,8 @@
-/* Dashboard - V1.12 */
+/* Dashboard - V17.1 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added margin-bottom: 4px to .address-header-input so the line floats below the text. */
-/* 2. Added .module-action-btn and .stacked-action-btns for full-height flush routing buttons. */
-/* 3. Forced .static-endpoint to strictly 40px height and matching background panel color. */
+/* 1. Aligned .static-endpoint strictly to 38px height to match the glide-table-header. */
+/* 2. Added explicit margin: auto, max-height, and overflow to .modal-box to ensure absolute centering globally. */
 
 :root { 
     --blue: #2563eb; 
@@ -407,7 +406,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 .boxdraw { background: rgba(37, 99, 235, 0.3); border: 1px solid var(--blue); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
 #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center; }
-.modal-box { background: var(--bg-panel); color: var(--text-main); padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid var(--border-color); }
+.modal-box { background: var(--bg-panel); color: var(--text-main); padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid var(--border-color); margin: auto; max-height: 90vh; overflow-y: auto; }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
 .grey-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; background-color: #e5e7eb; border: 1px solid #9ca3af; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; }
@@ -415,7 +414,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
 /* Endpoints */
-.static-endpoint { background-color: var(--bg-panel); border-bottom: 1px solid #282828; font-weight: bold; height: 40px !important; min-height: 40px !important; box-sizing: border-box; }
+.static-endpoint { background-color: var(--bg-panel); border-bottom: 1px solid #282828; font-weight: bold; height: 38px !important; min-height: 38px !important; box-sizing: border-box; }
 .endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3); border-radius: 0; font-weight: 400; font-size: 14px; color: var(--text-main); background-color: transparent; transition: all 0.2s ease; height: 38px; }
 .endpoint-input:focus { outline: none; border-bottom-color: var(--blue); }
 .static-endpoint.compact { background: var(--bg-panel); min-height: 40px; }
