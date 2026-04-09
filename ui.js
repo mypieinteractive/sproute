@@ -1,9 +1,9 @@
-/* Dashboard - V15.9.2 */
+/* Dashboard - V15.9.3 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Completely rewrote updateRoutingUI to use a strict state machine (Pending, Ready, Staging). */
-/* 2. Enforced routingControls hiding for 'Ready', 'Staging', and Inspector views. */
-/* 3. Refactored Address header flexbox to correctly align input and sort icon. */
+/* 1. Implemented strict state machine in updateRoutingUI to handle Pending/Ready/Staging states without ReferenceErrors. */
+/* 2. Enforced correct visibility of routing controls and buttons per user spec. */
+/* 3. Updated col-addr header flexbox structure to properly lock input to full width and pin the sort icon to the right. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -70,15 +70,10 @@ export function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = AppState.historyStack.length === 0;
 }
 
-export function applyBranding(logoUrl, brandName) {
-    // No-op
-}
-
 export function updateHeaderUI() {
     if (!Config.isManagerView) return;
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
-
     if (filterSelectWrap) {
         filterSelectWrap.style.display = isCompanyTier ? 'block' : 'none';
     }
@@ -325,12 +320,12 @@ export function render() {
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
             
-            <div class="col-addr" style="display:flex; align-items:center;">
-                <div style="position:relative; flex:1; display:flex; align-items:center;">
+            <div class="col-addr" style="display:flex; align-items:center; flex-direction:row;">
+                <div style="position:relative; flex:1; display:flex; align-items:center; min-width:0;">
                     <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
                     <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none;"></i>
                 </div>
-                <div class="${sortClass}" ${sortClick('address')} style="margin-left:4px; padding:4px;">${sortIcon('address')}</div>
+                <div class="${sortClass}" ${sortClick('address')} style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center;">${sortIcon('address')}</div>
             </div>
 
             <div class="col-app ${sortClass}" ${sortClick('app')}>App ${sortIcon('app')}</div>
@@ -1257,7 +1252,6 @@ if (hiddenFileInput) {
     });
 }
 
-// Global Drag and Drop Override Logic
 let dragCounter = 0;
 document.addEventListener('dragenter', (e) => {
     e.preventDefault();
