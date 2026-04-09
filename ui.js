@@ -3,7 +3,8 @@
 /* Changes: */
 /* 1. Refined updateRoutingUI to decouple the routing container from the module core. */
 /* 2. Implemented the .staging-locked class and Start Over overlay activation during 'Staging' status. */
-/* 3. Integrated the #staged-action-group segmented buttons (Re-Calc/Re-Opt) for the Staging view. */
+/* 3. Module stays locked in 'Ready' status while revealing the Send Route button. */
+/* 4. Disabled sorting entirely for the 'All Inspectors' view. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -256,6 +257,8 @@ export function updateRoutingUI() {
             if (stagedActionGroup) stagedActionGroup.style.display = 'flex';
         } else if (currentState === 'Ready') {
             if (routingControls) routingControls.style.display = 'flex';
+            if (routingModuleWrapper) routingModuleWrapper.style.display = 'flex';
+            if (routingModuleCore) routingModuleCore.classList.add('staging-locked'); // Lock in Ready state
             if (btnSend) btnSend.style.display = 'flex';
             if (AppState.isAlteredRoute && btnRestore) btnRestore.style.display = 'flex';
         }
