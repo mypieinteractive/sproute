@@ -1,8 +1,7 @@
-/* Dashboard - V17.3 */
+/* Dashboard - V17.4 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Adjusted performResize to bump minimum map/list resizer width to 450px to protect priority texts. */
-/* 2. Overhauled header and endpoint .col-addr HTML generation to utilize identical flex structures so width/spacing is perfectly aligned visually. */
+/* 1. Adjusted performResize logic to enforce a strict minimum map width of 620px, preventing the list from overlapping the map when dragged. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1329,7 +1328,13 @@ function performResize(e) {
         let newHeight = window.innerHeight - clientY; if (newHeight < 200) newHeight = 200; if (newHeight > window.innerHeight - 200) newHeight = window.innerHeight - 200;
         sidebarEl.style.height = newHeight + 'px'; sidebarEl.style.flex = 'none'; mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px'; mapWrapEl.style.flex = 'none';
     } else {
-        let newWidth = window.innerWidth - clientX; if (newWidth < 450) newWidth = 450; if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
+        let newWidth = window.innerWidth - clientX; 
+        
+        // Strict constraint clamping to protect both the map routing UI and list UI
+        let maxListWidth = Math.max(450, window.innerWidth - 620);
+        if (newWidth > maxListWidth) newWidth = maxListWidth;
+        if (newWidth < 450) newWidth = 450;
+        
         sidebarEl.style.width = newWidth + 'px';
         
         // Ensure the List Zone in the global header precisely mirrors the sidebar width
