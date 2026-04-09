@@ -1,10 +1,8 @@
-/* Dashboard - V15.9.6 */
+/* Dashboard - V15.9.7 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Completely removed .col-handle HTML from all rows to support universal long-press sorting. */
-/* 2. Standardized initSortable with delay: 200, delayOnTouchOnly: false across all views. */
-/* 3. Rebuilt createEndpointRow to map exactly to list columns, centering custom icons and text. */
-/* 4. Added a DOM-flush timeout before renderMapMarkers to perfectly fix the initial map bounds zoom bug. */
+/* 1. Bypassed setDisplayMode for endpoint rows so they permanently stay at detailed height. */
+/* 2. Added performResize logic to directly sync #header-list-zone width to slider movement. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -315,7 +313,7 @@ export function render() {
             
             <div class="col-addr" style="display:flex; align-items:center; flex-direction:row;">
                 <div class="address-search-wrapper" style="position:relative; flex:1; display:flex; align-items:center; min-width:0;">
-                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input" style="border-bottom: 1px solid var(--border-color); background: transparent;">
+                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
                     <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
                     <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 8px; z-index: 5;"></i>
                     <div class="custom-tooltip">Click to search orders</div>
@@ -468,7 +466,6 @@ export function render() {
         if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1)));
     }
 
-    // Flush the DOM to ensure map.resize grabs the exact layout dimensions before fitting bounds
     setTimeout(() => { 
         const map = getMapInstance();
         if (map) map.resize();
@@ -494,6 +491,13 @@ export function render() {
         if (window.lastAddressSearchValue) { window.filterListDOM(window.lastAddressSearchValue); }
 
         resizeMap(); 
+        
+        // Sync header list zone width to match sidebar on render
+        const hlZone = document.getElementById('header-list-zone');
+        const sidebar = document.getElementById('sidebar');
+        if (hlZone && sidebar) {
+            hlZone.style.width = sidebar.offsetWidth + 'px';
+        }
     }, 20); 
 }
 
@@ -607,7 +611,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; padding: 8px 0; font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
         <div class="col-app"></div>
@@ -673,12 +677,9 @@ export function initSortable() {
         const mainListEl = document.getElementById('main-list-container');
         if (mainListEl) {
             const inst = Sortable.create(mainListEl, {
-                delay: 200, delayOnTouchOnly: false,
-                filter: '.static-endpoint, .list-subheading', animation: 150,
+                delay: 200, delayOnTouchOnly: false, filter: '.static-endpoint, .list-subheading', animation: 150,
                 onStart: () => pushToHistory(),
-                onEnd: (evt) => {
-                    reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState();
-                }
+                onEnd: (evt) => { reorderStopsFromDOM(); triggerFullRender(); silentSaveRouteState(); }
             });
             sortableInstances.push(inst);
         }
@@ -1164,7 +1165,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.setDisplayMode = function(mode) {
     AppState.currentDisplayMode = mode;
-    document.querySelectorAll('.stop-item, .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
+    // Explicitly bypass static endpoints to lock them into detailed height
+    document.querySelectorAll('.stop-item:not(.static-endpoint), .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
 };
 
 window.setRouteViewFilter = function(val) {
@@ -1307,6 +1309,7 @@ const resizerEl = document.getElementById('resizer'); const sidebarEl = document
 let isResizing = false;
 function startResize(e) { if(!Config.isManagerView) return; isResizing = true; resizerEl.classList.add('active'); document.body.style.cursor = Config.viewMode === 'managermobile' ? 'row-resize' : 'col-resize'; mapWrapEl.style.pointerEvents = 'none'; }
 resizerEl.addEventListener('mousedown', startResize); resizerEl.addEventListener('touchstart', (e) => { startResize(e.touches[0]); }, {passive: false});
+
 function performResize(e) {
     if (!isResizing) return;
     let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
@@ -1316,8 +1319,13 @@ function performResize(e) {
     } else {
         let newWidth = window.innerWidth - clientX; if (newWidth < 300) newWidth = 300; if (newWidth > window.innerWidth - 300) newWidth = window.innerWidth - 300;
         sidebarEl.style.width = newWidth + 'px';
+        
+        // Ensure the List Zone in the global header precisely mirrors the sidebar width
+        const hlZone = document.getElementById('header-list-zone');
+        if (hlZone) hlZone.style.width = newWidth + 'px';
     }
 }
+
 document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
 function stopResize() { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizerEl.classList.remove('active'); mapWrapEl.style.pointerEvents = 'auto'; resizeMap(); } }
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
