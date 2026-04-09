@@ -1,10 +1,9 @@
-/* Dashboard - V1.11 */
+/* Dashboard - V1.12 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added margin-bottom: 4px to .address-header-input. */
-/* 2. Added .routing-module-core, .routing-module-wrapper, and .start-over-overlay for locked staging state. */
-/* 3. Set .static-endpoint to fixed height: 40px and var(--bg-panel) background. */
-/* 4. Styled .stacked-action-btns for vertical segmenting of Re-Calc/Re-Opt buttons. */
+/* 1. Added bottom padding to .address-header-input so the line floats below the text. */
+/* 2. Added .module-action-btn and .stacked-action-btns for full-height flush routing buttons. */
+/* 3. Forced .static-endpoint to strictly 40px height and matching background panel color. */
 
 :root { 
     --blue: #2563eb; 
@@ -169,9 +168,9 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 
 .route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: var(--text-main); }
 
-/* ROUTING MODULE: Wrapper, Core, Overlay, and Buttons */
+/* ROUTING MODULE: Wrapper, Core, Overlay, and Flush Action Buttons */
 .routing-module-wrapper { position: relative; display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; }
-.routing-module-core { display: flex; flex: 1; gap: 20px; width: 100%; align-items: center; transition: opacity 0.2s, filter 0.2s; }
+.routing-module-core { display: flex; flex: 1; gap: 20px; width: 100%; align-items: center; transition: opacity 0.2s, filter 0.2s; height: 100%; }
 .routing-module-core.staging-locked { opacity: 0.5; pointer-events: none; filter: grayscale(80%); }
 
 .start-over-overlay {
@@ -187,10 +186,18 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 }
 .btn-start-over:active { transform: scale(0.95); }
 
-.stacked-action-btns { display: flex; flex-direction: column; height: 100%; justify-content: center; gap: 1px; }
-.stacked-action-btns .header-action-btn { height: 20px; font-size: 11px; padding: 0 12px; border-radius: 0; }
-.stacked-action-btns.segmented .header-action-btn:first-child { border-radius: 4px 4px 0 0; }
-.stacked-action-btns.segmented .header-action-btn:last-child { border-radius: 0 0 4px 4px; }
+/* Full-Height Module Action Buttons */
+.module-action-btn {
+    width: 100%; height: 100%; border: none; border-radius: 0;
+    font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    box-sizing: border-box; text-align: center; line-height: 1.2;
+}
+.module-action-btn:active { opacity: 0.8; }
+.module-action-btn:hover { filter: brightness(1.1); }
+.stacked-action-btns { display: flex; flex-direction: column; height: 100%; width: 100%; }
+.stacked-action-btns .module-action-btn { flex: 1; height: 50%; }
+.stacked-action-btns .top-half { border-bottom: 1px solid rgba(0,0,0,0.3); }
 
 .route-btn { 
     flex: 1; border: 2px solid transparent; background: var(--bg-base); 
@@ -372,7 +379,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* Address Input Header perfect alignment styling */
 .address-header-input {
     background: transparent !important; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
-    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 0; margin-bottom: 4px;
+    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 4px 0; margin-bottom: 4px;
     border-radius: 0; transition: 0.2s; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
 }
 .glide-table-header .address-header-input { height: 38px; }
@@ -380,6 +387,15 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .address-header-input:focus, .address-header-input:hover { border-bottom-color: var(--blue) !important; }
 .clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
 .clear-search-icon:hover { color: var(--text-main); }
+
+/* Custom Tooltip */
+.custom-tooltip {
+    position: absolute; top: -28px; right: 0; background: #333; color: #fff;
+    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
+    font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.address-search-wrapper:hover .custom-tooltip { opacity: 1; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
