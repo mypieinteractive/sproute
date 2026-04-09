@@ -1,10 +1,10 @@
-/* Dashboard - V15.9.9 */
+/* Dashboard - V15.9.10 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Refined updateRoutingUI to decouple the routing container from the module core. */
-/* 2. Implemented the .staging-locked class and Start Over overlay activation during 'Staging' status. */
-/* 3. Module stays locked in 'Ready' status while revealing the Send Route button. */
-/* 4. Disabled sorting entirely for the 'All Inspectors' view. */
+/* 1. Added startOverOverlay.classList.add('active') to the 'Ready' state in updateRoutingUI. */
+/* 2. Maintained .staging-locked for both Staging and Ready states. */
+/* 3. Verified that setDisplayMode explicitly excludes .static-endpoint from receiving the compact class. */
+/* 4. Verified initSortable strictly disables drag-and-drop in 'All Inspectors' mode. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -259,6 +259,7 @@ export function updateRoutingUI() {
             if (routingControls) routingControls.style.display = 'flex';
             if (routingModuleWrapper) routingModuleWrapper.style.display = 'flex';
             if (routingModuleCore) routingModuleCore.classList.add('staging-locked'); // Lock in Ready state
+            if (startOverOverlay) startOverOverlay.classList.add('active'); // Add overlay in Ready state
             if (btnSend) btnSend.style.display = 'flex';
             if (AppState.isAlteredRoute && btnRestore) btnRestore.style.display = 'flex';
         }
