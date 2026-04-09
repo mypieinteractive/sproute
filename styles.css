@@ -1,9 +1,8 @@
-/* Dashboard - V1.9 */
+/* Dashboard - V1.10 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Hidden endpoint borders via CSS exclusion to maintain unified list aesthetic. */
-/* 2. Fixed #map-hint anchoring to top-left of the active map view. */
-/* 3. Updated .address-header-input with a starkly visible bottom border overlay. */
+/* 1. Created styling for #map-header to perfectly match the list header. */
+/* 2. Added CSS logic for 'All Inspectors' mode to make row-level inspector selects look like plain text + arrow. */
 
 :root { 
     --blue: #2563eb; 
@@ -144,6 +143,19 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 .add-dropdown-item:hover { background: var(--blue); color: white; }
 
+/* MAP HEADER (Top Map Bar) */
+#map-header {
+    height: 38px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 15px;
+    flex-shrink: 0;
+    z-index: 10;
+}
+
 .list-subheading {
     padding: 6px 12px; background: var(--bg-header); color: #ffffff;
     font-weight: bold; font-size: 11px; text-transform: uppercase;
@@ -197,6 +209,14 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
     font-size: 13px;
     height: 28px;
     background-position: right 6px center;
+}
+
+/* Strip button styling for "All Inspectors" view */
+body.manager-all-inspectors .glide-row .insp-select {
+    background-color: transparent !important;
+    border: none !important;
+    padding: 0 16px 0 0 !important;
+    height: auto !important;
 }
 
 /* Rocker Switch */
@@ -335,6 +355,15 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .address-header-input:focus, .address-header-input:hover { border-bottom-color: var(--blue) !important; }
 .clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
 .clear-search-icon:hover { color: var(--text-main); }
+
+/* Custom Tooltip */
+.custom-tooltip {
+    position: absolute; top: -28px; right: 0; background: #333; color: #fff;
+    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
+    font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.address-search-wrapper:hover .custom-tooltip { opacity: 1; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
