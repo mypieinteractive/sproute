@@ -106,9 +106,9 @@
             </div>
         </div>
 
-        <div id="routing-controls" style="display: none; height: 60px; padding: 8px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; gap: 20px; z-index: 10; flex: none; box-sizing: border-box;">
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 0 0 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box;">
             
-            <div id="routing-module-wrapper" class="routing-module-wrapper">
+            <div id="routing-module-wrapper" class="routing-module-wrapper" style="flex: 1; height: 100%; padding: 8px 0; box-sizing: border-box; margin-right: 15px;">
                 <div id="routing-module-core" class="routing-module-core">
                     <div id="route-divider-group" style="display:flex; gap:8px; flex: 1; height: 100%;">
                         <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
@@ -149,23 +149,26 @@
                 </div>
             </div>
 
-            <div id="routing-action-buttons" style="display: flex; align-items: center; gap: 8px; height: 100%;">
-                <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
-                    <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
+            <div id="routing-action-buttons" style="width: 140px; height: 100%; border-left: 1px solid var(--border-color); flex-shrink: 0; box-sizing: border-box;">
+                
+                <button id="btn-header-restore" class="module-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:var(--bg-hover); color:var(--text-main);">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
                 </button>
-                <button id="btn-header-send-route" class="header-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
-                    <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
+                
+                <button id="btn-header-send-route" class="module-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
+                    <i class="fa-solid fa-paper-plane"></i> Send Route(s)
                 </button>
-                <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
+                
+                <button id="btn-header-generate" class="module-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
                     <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
                 </button>
 
-                <div id="staged-action-group" class="stacked-action-btns segmented" style="display: none;">
-                    <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="background:#444; color:white;">
-                        <i class="fa-solid fa-calculator"></i> <span>Re-Calc</span>
+                <div id="staged-action-group" class="stacked-action-btns" style="display: none;">
+                    <button id="btn-header-recalc" class="module-action-btn top-half" onclick="handleCalculate()" style="background:#444; color:white;">
+                        <i class="fa-solid fa-calculator"></i> Re-Calculate
                     </button>
-                    <button id="btn-header-optimize-insp" class="header-action-btn" onclick="handleGenerateRoute()" style="background:#2C3D4F; color:white;">
-                        <i class="fa-solid fa-route"></i> <span>Re-Opt</span>
+                    <button id="btn-header-optimize-insp" class="module-action-btn bottom-half" onclick="handleGenerateRoute()" style="background:#2C3D4F; color:white;">
+                        <i class="fa-solid fa-route"></i> Re-Optimize
                     </button>
                 </div>
             </div>
