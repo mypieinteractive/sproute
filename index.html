@@ -23,9 +23,16 @@
     </div>
 </div>
 
-<div id="global-header" style="padding: 10px 20px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; z-index: 100; flex-shrink: 0;">
+<div id="global-header" style="padding: 10px 20px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
     
     <div id="header-action-container" style="display: flex; gap: 8px; align-items: center;">
+        <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-main); font-weight: bold;">
+            <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
+        </button>
+    </div>
+
+    <div id="header-right-controls" style="display: flex; align-items: center; gap: 15px;">
+        
         <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
             <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
         </button>
@@ -41,36 +48,9 @@
         <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
             <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
         </button>
-    </div>
-
-    <div id="header-right-controls" style="display: flex; align-items: center; gap: 15px;">
-        
-        <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold; padding-right: 15px; border-right: 1px solid var(--border-color);">
-            <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
-            <div id="order-stats">
-                <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
-                <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
-                <span id="stat-past" style="color: var(--red);">0 Past Due</span>
-            </div>
-        </div>
-
-        <div style="display: flex; align-items: center;">
-            <select id="display-mode-select" class="insp-select" onchange="setDisplayMode(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; font-weight: bold; height: 38px;">
-                <option value="detailed">Detailed</option>
-                <option value="compact">Compact</option>
-            </select>
-        </div>
-
-        <div id="inspector-dropdown-wrapper" style="display: none;">
-            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; height: 38px;"></select>
-        </div>
-
-        <button id="btn-undo-incremental" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 5px;">
-            <i class="fa-solid fa-arrow-rotate-left"></i>
-        </button>
 
         <div id="add-menu-wrapper" style="position: relative;">
-            <div class="header-action-btn" style="background: #2C3D4F; color: white; padding: 8px 16px; border-radius: 6px; height: 38px; cursor: default;">
+            <div class="header-action-btn" style="background: #2C3D4F; color: white; padding: 0 16px; border-radius: 6px; cursor: default;">
                 <i class="fa-solid fa-plus"></i>
             </div>
             <div class="add-dropdown-menu">
@@ -83,6 +63,17 @@
             </div>
         </div>
         <input type="file" id="hidden-global-file-input" accept=".csv" style="display: none;">
+
+        <div class="rocker-switch">
+            <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
+            <label for="view-detailed">Detailed</label>
+            <input type="radio" id="view-compact" name="view-mode" value="compact" onchange="setDisplayMode('compact')">
+            <label for="view-compact">Compact</label>
+        </div>
+
+        <div id="inspector-dropdown-wrapper" style="display: none;">
+            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; height: 38px;"></select>
+        </div>
     </div>
 </div>
 <div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
@@ -100,6 +91,18 @@
     </div>
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+        
+        <div id="map-header">
+            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold;">
+                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+                <div id="order-stats">
+                    <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
+                    <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
+                    <span id="stat-past" style="color: var(--red);">0 Past Due</span>
+                </div>
+            </div>
+        </div>
+
         <div id="routing-controls" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; gap: 20px; z-index: 10; flex: none;">
             <div id="route-divider-group" style="display:flex; gap:8px; flex: 1;">
                 <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
