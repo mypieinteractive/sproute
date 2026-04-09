@@ -1,8 +1,10 @@
-/* Dashboard - V17.5 */
+/* Dashboard - V17.6 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Global sweep modifying font-weight: bold to font-weight: 500 for a lighter UI experience. Kept 600 weight on past-due items for necessary visual emphasis. */
-/* 2. Overhauled .address-header-input to replace the rigid bottom-border with an intuitive, transparent background that highlights elegantly on hover. */
+/* 1. Set body height to calc(100vh - 40px) and updated view modes to use % instead of vh to respect container boundaries. */
+/* 2. Added outline-btn pseudo-element CSS for standardizing the button UI inside the module action block. */
+/* 3. Updated grey-checkbox styling to transparent background with #555 border for dark theme matching. */
+/* 4. Lowered rocker-switch and insp-select height to 30px. */
 
 :root { 
     --blue: #2563eb; 
@@ -21,7 +23,7 @@
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
-body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; flex-direction: column; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
+body { margin: 0; padding: 0; height: calc(100vh - 40px); width: 100vw; display: flex; flex-direction: column; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
 
 /* Scrollbar Customization */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -33,7 +35,7 @@ body { margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; flex-d
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
-    display: flex; flex-direction: column; width: 100vw; height: 100vh; background: var(--bg-base); z-index: 50; 
+    display: flex; flex-direction: column; width: 100vw; height: 100%; background: var(--bg-base); z-index: 50; 
 }
 body.empty-state-active #map-wrapper, body.drag-override-empty #map-wrapper,
 body.empty-state-active #sidebar, body.drag-override-empty #sidebar,
@@ -46,8 +48,8 @@ body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab
 
 /* VIEW MODES */
 body.view-inspector { flex-direction: column; }
-body.view-inspector #map-wrapper { height: 35vh; min-height: 35vh; width: 100%; border-bottom: 2px solid var(--border-color); }
-body.view-inspector #sidebar { height: 65vh; min-height: 65vh; width: 100%; }
+body.view-inspector #map-wrapper { height: 35%; min-height: 35%; width: 100%; border-bottom: 2px solid var(--border-color); }
+body.view-inspector #sidebar { height: 65%; min-height: 65%; width: 100%; }
 
 /* Move map buttons to bottom right for Inspector and ManagerMobile */
 body.view-inspector .map-overlay-btns, 
@@ -65,13 +67,13 @@ body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
 body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100%; border-left: none; flex: none; }
 
 /* MANAGER MOBILE VIEW */
-body.view-managermobile { overflow: hidden; height: 100vh; }
-body.view-managermobile #map-wrapper { height: 40vh; width: 100vw; flex: none; position: relative; z-index: 10; }
-body.view-managermobile #sidebar { height: 60vh; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: hidden; }
+body.view-managermobile { overflow: hidden; height: 100%; }
+body.view-managermobile #map-wrapper { height: 40%; width: 100vw; flex: none; position: relative; z-index: 10; }
+body.view-managermobile #sidebar { height: 60%; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--border-color); overflow: hidden; }
 body.view-managermobile #stop-list { overflow-y: auto; overflow-x: hidden; height: 100%; }
 
 /* MANAGER MOBILE SPLIT VIEW */
-body.view-managermobilesplit { overflow: hidden; height: 100vh; }
+body.view-managermobilesplit { overflow: hidden; height: 100%; }
 body.view-managermobilesplit #app-body-wrapper { display: contents; }
 body.view-managermobilesplit #map-wrapper, body.view-managermobilesplit #sidebar { display: contents; }
 body.view-managermobilesplit #map-header { order: 1; }
@@ -187,13 +189,19 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 
 /* Full-Height Module Action Buttons */
 .module-action-btn {
-    width: 100%; height: 100%; border: none; border-radius: 0;
+    width: 100%; height: 100%; border: none; border-radius: 0; position: relative;
     font-size: 13px; font-weight: 500; cursor: pointer; transition: 0.2s;
     display: flex; align-items: center; justify-content: center; gap: 6px;
     box-sizing: border-box; text-align: center; line-height: 1.2;
 }
 .module-action-btn:active { opacity: 0.8; }
 .module-action-btn:hover { filter: brightness(1.1); }
+
+.outline-btn::after {
+    content: ''; position: absolute; top: 4px; right: 4px; bottom: 4px; left: 4px;
+    border: 2px solid rgba(255,255,255,0.25); border-radius: 4px; pointer-events: none;
+}
+
 .stacked-action-btns { display: flex; flex-direction: column; height: 100%; width: 100%; }
 .stacked-action-btns .module-action-btn { flex: 1; height: 50%; }
 .stacked-action-btns .top-half { border-bottom: 1px solid rgba(0,0,0,0.3); }
@@ -251,7 +259,7 @@ body.manager-all-inspectors .glide-row .insp-select {
 }
 
 /* Rocker Switch */
-.rocker-switch { display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; height: 38px; }
+.rocker-switch { display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; height: 30px; }
 .rocker-switch input { display: none; }
 .rocker-switch label { padding: 0 16px; font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; }
 
@@ -411,7 +419,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .modal-box { max-height: 90vh; overflow-y: auto; margin: auto; }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
-.grey-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; background-color: #e5e7eb; border: 1px solid #9ca3af; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; }
+.grey-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; background-color: transparent; border: 2px solid #555; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; transition: 0.2s; }
 .grey-checkbox:checked { background-color: var(--blue); border-color: var(--blue); }
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
