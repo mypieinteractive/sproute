@@ -1,7 +1,7 @@
-/* Dashboard - V1.6.2 */
+/* Dashboard - V1.6.3 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Synced with unified drag/drop payload and updated rendering execution constraints. */
+/* 1. Added handleStartOver logic to support the Staging mode hover overlay, correctly reverting dirty routed stops to Pending. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -438,6 +438,41 @@ export async function triggerBulkUnroute() {
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error removing orders from the route. Please try again."); } finally { UI.hideOverlay(); }
 }
 
+export async function handleStartOver() {
+    if(!(await UI.customConfirm("Are you sure you want to remove all orders from this route and start over?"))) return;
+    pushToHistory(); UI.showOverlay();
+
+    try {
+        let updatesArray = [];
+        const targetDriverId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+        const routedStops = AppState.stops.filter(s => String(s.driverId) === String(targetDriverId) && isRouteAssigned(s.status));
+        
+        routedStops.forEach(s => {
+            markRouteDirty(s.driverId, s.cluster);
+            s.status = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
+            if (Config.viewMode === 'inspector') s.hiddenInInspector = true; 
+            updatesArray.push({ rowId: s.id, driverId: s.driverId });
+        });
+        
+        if (updatesArray.length > 0) {
+            let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
+            if (!Config.isManagerView) payload.routeId = Config.routeId;
+            await apiFetch(payload); 
+        }
+        
+        AppState.selectedIds.clear(); 
+        UI.reorderStopsFromDOM(); 
+        triggerFullRender(); 
+        UI.updateRouteTimes(); 
+        silentSaveRouteState();
+    } catch (err) { 
+        UI.hideOverlay(); 
+        await UI.customAlert("Error starting over. Please try again."); 
+    } finally { 
+        UI.hideOverlay(); 
+    }
+}
+
 export async function handleRestoreOriginal() {
     if(!(await UI.customConfirm("Restore the original route layout planned by the manager?"))) return;
     UI.showOverlay();
@@ -560,7 +595,7 @@ export function moveSelectedToRoute(cIdx) {
     triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
 }
 
-window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute; window.sortTable = sortTable;
+window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.handleStartOver = handleStartOver; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute; window.sortTable = sortTable;
 
 export function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
