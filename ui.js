@@ -1,10 +1,10 @@
-/* Dashboard - V15.9.10 */
+/* Dashboard - V17.1 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added startOverOverlay.classList.add('active') to the 'Ready' state in updateRoutingUI. */
-/* 2. Maintained .staging-locked for both Staging and Ready states. */
-/* 3. Verified that setDisplayMode explicitly excludes .static-endpoint from receiving the compact class. */
-/* 4. Verified initSortable strictly disables drag-and-drop in 'All Inspectors' mode. */
+/* 1. Updated showUploadModal to format the title dynamically with the filename and removed the generic file display section below it. */
+/* 2. Added logic to dynamically change "Send Route(s)" button text depending on AppState.currentRouteCount in updateRoutingUI. */
+/* 3. Re-aligned createEndpointRow text fields to use standard .address-header-input classes securely for precise visual alignment. */
+/* 4. Synced updateRouteTimes with createRouteSubheading by removing the strict lat/lng filtering dependency so calculation bounds are identical. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -238,6 +238,12 @@ export function updateRoutingUI() {
             document.getElementById('view-rall-btn')?.classList.add('active');
             for(let i = 0; i <= 2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
         }
+    }
+
+    // Update Send Route(s) text dynamically based on total routes
+    const sendBtnText = document.getElementById('btn-header-send-route-text');
+    if (sendBtnText) {
+        sendBtnText.innerText = AppState.currentRouteCount > 1 ? "Send Routes" : "Send Route";
     }
 
     // 6. Enforce UI Rules based on strict state
@@ -575,7 +581,7 @@ export function updateSummary() {
 
 export function updateRouteTimes() {
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return;
-    const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.lng && s.lat);
+    const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.cluster !== 'X');
     for(let i=0; i<3; i++) {
         const clusterStops = activeStops.filter(s => s.cluster === i);
         let totalSecs = 0;
@@ -627,7 +633,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; padding: 8px 0; font-weight:normal; text-transform:none; border-bottom:1px solid rgba(255,255,255,0.3); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; font-weight:normal; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
         <div class="col-app"></div>
@@ -1016,8 +1022,7 @@ export function showUploadModal(file) {
 
     mc.innerHTML = `
         <div style="background: #202123; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: bold;">Process CSV File</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="upload-close-icon"></i></div>
-            <div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">File <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="background: #2a2b2d; border: 1px solid #333; padding: 12px 16px; border-radius: 6px; color: #ccc; display: flex; align-items: center; gap: 10px; font-size: 14px;"><i class="fa-solid fa-file-csv" style="font-size: 18px;"></i> ${file.name}</div></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: bold;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="upload-close-icon"></i></div>
             ${inspectorHtml}
             <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: bold;">App <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
