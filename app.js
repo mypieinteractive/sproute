@@ -1,7 +1,7 @@
-/* Dashboard - V1.6.1 */
+/* Dashboard - V1.6.2 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added explicit event listener for sproute-trigger-upload to catch dropped/modal files. */
+/* 1. Appended missing sproute-trigger-upload event listener to bridge Drag & Drop/Modal uploads directly to performUpload. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
