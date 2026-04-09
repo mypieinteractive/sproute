@@ -64,14 +64,6 @@
                     <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
                 </button>
             </div>
-            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold; border-left: 1px solid var(--border-color); padding-left: 15px;">
-                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
-                <div id="order-stats" class="hide-mobile-text">
-                    <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
-                    <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
-                    <span id="stat-past" style="color: var(--red);">0 Past Due</span>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -125,6 +117,17 @@
     </div>
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+        
+        <div id="map-header">
+            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold;">
+                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+                <div id="order-stats" class="hide-mobile-text">
+                    <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
+                    <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
+                    <span id="stat-past" style="color: var(--red);">0 Past Due</span>
+                </div>
+            </div>
+        </div>
 
         <div id="routing-controls" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; gap: 20px; z-index: 10; flex: none;">
             <div id="route-divider-group" style="display:flex; gap:8px; flex: 1;">
@@ -178,6 +181,7 @@
     <div id="resizer"></div>
 
     <div id="sidebar" style="display: flex; flex-direction: column;">
+        
         <div id="route-view-toggles" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; gap: 8px; flex-shrink: 0;">
             <button class="route-view-btn active" id="view-rall-btn" onclick="setRouteViewFilter('all')">All Routes</button>
             <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
