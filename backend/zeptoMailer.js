@@ -1,13 +1,16 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.1
+ * VERSION: V15.2
  * * CHANGES:
- * V15.1 - ZeptoMail Authorization & Local Timezone Accuracy Fix. Added the 
+ * V15.2 - ZeptoMail Formatting & Bug Fixes. 
+ * 1. Fixed map image rendering by shifting base64 payload from 'attachments' to ZeptoMail's 'inline_images' array.
+ * 2. Rewrote Due Date comparison logic to use strict 'YYYY-MM-DD' string matching against the calculated local timezone to fix inaccurate offset highlighting.
+ * 3. Adjusted route numbering logic to properly map 0-indexed clusters to 1-indexed UI headers (Route 1, 2, 3) and restored corresponding table colors.
+ * 4. Fixed casing in the hardcoded dashboard link (sproute instead of Sproute).
+ * * V15.1 - ZeptoMail Authorization & Local Timezone Accuracy Fix. Added the 
  * required 'Zoho-enczapikey ' prefix handler for the ZEPTO_TOKEN. Integrated 'geo-tz' 
  * to dynamically extract the exact IANA Timezone string based on the latitude and 
- * longitude of the route's first stop. This ensures the "Due Today" and "Past Due" 
- * badge calculations are perfectly synchronized with the route's physical location, 
- * regardless of where the company's HQ is.
+ * longitude of the route's first stop.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -66,17 +69,22 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             }
         }
 
-        // 4. Calculate Route Statistics 
+        // 4. Calculate Route Statistics & Grouping
         let totalMiles = 0, dueToday = 0, pastDue = 0, totalSecs = 0;
         let routesMap = {};
         
+        // Generate a strict YYYY-MM-DD string for today in the local timezone
         const formatter = new Intl.DateTimeFormat('en-US', { timeZone: localTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
-        const [{ value: mo }, , { value: da }, , { value: ye }] = formatter.formatToParts(new Date());
-        const todayMs = new Date(`${ye}-${mo}-${da}T00:00:00`).getTime();
+        const parts = formatter.formatToParts(new Date());
+        const mo = parts.find(p => p.type === 'month').value;
+        const da = parts.find(p => p.type === 'day').value;
+        const ye = parts.find(p => p.type === 'year').value;
+        const localTodayStr = `${ye}-${mo}-${da}`; // "YYYY-MM-DD"
 
         stagingStops.forEach(s => {
             // Minified format: [rowId, cluster, address, client, app, due, type, eta, dist, lat, lng, status, durationSecs]
-            let rLabel = String(Array.isArray(s) ? s[1] : (s.R || s.routeNum || 1));
+            // Default to 0 if cluster is missing so it groups gracefully
+            let rLabel = String(Array.isArray(s) ? s[1] : (s.cluster !== undefined ? s.cluster : (s.R || s.routeNum || 0)));
             let dDate = Array.isArray(s) ? s[5] : s.dueDate;
             let dist = Array.isArray(s) ? s[8] : s.dist;
             let dur = Array.isArray(s) ? s[12] : s.durationSecs;
@@ -88,9 +96,9 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             totalSecs += parseFloat(dur || 0);
 
             if (dDate) {
-                let dueTimeMs = new Date(`${dDate}T00:00:00`).getTime();
-                if (dueTimeMs < todayMs) pastDue++;
-                else if (dueTimeMs === todayMs) dueToday++;
+                // Safe string comparison (e.g. "2026-04-09" vs "2026-04-10") avoids UTC parsing drift
+                if (dDate < localTodayStr) pastDue++;
+                else if (dDate === localTodayStr) dueToday++;
             }
         });
 
@@ -100,14 +108,16 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
 
         // 5. Build the HTML Table Rows
         let tableRows = "";
-        const hexColors = { "1": "#000075", "2": "#4363d8", "3": "#469990" };
+        // Match standard route colors mapped to 0-indexed clusters
+        const hexColors = { "0": "#000075", "1": "#4363d8", "2": "#469990" }; 
         
         Object.keys(routesMap).sort().forEach(rKey => {
             let rStops = routesMap[rKey];
             let rColor = hexColors[rKey] || "#374151";
+            let displayRouteNum = parseInt(rKey) + 1; // Shifts 0,1,2 to Display as Route 1,2,3
 
             if (Object.keys(routesMap).length > 1) {
-                tableRows += `<tr style="background-color: #f3f4f6;"><td colspan="7" style="padding: 8px 10px; font-weight: bold; color: ${rColor}; font-size: 11px; text-align: left; letter-spacing: 0.5px; border-bottom: 1px solid #d1d5db;">ROUTE ${rKey}</td></tr>`;
+                tableRows += `<tr style="background-color: #f3f4f6;"><td colspan="7" style="padding: 8px 10px; font-weight: bold; color: ${rColor}; font-size: 11px; text-align: left; letter-spacing: 0.5px; border-bottom: 1px solid #d1d5db;">ROUTE ${displayRouteNum}</td></tr>`;
             }
 
             let localSeq = 1;
@@ -121,12 +131,12 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
 
                 let dueBg = "#374151", dueFmt = '--';
                 if (dDate) {
-                    let dueTimeMs = new Date(`${dDate}T00:00:00`).getTime();
-                    let dObj = new Date(dDate); // For extracting month/day
-                    dueFmt = `${dObj.getMonth()+1}/${dObj.getDate()}`;
-                    
-                    if (dueTimeMs < todayMs) dueBg = "#ef4444"; 
-                    else if (dueTimeMs === todayMs) dueBg = "#f59e0b";
+                    let dateParts = dDate.split('-');
+                    if (dateParts.length === 3) {
+                        dueFmt = `${parseInt(dateParts[1])}/${parseInt(dateParts[2])}`; // Drop leading zeros for month/day
+                    }
+                    if (dDate < localTodayStr) dueBg = "#ef4444"; 
+                    else if (dDate === localTodayStr) dueBg = "#f59e0b";
                 }
 
                 let appVal = (app || '--').substring(0,2).toUpperCase();
@@ -150,7 +160,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         });
 
         // 6. Construct the Full HTML Body
-        const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
+        const dashboardLink = `https://mypieinteractive.github.io/sproute/?id=${routeId}`;
         const sprouteLogoUrl = 'https://raw.githubusercontent.com/mypieinteractive/Sproute/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png';
         const customBodyText = payload.customBody || comp.defaultEmailMessage || "";
 
@@ -218,7 +228,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
 
         // Strip the data URL prefix so ZeptoMail accepts it
         const cleanBase64 = payload.mapBase64 ? payload.mapBase64.replace(/^data:image\/\w+;base64,/, "") : "";
-        const attachments = cleanBase64 ? [{
+        const inline_images = cleanBase64 ? [{
             content: cleanBase64,
             mime_type: "image/jpeg",
             name: "routeMap.jpg",
@@ -229,10 +239,10 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             from: { address: "noreply@sprouteapp.com", name: comp.name || "Sproute System" },
             to: toList,
             subject: "Your Route is Ready",
-            htmlbody: htmlBody,
-            attachments: attachments
+            htmlbody: htmlBody
         };
 
+        if (inline_images.length > 0) zeptoPayload.inline_images = inline_images;
         if (ccList.length > 0) zeptoPayload.cc = ccList;
         if (comp.email) zeptoPayload.reply_to = [{ address: comp.email, name: comp.name }];
 
