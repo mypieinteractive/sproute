@@ -1,7 +1,7 @@
 /* Dashboard - V1.6.3 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added handleStartOver logic to support the Staging mode hover overlay, correctly reverting dirty routed stops to Pending. */
+/* 1. Bound handleStartOver logic to window to support the Staging mode hover overlay, correctly reverting dirty routed stops to Pending. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
