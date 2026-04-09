@@ -1,7 +1,7 @@
 /* Dashboard - V1.6.2 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Appended missing sproute-trigger-upload event listener to bridge Drag & Drop/Modal uploads directly to performUpload. */
+/* 1. Synced with unified drag/drop payload and updated rendering execution constraints. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
