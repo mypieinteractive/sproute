@@ -1,7 +1,7 @@
 /* Dashboard - V1.12 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added bottom padding to .address-header-input so the line floats below the text. */
+/* 1. Added margin-bottom: 4px to .address-header-input so the line floats below the text. */
 /* 2. Added .module-action-btn and .stacked-action-btns for full-height flush routing buttons. */
 /* 3. Forced .static-endpoint to strictly 40px height and matching background panel color. */
 
@@ -415,7 +415,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
 /* Endpoints */
-.static-endpoint { background-color: var(--bg-panel); border-bottom: 1px solid #282828; font-weight: bold; height: 40px; min-height: 40px; box-sizing: border-box; }
+.static-endpoint { background-color: var(--bg-panel); border-bottom: 1px solid #282828; font-weight: bold; height: 40px !important; min-height: 40px !important; box-sizing: border-box; }
 .endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3); border-radius: 0; font-weight: 400; font-size: 14px; color: var(--text-main); background-color: transparent; transition: all 0.2s ease; height: 38px; }
 .endpoint-input:focus { outline: none; border-bottom-color: var(--blue); }
 .static-endpoint.compact { background: var(--bg-panel); min-height: 40px; }
