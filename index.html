@@ -64,7 +64,7 @@
         <div id="header-right-controls">
             <div id="add-menu-wrapper" style="position: relative;">
                 <div class="header-action-btn" style="background: #2C3D4F; color: white; padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
-                    <i class="fa-solid fa-plus"></i>
+                    <i class="fa-solid fa-plus"></i> <span style="margin-left: 6px;">Add</span>
                 </div>
                 <div class="add-dropdown-menu" style="right: 0;">
                     <div class="add-dropdown-item" onclick="document.getElementById('hidden-global-file-input').click()">
@@ -83,7 +83,7 @@
     
     <div id="empty-state-container">
         <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; width: 100%;">
-            <div id="main-dropzone" class="upload-dropzone" style="width: 100%; max-width: 600px; height: 300px; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
+            <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 1200px; height: 60vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
                 <input type="file" id="main-file-input" accept=".csv" style="display: none;">
                 <div style="background: rgba(37, 99, 235, 0.1); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
                     <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--blue);"></i>
@@ -110,7 +110,7 @@
             
             <div id="routing-module-wrapper" class="routing-module-wrapper" style="flex: 1; height: 100%; padding: 8px 0; box-sizing: border-box; margin-right: 15px;">
                 <div id="routing-module-core" class="routing-module-core">
-                    <div id="route-divider-group" style="display:flex; gap:8px; flex: 1; height: 100%;">
+                    <div id="route-divider-group" style="display:flex; gap:8px; flex: 0 0 auto; height: 100%;">
                         <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
                             <div class="rbtn-indicator" id="rbtn-ind-1"></div>
                             <div class="rbtn-content">
@@ -136,9 +136,9 @@
 
                     <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
                         <label style="font-size:13px; font-weight:bold; color:var(--text-main); margin-bottom:4px;">Priority Weighting</label>
-                        <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()" style="width: 100%; margin-bottom: 4px;">
+                        <div style="display:flex; justify-content:space-between; width: 100%;">
                             <span style="font-size:12px; color:var(--text-muted);">Efficiency</span>
-                            <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()">
                             <span style="font-size:12px; color:var(--text-muted);">Due Dates</span>
                         </div>
                     </div>
@@ -156,7 +156,7 @@
                 </button>
                 
                 <button id="btn-header-send-route" class="module-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
-                    <i class="fa-solid fa-paper-plane"></i> Send Route(s)
+                    <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
                 </button>
                 
                 <button id="btn-header-generate" class="module-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
