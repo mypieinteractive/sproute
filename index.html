@@ -11,6 +11,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Instant Custom Tooltip for Address Header */
+        .custom-tooltip {
+            position: absolute; top: -28px; right: 0; background: #333; color: #fff;
+            padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
+            opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
+            font-weight: normal; text-transform: none;
+        }
+        .address-search-wrapper:hover .custom-tooltip { opacity: 1; }
+        
+        /* Force Rocker Switch to match [+] button color */
+        .rocker-switch input:checked + label { background: #2C3D4F !important; }
+    </style>
 </head>
 
 <body class="view-manager manager-all-inspectors empty-state-active">
@@ -23,37 +36,20 @@
     </div>
 </div>
 
-<div id="global-header" style="padding: 10px 20px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
+<div id="global-header" style="padding: 10px 0; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
     
-    <div id="header-action-container" style="display: flex; gap: 8px; align-items: center;">
-        <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-main); font-weight: bold;">
+    <div id="header-action-container" style="display: flex; align-items: center;">
+        <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled style="background: transparent; border: 1px solid var(--border-color); color: var(--text-main); font-weight: bold; border-radius: 0 6px 6px 0; border-left: none;">
             <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
         </button>
     </div>
 
-    <div id="header-right-controls" style="display: flex; align-items: center; gap: 15px;">
-        
-        <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
-            <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
-        </button>
-        <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="display:none; background:#444; color:white;">
-            <i class="fa-solid fa-calculator"></i> <span>Re-Calculate</span>
-        </button>
-        <button id="btn-header-optimize-insp" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:#2C3D4F; color:white;">
-            <i class="fa-solid fa-route"></i> <span>Re-Optimize</span>
-        </button>
-        <button id="btn-header-send-route" class="header-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
-            <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
-        </button>
-        <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
-            <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
-        </button>
-
+    <div id="header-right-controls" style="display: flex; align-items: center;">
         <div id="add-menu-wrapper" style="position: relative;">
-            <div class="header-action-btn" style="background: #2C3D4F; color: white; padding: 0 16px; border-radius: 6px; cursor: default;">
+            <div class="header-action-btn" style="background: #2C3D4F; color: white; padding: 0 16px; border-radius: 6px 0 0 6px; cursor: default; display: flex; align-items: center; height: 38px;">
                 <i class="fa-solid fa-plus"></i>
             </div>
-            <div class="add-dropdown-menu">
+            <div class="add-dropdown-menu" style="right: 0;">
                 <div class="add-dropdown-item" onclick="document.getElementById('hidden-global-file-input').click()">
                     <i class="fa-solid fa-cloud-arrow-up"></i> Upload CSV
                 </div>
@@ -63,17 +59,6 @@
             </div>
         </div>
         <input type="file" id="hidden-global-file-input" accept=".csv" style="display: none;">
-
-        <div class="rocker-switch">
-            <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
-            <label for="view-detailed">Detailed</label>
-            <input type="radio" id="view-compact" name="view-mode" value="compact" onchange="setDisplayMode('compact')">
-            <label for="view-compact">Compact</label>
-        </div>
-
-        <div id="inspector-dropdown-wrapper" style="display: none;">
-            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; height: 38px;"></select>
-        </div>
     </div>
 </div>
 <div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
@@ -92,8 +77,25 @@
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
         
-        <div id="map-header">
-            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold;">
+        <div id="map-header" style="height: 58px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: flex-end; padding: 0 15px; flex-shrink: 0; z-index: 10; gap: 15px;">
+            <div id="routing-action-buttons" style="display: flex; gap: 8px;">
+                <button id="btn-header-restore" class="header-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:transparent; color:var(--text-main); border:1px solid var(--border-color);">
+                    <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore Original</span>
+                </button>
+                <button id="btn-header-recalc" class="header-action-btn" onclick="handleCalculate()" style="display:none; background:#444; color:white;">
+                    <i class="fa-solid fa-calculator"></i> <span>Re-Calculate</span>
+                </button>
+                <button id="btn-header-optimize-insp" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:#2C3D4F; color:white;">
+                    <i class="fa-solid fa-route"></i> <span>Re-Optimize</span>
+                </button>
+                <button id="btn-header-send-route" class="header-action-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
+                    <i class="fa-solid fa-paper-plane"></i> <span>Send Route(s)</span>
+                </button>
+                <button id="btn-header-generate" class="header-action-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
+                    <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
+                </button>
+            </div>
+            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: bold; border-left: 1px solid var(--border-color); padding-left: 15px;">
                 <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
                 <div id="order-stats">
                     <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
@@ -155,6 +157,19 @@
     <div id="resizer"></div>
 
     <div id="sidebar" style="display: flex; flex-direction: column;">
+        
+        <div id="list-header" style="height: 58px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0; flex-shrink: 0; z-index: 10;">
+            <div id="inspector-dropdown-wrapper" style="display: none; padding-left: 15px;">
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 8px 30px 8px 12px; width: auto; max-width: 100%; font-weight: bold; height: 38px;"></select>
+            </div>
+            <div class="rocker-switch" style="margin-right: 15px;">
+                <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
+                <label for="view-detailed">Detailed</label>
+                <input type="radio" id="view-compact" name="view-mode" value="compact" onchange="setDisplayMode('compact')">
+                <label for="view-compact">Compact</label>
+            </div>
+        </div>
+
         <div id="route-view-toggles" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; gap: 8px; flex-shrink: 0;">
             <button class="route-view-btn active" id="view-rall-btn" onclick="setRouteViewFilter('all')">All Routes</button>
             <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
