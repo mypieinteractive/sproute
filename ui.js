@@ -1,9 +1,9 @@
-/* Dashboard - V15.9 */
+/* Dashboard - V15.9.2 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. REMOVED performUpload to permanently fix SyntaxError collision. */
-/* 2. Added getSortIcon to use stacked font-awesome sort icons. */
-/* 3. Rebuilt filterListDOM for real-time address filtering. */
+/* 1. Completely rewrote updateRoutingUI to use a strict state machine (Pending, Ready, Staging). */
+/* 2. Enforced routingControls hiding for 'Ready', 'Staging', and Inspector views. */
+/* 3. Refactored Address header flexbox to correctly align input and sort icon. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -70,15 +70,10 @@ export function updateUndoUI() {
     if (undoBtn) undoBtn.disabled = AppState.historyStack.length === 0;
 }
 
-export function applyBranding(logoUrl, brandName) {
-    // No-op
-}
-
 export function updateHeaderUI() {
     if (!Config.isManagerView) return;
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
-
     if (filterSelectWrap) {
         filterSelectWrap.style.display = isCompanyTier ? 'block' : 'none';
     }
@@ -175,104 +170,98 @@ export function updatePrioritySliderUI() {
 }
 
 export function updateRoutingUI() {
-    const isDirty = AppState.dirtyRoutes.size > 0;
     const routingControls = document.getElementById('routing-controls');
-
     const btnGen = document.getElementById('btn-header-generate');
     const btnRecalc = document.getElementById('btn-header-recalc');
     const btnRestore = document.getElementById('btn-header-restore');
     const optInspBtn = document.getElementById('btn-header-optimize-insp');
     const btnSend = document.getElementById('btn-header-send-route');
 
+    // 1. Hide everything initially
     [btnGen, btnRecalc, btnRestore, optInspBtn, btnSend].forEach(btn => { if (btn) btn.style.display = 'none'; });
-    
     updatePrioritySliderUI();
 
+    // 2. Global "All Inspectors" check (Managers only)
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
-        if(routingControls) routingControls.style.display = 'none';
+        if (routingControls) routingControls.style.display = 'none';
         const routeToggles = document.getElementById('route-view-toggles');
-        if(routeToggles) routeToggles.style.display = 'none';
+        if (routeToggles) routeToggles.style.display = 'none';
         return;
     }
 
-    let currentState = 'Pending';
+    // 3. Filter target stops based on view
     let targetStops = Config.isManagerView ? AppState.stops.filter(s => String(s.driverId) === String(AppState.currentInspectorFilter)) : AppState.stops;
-    
-    const hasActiveRoutesUI = targetStops.some(s => isRouteAssigned(s.status));
-    
-    if (targetStops.length > 0) {
-        const routedStops = targetStops.filter(s => isRouteAssigned(s.status));
-        const targetStop = routedStops.length > 0 ? routedStops[0] : targetStops[0];
-        let rs = (targetStop.routeState || 'Pending').toLowerCase();
-        
-        if (rs === 'queued') currentState = 'Queued';
-        else if (rs === 'ready') currentState = 'Ready';
-        else if (rs === 'staging') currentState = 'Staging';
-        else if (rs === 'staging-endpoint') currentState = 'Staging-endpoint';
+    targetStops = targetStops.filter(s => s.status !== 'Deleted' && s.status !== 'Cancelled');
+
+    if (targetStops.length === 0) {
+        if (routingControls) routingControls.style.display = 'none';
+        return;
     }
 
-    if (isDirty && hasActiveRoutesUI) currentState = AppState.dirtyRoutes.has('endpoints_0') ? 'Staging-endpoint' : 'Staging';
+    // 4. Determine True State (Pending, Staging, Ready)
+    const unroutedCount = targetStops.filter(s => !isRouteAssigned(s.status)).length;
+    let isDirty = false;
+    
+    let inspKey = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+    if (AppState.dirtyRoutes.has('all') || AppState.dirtyRoutes.has('endpoints_0')) {
+        isDirty = true;
+    } else {
+        for (let i = 0; i <= AppState.currentRouteCount; i++) {
+            if (AppState.dirtyRoutes.has(`${inspKey}_${i}`)) isDirty = true;
+        }
+    }
 
+    let currentState = 'Ready';
+    if (unroutedCount === targetStops.length) {
+        currentState = 'Pending';
+    } else if (isDirty) {
+        currentState = 'Staging';
+    }
+
+    // 5. Route View Toggles Update
     let maxCluster = -1;
     targetStops.forEach(s => {
         if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster;
     });
-
     const togglesEl = document.getElementById('route-view-toggles');
     if (maxCluster > 0) {
-        if(togglesEl) togglesEl.style.display = 'flex';
+        if (togglesEl) togglesEl.style.display = 'flex';
         if (document.getElementById('view-r1-btn')) document.getElementById('view-r1-btn').style.display = maxCluster >= 1 ? 'block' : 'none';
         if (document.getElementById('view-r2-btn')) document.getElementById('view-r2-btn').style.display = maxCluster >= 2 ? 'block' : 'none';
     } else {
-        if(togglesEl) togglesEl.style.display = 'none';
+        if (togglesEl) togglesEl.style.display = 'none';
         if (AppState.currentRouteViewFilter !== 'all') {
             AppState.currentRouteViewFilter = 'all';
             document.getElementById('view-rall-btn')?.classList.add('active');
-            for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
+            for(let i = 0; i <= 2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
         }
     }
 
-    let isCurrentViewDirty = false;
-    if (isDirty) {
-        if (AppState.currentRouteViewFilter === 'all') isCurrentViewDirty = true;
-        else {
-            let inspKey = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
-            let rKey = `${inspKey}_${AppState.currentRouteViewFilter}`;
-            if (AppState.dirtyRoutes.has(rKey) || AppState.dirtyRoutes.has('endpoints_0') || AppState.dirtyRoutes.has('all')) isCurrentViewDirty = true;
-        }
-    }
-
+    // 6. Enforce UI Rules based on strict state
     if (Config.isManagerView) {
-        const unroutedCount = targetStops.filter(s => !isRouteAssigned(s.status)).length;
-        if (currentState === 'Pending' && unroutedCount > 0 && btnGen) {
-            btnGen.style.display = 'flex';
-            document.getElementById('btn-header-generate-text').innerText = "Optimize";
-        } else if (currentState === 'Ready' && btnSend && !isCurrentViewDirty) {
-            btnSend.style.display = 'flex';
-        } else if ((currentState === 'Staging' || currentState === 'Staging-endpoint') && isCurrentViewDirty) {
+        if (currentState === 'Pending') {
+            if (routingControls) routingControls.style.display = 'flex';
+            if (btnGen) {
+                btnGen.style.display = 'flex';
+                document.getElementById('btn-header-generate-text').innerText = "Optimize";
+            }
+        } else if (currentState === 'Staging') {
+            if (routingControls) routingControls.style.display = 'none';
             if (btnRecalc) btnRecalc.style.display = 'flex';
             if (optInspBtn) optInspBtn.style.display = 'flex';
+        } else if (currentState === 'Ready') {
+            if (routingControls) routingControls.style.display = 'none';
+            if (btnSend) btnSend.style.display = 'flex';
         }
-
-        if (routingControls) routingControls.style.display = (currentState === 'Pending' && unroutedCount > 0) ? 'flex' : 'none';
-
     } else {
-        if(routingControls) routingControls.style.display = 'flex';
-        let showRecalc = false, showOpt = false, showRestore = false;
-
-        if (isDirty) {
-            showRecalc = true;
-            if (AppState.dirtyRoutes.has('endpoints_0') || AppState.PERMISSION_REOPTIMIZE) showOpt = true;
-        } else if (AppState.isAlteredRoute) {
-            if(btnRestore) btnRestore.style.display = 'flex'; 
-            showRestore = true;
-        }
+        // Inspector View
+        if (routingControls) routingControls.style.display = 'none';
         
-        if(btnRecalc) btnRecalc.style.display = showRecalc ? 'flex' : 'none';
-        if(optInspBtn) optInspBtn.style.display = showOpt ? 'flex' : 'none';
-
-        if (!showRecalc && !showOpt && !showRestore) {
-            if(routingControls) routingControls.style.display = 'none';
+        if (currentState === 'Staging') {
+            if (btnRecalc) btnRecalc.style.display = 'flex';
+            if (AppState.PERMISSION_REOPTIMIZE && optInspBtn) optInspBtn.style.display = 'flex';
+        } else if (AppState.isAlteredRoute && currentState === 'Ready') {
+            if (btnRestore) btnRestore.style.display = 'flex';
         }
     }
 }
@@ -290,7 +279,6 @@ export function drawRoute() {
     });
 }
 
-// --- Restored Sort Icon Logic ---
 export function getSortIcon(col) {
     if (AppState.currentSort.col !== col) return '<i class="fa-solid fa-sort" style="opacity:0.3; margin-left:4px;"></i>';
     return AppState.currentSort.asc ? '<i class="fa-solid fa-sort-up" style="margin-left:4px; color:var(--blue);"></i>' : '<i class="fa-solid fa-sort-down" style="margin-left:4px; color:var(--blue);"></i>';
@@ -314,6 +302,8 @@ export function render() {
     
     const addMenuWrapper = document.getElementById('add-menu-wrapper');
     if (addMenuWrapper) addMenuWrapper.style.display = Config.viewMode === 'inspector' ? 'none' : 'block';
+
+    updateRoutingUI();
 
     if (Config.isManagerView) {
         const header = document.createElement('div');
@@ -964,7 +954,6 @@ export function showAddOrderModal() {
         m.style.display = 'none';
         const file = new File([['Address', 'Latitude', 'Longitude', 'Due Date', 'Client', 'Order Type'].join(',') + '\n' + [document.getElementById('add-address').value.trim(), document.getElementById('add-lat').value, document.getElementById('add-lng').value, document.getElementById('add-due').value, document.getElementById('add-client').value.trim(), document.getElementById('add-type').value.trim()].map(v => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')], "manual_order.csv", { type: "text/csv" });
         apiFetch({ action: 'triggerUploadFromModal', data: "placeholder_to_force_app_js_upload" }).then(() => {
-           // We pass the actual upload execution to the imported performUpload function in app.js via the DOM
            document.getElementById('hidden-global-file-input').fileToUpload = file;
            document.getElementById('hidden-global-file-input').dispatchEvent(new Event('change'));
         });
@@ -1014,7 +1003,6 @@ export function showUploadModal(file) {
     document.getElementById('btn-submit-upload').onclick = () => {
         m.style.display = 'none';
         
-        // Create an invisible custom event to tell app.js to run the upload
         const uploadEvent = new CustomEvent('sproute-trigger-upload', {
             detail: { file: file, inspectorId: selectedInspector, csvType: selectedCsvType }
         });
@@ -1241,8 +1229,6 @@ const mainDropzone = document.getElementById('main-dropzone');
 const mainInput = document.getElementById('main-file-input');
 const hiddenFileInput = document.getElementById('hidden-global-file-input');
 
-// The single, centralized upload trigger. 
-// Dispatches to app.js where the actual performUpload function lives.
 function triggerUploadEvent(file, inspectorId, csvType) {
     const uploadEvent = new CustomEvent('sproute-trigger-upload', {
         detail: { file: file, inspectorId: inspectorId, csvType: csvType }
@@ -1266,7 +1252,6 @@ if (mainDropzone && mainInput) {
 if (hiddenFileInput) {
     hiddenFileInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files.length > 0) {
-            // We read the property we set via the manual entry modal
             if (hiddenFileInput.fileToUpload) {
                 triggerUploadEvent(hiddenFileInput.fileToUpload, '', '');
                 hiddenFileInput.fileToUpload = null;
@@ -1278,7 +1263,6 @@ if (hiddenFileInput) {
     });
 }
 
-// Global Drag and Drop Override Logic
 let dragCounter = 0;
 document.addEventListener('dragenter', (e) => {
     e.preventDefault();
@@ -1299,11 +1283,6 @@ document.addEventListener('drop', (e) => {
     dragCounter = 0;
     document.body.classList.remove('drag-override-empty');
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]);
-});
-
-// Listen for the custom event fired by the upload modal and execute it
-document.addEventListener('sproute-trigger-upload', (e) => {
-    // This bridges the UI modal to the app.js performUpload function natively without duplicating code
 });
 
 // --- Resizer Logic ---
