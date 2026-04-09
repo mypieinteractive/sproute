@@ -1,7 +1,7 @@
-/* Dashboard - V1.6.3 */
+/* Dashboard - V1.6.4 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Bound handleStartOver logic to window to support the Staging mode hover overlay, correctly reverting dirty routed stops to Pending. */
+/* 1. Bound liveClusterUpdate to window object so the priority slider HTML can successfully execute it. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -595,7 +595,17 @@ export function moveSelectedToRoute(cIdx) {
     triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
 }
 
-window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.handleStartOver = handleStartOver; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute; window.sortTable = sortTable;
+export function liveClusterUpdate() {
+    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat);
+    if(activeStops.length > 0 && AppState.currentRouteCount > 1) {
+        calculateClusters(activeStops, AppState.currentRouteCount, parseInt(document.getElementById('slider-priority')?.value || 0));
+        updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
+        UI.updateRouteTimes();
+        UI.render();
+    }
+}
+
+window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.handleStartOver = handleStartOver; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute; window.sortTable = sortTable; window.liveClusterUpdate = liveClusterUpdate;
 
 export function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
