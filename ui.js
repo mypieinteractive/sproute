@@ -1,10 +1,10 @@
-/* Dashboard - V15.9.5 */
+/* Dashboard - V15.9.6 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Completely removed the .col-handle (grabber) HTML from headers and rows globally. */
-/* 2. Standardized initSortable to use long-press (200ms delay) universally. */
-/* 3. Rebuilt createEndpointRow to perfectly match main row flex columns, with custom icons and aligned START/END text. */
-/* 4. Applied structural updates to Address search field, hiding default background and adding custom CSS tooltip and magnifying glass. */
+/* 1. Completely removed .col-handle HTML from all rows to support universal long-press sorting. */
+/* 2. Standardized initSortable with delay: 200, delayOnTouchOnly: false across all views. */
+/* 3. Rebuilt createEndpointRow to map exactly to list columns, centering custom icons and text. */
+/* 4. Added a DOM-flush timeout before renderMapMarkers to perfectly fix the initial map bounds zoom bug. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -468,27 +468,33 @@ export function render() {
         if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1)));
     }
 
-    renderMapMarkers({
-        activeStops, 
-        endpointsToDraw: buildEndpointsToDraw(activeStops),
-        isManagerView: Config.isManagerView, 
-        currentInspectorFilter: AppState.currentInspectorFilter,
-        currentRouteCount: AppState.currentRouteCount, 
-        allStops: AppState.stops, 
-        inspectors: AppState.inspectors,
-        onMarkerClick: (id, isShift) => {
-            if (!isShift) AppState.selectedIds.clear();
-            AppState.selectedIds.has(id) ? AppState.selectedIds.delete(id) : AppState.selectedIds.add(id);
-            updateSelectionUI();
-            document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    });
+    // Flush the DOM to ensure map.resize grabs the exact layout dimensions before fitting bounds
+    setTimeout(() => { 
+        const map = getMapInstance();
+        if (map) map.resize();
 
-    updateSelectionUI();
-    
-    if (window.lastAddressSearchValue) { window.filterListDOM(window.lastAddressSearchValue); }
+        renderMapMarkers({
+            activeStops, 
+            endpointsToDraw: buildEndpointsToDraw(activeStops),
+            isManagerView: Config.isManagerView, 
+            currentInspectorFilter: AppState.currentInspectorFilter,
+            currentRouteCount: AppState.currentRouteCount, 
+            allStops: AppState.stops, 
+            inspectors: AppState.inspectors,
+            onMarkerClick: (id, isShift) => {
+                if (!isShift) AppState.selectedIds.clear();
+                AppState.selectedIds.has(id) ? AppState.selectedIds.delete(id) : AppState.selectedIds.add(id);
+                updateSelectionUI();
+                document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
 
-    setTimeout(() => { resizeMap(); }, 150);
+        updateSelectionUI();
+        
+        if (window.lastAddressSearchValue) { window.filterListDOM(window.lastAddressSearchValue); }
+
+        resizeMap(); 
+    }, 20); 
 }
 
 function buildEndpointsToDraw(activeStops) {
@@ -601,7 +607,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; padding: 8px 0; font-weight:normal; text-transform:none; border-bottom:1px solid var(--border-color); background:transparent;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
             </div>
         </div>
         <div class="col-app"></div>
