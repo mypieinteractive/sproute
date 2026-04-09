@@ -1,11 +1,9 @@
-/* Dashboard - V1.8 */
+/* Dashboard - V1.9 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Unbolded row data fonts (ETA, Due, Address, App, Client) and added vertical dividers. */
-/* 2. Fixed #map-hint anchoring to top-left of the map container. */
-/* 3. Fixed [+] menu disappearing by removing margin-top and extending the ::before hover bridge. */
-/* 4. Integrated custom CSS tooltip and Rocker Switch active color. */
-/* 5. Stripped background highlighting from address search input and added bottom border. */
+/* 1. Hidden endpoint borders via CSS exclusion to maintain unified list aesthetic. */
+/* 2. Fixed #map-hint anchoring to top-left of the active map view. */
+/* 3. Updated .address-header-input with a starkly visible bottom border overlay. */
 
 :root { 
     --blue: #2563eb; 
@@ -97,6 +95,10 @@ body.view-managermobilesplit.split-show-list #stop-list { display: block !import
 /* Hide Map Hint */
 body.view-managermobile #map-hint, body.view-managermobilesplit #map-hint, body.view-inspector #map-hint { display: none !important; }
 
+/* Mobile CSS overrides for dynamically synced headers */
+body.view-managermobile #header-resizer-gap, body.view-managermobilesplit #header-resizer-gap { display: none !important; }
+body.view-managermobile #header-list-zone, body.view-managermobilesplit #header-list-zone { width: auto !important; flex: 1; }
+
 /* Mobile Column Fitting */
 body.view-managermobile .col-eta, body.view-managermobilesplit .col-eta { width: 55px; font-size: 12px; }
 body.view-managermobile .col-due, body.view-managermobilesplit .col-due { width: 45px; font-size: 12px; }
@@ -141,19 +143,6 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     display: flex; align-items: center; gap: 10px; cursor: pointer; transition: 0.2s;
 }
 .add-dropdown-item:hover { background: var(--blue); color: white; }
-
-/* MAP HEADER (Top Map Bar) */
-#map-header {
-    height: 38px;
-    background: var(--bg-header);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0 15px;
-    flex-shrink: 0;
-    z-index: 10;
-}
 
 .list-subheading {
     padding: 6px 12px; background: var(--bg-header); color: #ffffff;
@@ -214,7 +203,6 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .rocker-switch { display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; height: 38px; }
 .rocker-switch input { display: none; }
 .rocker-switch label { padding: 0 16px; font-size: 13px; font-weight: bold; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; }
-.rocker-switch input:checked + label { background: #2C3D4F !important; color: white; }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--blue); cursor: pointer; margin-top: -6px; }
@@ -299,6 +287,9 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* Vertical Dividers for Header & Rows */
 .col-eta, .col-due, .col-addr, .col-app { border-right: 1px solid rgba(255, 255, 255, 0.05); }
 
+/* Bypass Vertical Dividers explicitly for Static Endpoints */
+.static-endpoint .col-eta, .static-endpoint .col-due, .static-endpoint .col-addr, .static-endpoint .col-app { border-right: none !important; }
+
 .glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid #282828; font-size: 14px; color: var(--text-main); align-items: center; cursor: pointer; background: var(--bg-panel); transition: background 0.2s; }
 .glide-row:hover { background: var(--bg-hover); }
 .glide-row.selected { background: var(--fade-blue) !important; }
@@ -317,6 +308,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .col-due.due-today { color: var(--orange); }
 .col-due.past-due { color: var(--red); font-weight: bold; }
 
+/* Enforce rigid right-alignment for Inspector Column */
 .col-insp { width: 120px; color: var(--text-muted); padding-left: 8px; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; }
 .col-addr { flex: 1 1 auto; min-width: 0; padding-left: 8px; padding-right: 6px; font-weight: 400; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; font-weight: 400; }
@@ -328,12 +320,13 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .type-text { font-size: 11px; font-weight: normal !important; color: var(--text-muted) !important; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 .glide-row.compact .type-text, .stop-item.compact .type-text, .compact .type-text { display: none !important; }
 
+/* Widened app column to prevent overlap with client column */
 .col-app { width: 55px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-client { width: 70px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; }
 
 /* Address Input Header perfect alignment styling */
 .address-header-input {
-    background: transparent !important; border: 1px solid transparent; border-bottom: 1px solid var(--border-color) !important; color: var(--text-main);
+    background: transparent !important; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
     font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 0;
     border-radius: 0; transition: 0.2s; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
 }
@@ -342,15 +335,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .address-header-input:focus, .address-header-input:hover { border-bottom-color: var(--blue) !important; }
 .clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
 .clear-search-icon:hover { color: var(--text-main); }
-
-/* Custom Tooltip */
-.custom-tooltip {
-    position: absolute; top: -28px; right: 0; background: #333; color: #fff;
-    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
-    opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
-    font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-.address-search-wrapper:hover .custom-tooltip { opacity: 1; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
@@ -370,11 +354,9 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
 .static-endpoint { background-color: var(--bg-base); border-top: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color); font-weight: bold; }
-.endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid transparent; border-bottom: 1px solid var(--border-color); border-radius: 0; font-weight: normal; color: var(--text-main); background-color: transparent; transition: all 0.2s ease; }
+.endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3); border-radius: 0; font-weight: 400; font-size: 14px; color: var(--text-main); background-color: transparent; transition: all 0.2s ease; height: 38px; }
 .endpoint-input:focus { outline: none; border-bottom-color: var(--blue); }
 .static-endpoint.compact { background: var(--bg-panel); min-height: 45px; }
-.static-endpoint.compact .endpoint-input { background: transparent; border: 1px dashed var(--border-color); padding: 6px; }
-.static-endpoint.compact .endpoint-input:focus { background: var(--bg-base); border-style: solid; }
 
 .pill-btn { padding: 8px 16px; border: 1px solid #4a4a4c; border-radius: 20px; cursor: pointer; color: #ccc; font-size: 14px; background: transparent; transition: all 0.2s ease; }
 .pill-btn.active { background: rgba(59, 130, 246, 0.15); color: var(--blue); border-color: var(--blue); font-weight: bold; }
