@@ -1,8 +1,10 @@
-/* Dashboard - V1.10 */
+/* Dashboard - V1.11 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Created styling for #map-header to perfectly match the list header. */
-/* 2. Added CSS logic for 'All Inspectors' mode to make row-level inspector selects look like plain text + arrow. */
+/* 1. Added margin-bottom: 4px to .address-header-input. */
+/* 2. Added .routing-module-core, .routing-module-wrapper, and .start-over-overlay for locked staging state. */
+/* 3. Set .static-endpoint to fixed height: 40px and var(--bg-panel) background. */
+/* 4. Styled .stacked-action-btns for vertical segmenting of Re-Calc/Re-Opt buttons. */
 
 :root { 
     --blue: #2563eb; 
@@ -166,6 +168,29 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 37px; }
 
 .route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: var(--text-main); }
+
+/* ROUTING MODULE: Wrapper, Core, Overlay, and Buttons */
+.routing-module-wrapper { position: relative; display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; }
+.routing-module-core { display: flex; flex: 1; gap: 20px; width: 100%; align-items: center; transition: opacity 0.2s, filter 0.2s; }
+.routing-module-core.staging-locked { opacity: 0.5; pointer-events: none; filter: grayscale(80%); }
+
+.start-over-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    opacity: 0; background: rgba(30,30,30,0.7); backdrop-filter: blur(2px); border-radius: 6px;
+    transition: 0.2s; z-index: 5; pointer-events: none;
+}
+.routing-module-wrapper:hover .start-over-overlay.active { opacity: 1; pointer-events: auto; }
+
+.btn-start-over {
+    padding: 10px 24px; font-weight: bold; background: var(--red); color: white; border: none;
+    border-radius: 6px; font-size: 14px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: transform 0.1s;
+}
+.btn-start-over:active { transform: scale(0.95); }
+
+.stacked-action-btns { display: flex; flex-direction: column; height: 100%; justify-content: center; gap: 1px; }
+.stacked-action-btns .header-action-btn { height: 20px; font-size: 11px; padding: 0 12px; border-radius: 0; }
+.stacked-action-btns.segmented .header-action-btn:first-child { border-radius: 4px 4px 0 0; }
+.stacked-action-btns.segmented .header-action-btn:last-child { border-radius: 0 0 4px 4px; }
 
 .route-btn { 
     flex: 1; border: 2px solid transparent; background: var(--bg-base); 
@@ -347,7 +372,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* Address Input Header perfect alignment styling */
 .address-header-input {
     background: transparent !important; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3) !important; color: var(--text-main);
-    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 0;
+    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 0; margin-bottom: 4px;
     border-radius: 0; transition: 0.2s; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
 }
 .glide-table-header .address-header-input { height: 38px; }
@@ -355,15 +380,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .address-header-input:focus, .address-header-input:hover { border-bottom-color: var(--blue) !important; }
 .clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
 .clear-search-icon:hover { color: var(--text-main); }
-
-/* Custom Tooltip */
-.custom-tooltip {
-    position: absolute; top: -28px; right: 0; background: #333; color: #fff;
-    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
-    opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
-    font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-.address-search-wrapper:hover .custom-tooltip { opacity: 1; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
@@ -382,10 +398,11 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .grey-checkbox:checked { background-color: var(--blue); border-color: var(--blue); }
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
-.static-endpoint { background-color: var(--bg-base); border-top: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color); font-weight: bold; }
+/* Endpoints */
+.static-endpoint { background-color: var(--bg-panel); border-bottom: 1px solid #282828; font-weight: bold; height: 40px; min-height: 40px; box-sizing: border-box; }
 .endpoint-input { width: 100%; padding: 8px 12px; border: 1px solid transparent; border-bottom: 1px solid rgba(255, 255, 255, 0.3); border-radius: 0; font-weight: 400; font-size: 14px; color: var(--text-main); background-color: transparent; transition: all 0.2s ease; height: 38px; }
 .endpoint-input:focus { outline: none; border-bottom-color: var(--blue); }
-.static-endpoint.compact { background: var(--bg-panel); min-height: 45px; }
+.static-endpoint.compact { background: var(--bg-panel); min-height: 40px; }
 
 .pill-btn { padding: 8px 16px; border: 1px solid #4a4a4c; border-radius: 20px; cursor: pointer; color: #ccc; font-size: 14px; background: transparent; transition: all 0.2s ease; }
 .pill-btn.active { background: rgba(59, 130, 246, 0.15); color: var(--blue); border-color: var(--blue); font-weight: bold; }
