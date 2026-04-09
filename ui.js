@@ -1,10 +1,9 @@
-/* Dashboard - V17.5 */
+/* Dashboard - V17.6 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Overhauled createEndpointRow to nest the pencil icon alongside the inputs, perfectly mirroring the address-search-input structure. */
-/* 2. Swept all inline font-weight: bold styles and updated them to font-weight: 500 for a lighter typography aesthetic globally. */
-/* 3. Exported the current routing state to AppState.currentRoutingState inside updateRoutingUI. */
-/* 4. Added a block in initSortable() that entirely disables list reordering if the active routing state is strictly "Pending". */
+/* 1. Added visibility toggle logic in updateSummary() to hide miles/hours when AppState.currentRoutingState is 'Pending' or 'Staging'. */
+/* 2. Passed SortableJS abort logic if currentRoutingState === 'Pending'. */
+/* 3. Updated performResize logic to calculate heights using (window.innerHeight - 40) natively to stay inside body bounds without overflowing. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -584,6 +583,11 @@ export function updateSummary() {
     if (document.getElementById('stat-total')) document.getElementById('stat-total').innerText = `${active.length} Orders`;
     if (document.getElementById('stat-due')) document.getElementById('stat-due').innerText = `${dueToday} Due Today`;
     if (document.getElementById('stat-past')) document.getElementById('stat-past').innerText = `${pastDue} Past Due`;
+
+    const summaryMetrics = document.getElementById('summary-metrics');
+    if (summaryMetrics) {
+        summaryMetrics.style.visibility = (AppState.currentRoutingState === 'Pending' || AppState.currentRoutingState === 'Staging') ? 'hidden' : 'visible';
+    }
 }
 
 export function updateRouteTimes() {
@@ -627,6 +631,9 @@ export function createEndpointRow(type, endpointData) {
     const icon = type === 'start' ? '<i class="fa-solid fa-location-dot"></i>' : '<i class="fa-solid fa-flag-checkered"></i>';
     const labelText = type === 'start' ? 'START' : 'END';
     
+    const isAllInspectors = Config.isManagerView && AppState.currentInspectorFilter === 'all';
+    const dummySort = isAllInspectors ? '<i class="fa-solid fa-sort" style="margin-left:4px;"></i>' : '';
+    
     const el = document.createElement('div');
     el.className = 'stop-item static-endpoint';
     
@@ -634,15 +641,16 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-num" style="display:flex; justify-content:center; align-items:center; color:var(--text-muted); font-size:16px;">
             ${icon}
         </div>
-        <div class="col-eta" style="color:var(--text-muted); font-weight:500; display:${Config.isManagerView && AppState.currentInspectorFilter === 'all' ? 'none' : 'flex'}; justify-content:center; align-items:center; text-align:center;">
+        <div class="col-eta" style="color:var(--text-muted); font-weight:500; display:${isAllInspectors ? 'none' : 'flex'}; justify-content:center; align-items:center; text-align:center;">
             ${labelText}
         </div>
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" onmouseup="return false;" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
             </div>
+            <div style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; visibility: hidden;">${dummySort}</div>
         </div>
         <div class="col-app"></div>
         <div class="col-client"></div>
@@ -1337,9 +1345,15 @@ resizerEl.addEventListener('mousedown', startResize); resizerEl.addEventListener
 function performResize(e) {
     if (!isResizing) return;
     let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
+    
+    // Calculate total actual container height taking the global 40px gap into account
+    let containerHeight = window.innerHeight - 40;
+    
     if (Config.viewMode === 'managermobile') {
-        let newHeight = window.innerHeight - clientY; if (newHeight < 200) newHeight = 200; if (newHeight > window.innerHeight - 200) newHeight = window.innerHeight - 200;
-        sidebarEl.style.height = newHeight + 'px'; sidebarEl.style.flex = 'none'; mapWrapEl.style.height = (window.innerHeight - newHeight - resizerEl.offsetHeight) + 'px'; mapWrapEl.style.flex = 'none';
+        let newHeight = containerHeight - clientY; 
+        if (newHeight < 200) newHeight = 200; 
+        if (newHeight > containerHeight - 200) newHeight = containerHeight - 200;
+        sidebarEl.style.height = newHeight + 'px'; sidebarEl.style.flex = 'none'; mapWrapEl.style.height = (containerHeight - newHeight - resizerEl.offsetHeight) + 'px'; mapWrapEl.style.flex = 'none';
     } else {
         let newWidth = window.innerWidth - clientX; 
         
