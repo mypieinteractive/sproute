@@ -1,10 +1,10 @@
-/* Dashboard - V15.9 */
+/* Dashboard - V15.9.1 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added custom dark scrollbar for the stops list. */
-/* 2. Increased hover menu bridge height to 25px to prevent menu disappearance. */
-/* 3. Styled the new address search header input. */
-/* 4. Resized .glide-row .insp-select to match screenshot perfectly. */
+/* 1. Added explicit width/text-align/border to .address-header-input. */
+/* 2. Protected header fonts for .col-eta and .col-due. */
+/* 3. Restored font-weight for .type-text and enforced hidden state in compact mode. */
+/* 4. Expanded .col-app width to prevent sort icon overlap. */
 
 :root { 
     --blue: #2563eb; 
@@ -182,7 +182,7 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .insp-select option { background: var(--bg-panel); color: var(--text-main); }
 .insp-select:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* List Row Specific Assignee Select (Matches Screenshot) */
+/* List Row Specific Assignee Select */
 .glide-row .insp-select {
     background-color: #242528;
     border: 1px solid #3a3b3d;
@@ -281,7 +281,10 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .stop-actions { display: flex; align-items: center; padding-right: 8px; gap: 4px; }
 .icon-btn { font-size: 28px; cursor: pointer; padding: 4px; }
 
+/* FIX: Enforce bold grey fonts for specific header columns to prevent row inheritance */
 .glide-table-header { display: flex; height: 38px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: bold; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
+.glide-table-header .col-eta, .glide-table-header .col-due { color: var(--text-muted) !important; font-weight: bold !important; }
+
 .glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid #282828; font-size: 14px; color: var(--text-main); align-items: center; cursor: pointer; background: var(--bg-panel); transition: background 0.2s; }
 .glide-row:hover { background: var(--bg-hover); }
 .glide-row.selected { background: var(--fade-blue) !important; }
@@ -302,21 +305,27 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .col-addr { flex: 1 1 auto; min-width: 0; padding-right: 6px; font-weight: 500; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 
+.meta-text { font-size: 11px; font-weight: normal; color: var(--text-main); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+.compact .meta-text { display: none !important; }
+
+/* FIX: Enforce normal font weight and fix visibility toggling for Compact mode */
+.type-text { font-size: 11px; font-weight: 400 !important; color: var(--text-muted) !important; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+.glide-row.compact .type-text, .stop-item.compact .type-text { display: none !important; }
+
+/* FIX: Widened app column to prevent overlap with client column */
+.col-app { width: 55px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.col-client { width: 70px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-start; }
+
 /* Address Input Header styling */
 .address-header-input {
-    background: transparent; border: 1px solid transparent; color: var(--text-muted);
-    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 4px 24px 4px 4px;
-    border-radius: 4px; transition: 0.2s; outline: none; flex: 1;
+    background: transparent; border: 1px solid var(--border-color); color: var(--text-main);
+    font-weight: bold; font-size: 12px; text-transform: uppercase; width: 100%; padding: 6px 24px 6px 8px;
+    border-radius: 4px; transition: 0.2s; outline: none; flex: 1; text-align: left; box-sizing: border-box;
 }
-.address-header-input::placeholder { color: var(--text-muted); }
-.address-header-input:focus, .address-header-input:not(:placeholder-shown) {
-    background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-main);
-}
+.address-header-input::placeholder { color: var(--text-muted); font-weight: bold; }
+.address-header-input:focus { border-color: var(--blue); }
 .clear-search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
 .clear-search-icon:hover { color: var(--text-main); }
-
-.col-app { width: 45px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-.col-client { width: 55px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 
 .marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
 .marker.bulk-selected { z-index: 1000 !important; }
