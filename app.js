@@ -1,8 +1,7 @@
-/* Dashboard - V1.6 */
+/* Dashboard - V1.6.1 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Consolidated performUpload strictly into this file to fix SyntaxError crashes. */
-/* 2. Re-injected and bound sortTable to window to fix header sorting. */
+/* 1. Added explicit event listener for sproute-trigger-upload to catch dropped/modal files. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -570,6 +569,13 @@ export function updateShiftCursor(isShiftDown) {
         else if (!isShiftDown && wrap.classList.contains('shift-down')) wrap.classList.remove('shift-down');
     }
 }
+
+// 1. ADDED EVENT LISTENER FOR UPLOADS
+document.addEventListener('sproute-trigger-upload', (e) => {
+    const { file, inspectorId, csvType } = e.detail;
+    performUpload(file, inspectorId, csvType);
+});
+
 document.addEventListener('keydown', (e) => { 
     if (e.key === 'Shift') updateShiftCursor(true); 
     if (Config.isManagerView && (e.key === 'Delete' || e.key === 'Backspace')) {
