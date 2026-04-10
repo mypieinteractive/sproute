@@ -1,7 +1,7 @@
-/* Dashboard - V18.9 */
+/* Dashboard - V18.10 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Converted @media (prefers-color-scheme: light) to a standard class block (body.light-mode) to fully support URL-parameter-based theming. */
+/* 1. Moved the light-mode class to target both :root and body recursively, completely bulletproofing the CSS cascade against all mobile browser quirks and nested iframes. */
 
 :root { 
     --blue: #349BDE; 
@@ -20,7 +20,7 @@
 }
 
 /* Light Mode Overrides (Controlled via class dynamically in app.js) */
-body.light-mode { 
+:root.light-mode, body.light-mode { 
     --bg-base: #f3f4f6;
     --bg-panel: #ffffff;
     --bg-hover: #e5e7eb;
@@ -30,13 +30,13 @@ body.light-mode {
     --text-muted: #6b7280;
 }
 
-body.light-mode #map-hint { 
+body.light-mode #map-hint, :root.light-mode #map-hint { 
     background: rgba(255,255,255,0.75); 
     color: #111; 
     border-color: rgba(0,0,0,0.1); 
 }
 
-body.light-mode .list-subheading {
+body.light-mode .list-subheading, :root.light-mode .list-subheading {
     background: var(--bg-hover) !important;
     color: var(--text-main) !important;
 }
