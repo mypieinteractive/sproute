@@ -3,9 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.0
+            VERSION: V19.1
             CHANGES:
-            1. Updated inline height of #inspector-filter to 38px to perfectly bottom-align with the 38px global action buttons.
+            1. Reverted the inspector-filter select height to 30px.
+            2. Injected margin-top: 8px into the inspector-dropdown-wrapper and rocker-switch containers to perfectly align their bottom edges with the 38px global action buttons.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -58,10 +59,10 @@
 
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: center; gap: 15px;">
-            <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 38px;"></select>
+            <div id="inspector-dropdown-wrapper" style="display: none; margin-top: 8px;">
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 30px;"></select>
             </div>
-            <div class="rocker-switch">
+            <div class="rocker-switch" style="margin-top: 8px;">
                 <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
                 <label for="view-detailed">Detailed</label>
                 <input type="radio" id="view-compact" name="view-mode" value="compact" onchange="setDisplayMode('compact')">
