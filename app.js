@@ -1,9 +1,7 @@
-/* Dashboard - V18.4 */
+/* Dashboard - V18.5 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added themeParam to the Config object to parse ?theme= from the URL. */
-/* 2. Replaced the window.matchMedia OS observer with a strict check against Config.themeParam. */
-/* 3. Injected the 'light-mode' class into the document.body initialization if the URL param equals 'light'. */
+/* 1. Updated theme injection to apply 'light-mode' to document.documentElement (the <html> tag) instead of just the body, ensuring CSS variables cascade flawlessly across all browsers and iframes. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -66,7 +64,13 @@ export const AppState = {
 
 const isLightMode = Config.themeParam === 'light';
 
-document.body.className = `view-${Config.viewMode} manager-all-inspectors empty-state-active ${isLightMode ? 'light-mode' : ''}`;
+// Inject theme at the absolute highest level to guarantee CSS cascade
+if (isLightMode) {
+    document.documentElement.classList.add('light-mode');
+    document.body.classList.add('light-mode');
+}
+
+document.body.className += ` view-${Config.viewMode} manager-all-inspectors empty-state-active`;
 if (Config.viewMode === 'managermobilesplit') document.body.classList.add('split-show-map');
 
 const currentQuery = window.location.search;
