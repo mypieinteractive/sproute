@@ -1,11 +1,10 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.3
+ * VERSION: V15.4
  * CHANGES:
- * V15.3 - UI Alignment & Date Formatting Fixes. 
- * 1. Fixed Due Date parsing to correctly handle ISO strings (split on 'T'), ensuring text displays properly instead of '--'.
- * 2. Fixed Route Numbering. The UI already passes 1-indexed clusters, so we removed the redundant +1 offset that caused 'Route 3 and 4'.
- * 3. Added detailed summary metrics (Miles, Time, Orders, Due Dates) directly into the Route Subheading bars in the email table.
+ * V15.4 - List Order & Date Parsing Overhaul.
+ * 1. Added timeToMins() helper to strictly sort the HTML table rows by ETA sequentially.
+ * 2. Rewrote Date Parsing to handle both ISO strings ('T') and standard 'MM/DD/YYYY' formats to fix the '--' display bug and accurately count Due/Past Due metrics.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -21,6 +20,32 @@ if (ZEPTO_TOKEN && !ZEPTO_TOKEN.startsWith("Zoho-enczapikey ")) {
 
 if (!ZEPTO_TOKEN) {
     console.error("CRITICAL: ZEPTO_TOKEN environment variable is missing!");
+}
+
+function timeToMins(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return 9999;
+    const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!match) return 9999;
+    let hrs = parseInt(match[1], 10);
+    const mins = parseInt(match[2], 10);
+    const period = match[3].toUpperCase();
+    if (period === 'PM' && hrs !== 12) hrs += 12;
+    if (period === 'AM' && hrs === 12) hrs = 0;
+    return hrs * 60 + mins;
+}
+
+function normalizeDate(dDate) {
+    if (!dDate) return null;
+    let str = String(dDate);
+    if (str.includes('T')) return str.split('T')[0];
+    if (str.includes('/')) {
+        let parts = str.split('/');
+        if (parts.length === 3) {
+            // Assumes MM/DD/YYYY format and converts to YYYY-MM-DD
+            return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+        }
+    }
+    return str.split(' ')[0]; // Fallback
 }
 
 async function sendRouteEmail(db, payload, routeId, driverData) {
@@ -69,7 +94,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         // 4. Calculate Route Statistics & Grouping
         let totalMiles = 0, dueToday = 0, pastDue = 0, totalSecs = 0;
         let routesMap = {};
-        let routeStats = {}; // Specific stats mapped per route subheading
+        let routeStats = {}; 
         
         // Generate a strict YYYY-MM-DD string for today in the local timezone
         const formatter = new Intl.DateTimeFormat('en-US', { timeZone: localTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -89,7 +114,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             
             routesMap[rLabel].push(s);
 
-            let dDate = Array.isArray(s) ? s[5] : s.dueDate;
+            let rawDate = Array.isArray(s) ? s[5] : s.dueDate;
             let dist = Array.isArray(s) ? s[8] : s.dist;
             let dur = Array.isArray(s) ? s[12] : s.durationSecs;
 
@@ -100,14 +125,12 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             routeStats[rLabel].secs += parseFloat(dur || 0);
             routeStats[rLabel].count++;
 
-            if (dDate) {
-                // Safe string comparison handling ISO timezone 'T'
-                let dStr = dDate.split('T')[0];
-                
-                if (dStr < localTodayStr) {
+            let normalizedDateStr = normalizeDate(rawDate);
+            if (normalizedDateStr) {
+                if (normalizedDateStr < localTodayStr) {
                     pastDue++;
                     routeStats[rLabel].pastDue++;
-                } else if (dStr === localTodayStr) {
+                } else if (normalizedDateStr === localTodayStr) {
                     dueToday++;
                     routeStats[rLabel].dueToday++;
                 }
@@ -125,7 +148,14 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         Object.keys(routesMap).sort().forEach(rKey => {
             let rStops = routesMap[rKey];
             
-            // The frontend passes clusters natively as 1, 2, 3 now. We don't need to offset by +1.
+            // Sort stops sequentially by ETA
+            rStops.sort((a, b) => {
+                let etaA = Array.isArray(a) ? a[7] : a.eta;
+                let etaB = Array.isArray(b) ? b[7] : b.eta;
+                return timeToMins(etaA) - timeToMins(etaB);
+            });
+
+            // The frontend passes clusters natively as 1, 2, 3 now. 
             let displayRouteNum = parseInt(rKey); 
             let rColor = hexColors[displayRouteNum - 1] || "#374151";
 
@@ -133,7 +163,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             let hrs = stats.count > 0 ? ((stats.secs + (stats.count * serviceDelay * 60)) / 3600).toFixed(1) : 0;
             let dueText = stats.pastDue > 0 ? `<span style="color:#ef4444">${stats.pastDue} Past Due</span>` : (stats.dueToday > 0 ? `<span style="color:#f59e0b">${stats.dueToday} Due Today</span>` : `0 Due`);
             
-            let routeSubInfo = `<span style="color:#6b7280; font-weight:normal; text-transform:none;">${stats.miles.toFixed(1)} mi &nbsp;|&nbsp; ${hrs} hrs &nbsp;|&nbsp; ${stats.count} stops &nbsp;|&nbsp; ${dueText}</span>`;
+            let routeSubInfo = `<span style="color:#6b7280; font-weight:normal; text-transform:none;">${stats.miles.toFixed(1)} mi  |  ${hrs} hrs  |  ${stats.count} stops  |  ${dueText}</span>`;
 
             if (Object.keys(routesMap).length > 1) {
                 tableRows += `
@@ -151,7 +181,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
 
             let localSeq = 1;
             rStops.forEach((s) => {
-                let dDate = Array.isArray(s) ? s[5] : s.dueDate;
+                let rawDate = Array.isArray(s) ? s[5] : s.dueDate;
                 let app = Array.isArray(s) ? s[4] : s.app;
                 let addr = Array.isArray(s) ? s[2] : s.address;
                 let client = Array.isArray(s) ? s[3] : s.client;
@@ -159,17 +189,14 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                 let eta = Array.isArray(s) ? s[7] : s.eta;
 
                 let dueBg = "#374151", dueFmt = '--';
-                if (dDate) {
-                    try {
-                        let dStr = dDate.split('T')[0]; // Isolate YYYY-MM-DD
-                        let dateParts = dStr.split('-');
-                        if (dateParts.length >= 3) {
-                            dueFmt = `${parseInt(dateParts[1], 10)}/${parseInt(dateParts[2], 10)}`; // Drop leading zeros
-                        }
-                        
-                        if (dStr < localTodayStr) dueBg = "#ef4444"; 
-                        else if (dStr === localTodayStr) dueBg = "#f59e0b";
-                    } catch(e) {}
+                let normalizedDateStr = normalizeDate(rawDate);
+                if (normalizedDateStr) {
+                    let dateParts = normalizedDateStr.split('-');
+                    if (dateParts.length >= 3) {
+                        dueFmt = `${parseInt(dateParts[1], 10)}/${parseInt(dateParts[2], 10)}`; // Drop leading zeros
+                    }
+                    if (normalizedDateStr < localTodayStr) dueBg = "#ef4444"; 
+                    else if (normalizedDateStr === localTodayStr) dueBg = "#f59e0b";
                 }
 
                 let appVal = (app || '--').substring(0,2).toUpperCase();
