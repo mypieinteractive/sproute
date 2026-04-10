@@ -1,7 +1,7 @@
-/* Dashboard - V18.2 */
+/* Dashboard - V18.3 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Overhauled handleStartOver() to function as a true "Blank Slate" reset. It now forcefully resets all stops for the current driver to cluster 0 (Route 1), resets the priority slider to 0, and snaps the routing UI back to 1 Route, perfectly mimicking a fresh CSV upload state and preventing algorithmic baseline corruption. */
+/* 1. Completely removed the aggressive executeRouteReset() logic from selectEndpoint(). Updating an endpoint now gracefully saves the coordinates, moves the map pins, and shifts the UI into Staging. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -896,17 +896,6 @@ function renderAutocomplete(features, inputEl, type) {
 async function selectEndpoint(type, address, lat, lng, inputEl) {
     const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
     const insp = AppState.inspectors.find(i => String(i.id) === String(inspId));
-    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView));
-    const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
-
-    if (Config.isManagerView && hasRouted) {
-        const proceed = await customConfirm("Note: updating the start or end point of the route clears the currently optimized route and will require new route generation. Continue?");
-        if (!proceed) {
-            const eps = getActiveEndpoints();
-            if (inputEl) inputEl.value = type === 'start' ? (eps.start?.address || '') : (eps.end?.address || '');
-            return;
-        }
-    }
     
     let epObj = { address, lat, lng };
     if (type === 'start') AppState.routeStart = epObj;
@@ -917,31 +906,10 @@ async function selectEndpoint(type, address, lat, lng, inputEl) {
         if (type === 'end') { insp.endAddress = address; insp.endLat = lat; insp.endLng = lng; }
     }
     
-    if (Config.isManagerView && hasRouted) await executeRouteReset(insp.id);
-    else {
-        markRouteDirty('endpoints', 0); triggerFullRender();
-        saveEndpointToBackend(type, address, lat, lng);
-    }
-}
-
-async function executeRouteReset(driverId) {
-    showOverlay();
-    try {
-        let payload = { action: 'resetRoute', driverId: driverId };
-        if (!Config.isManagerView) payload.routeId = Config.routeId;
-        await apiFetch(payload);
-        
-        AppState.historyStack = []; 
-        AppState.stops.forEach(s => {
-            if (String(s.driverId) === String(driverId) && isRouteAssigned(s.status)) {
-                s.eta = ''; s.dist = ''; s.status = 'Pending'; s.routeState = 'Pending';
-            }
-        });
-        
-        AppState.routeStart = null; AppState.routeEnd = null; AppState.dirtyRoutes.clear();
-        triggerFullRender(); updateUndoUI();
-    } catch(e) { await customAlert("Error resetting the route."); } 
-    finally { hideOverlay(); }
+    markRouteDirty('endpoints', 0); 
+    triggerFullRender();
+    silentSaveRouteState();
+    saveEndpointToBackend(type, address, lat, lng);
 }
 
 async function saveEndpointToBackend(type, address, lat, lng) {
