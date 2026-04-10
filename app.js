@@ -1,7 +1,7 @@
-/* Dashboard - V18.6 */
+/* Dashboard - V19.0 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Swapped the dynamic map style from the minimalist 'light-v11' to the standard 'streets-v12' to restore rich geographical colors (parks, water, etc.) to the map in light mode. */
+/* 1. Permanently committed map configuration to the streets-v12 light mode standard map, abandoning all dark mode toggles and listeners. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -23,7 +23,6 @@ export const Config = {
     companyParam: new URLSearchParams(window.location.search).get('company'),
     adminParam: new URLSearchParams(window.location.search).get('admin'),
     viewMode: (new URLSearchParams(window.location.search).get('view') || 'inspector').toLowerCase(),
-    themeParam: (new URLSearchParams(window.location.search).get('theme') || 'dark').toLowerCase(),
     get isManagerView() { return ['manager', 'managermobile', 'managermobilesplit'].includes(this.viewMode); }
 };
 
@@ -62,15 +61,7 @@ export const AppState = {
     pollRetries: 0
 };
 
-const isLightMode = Config.themeParam === 'light';
-
-// Inject theme at the absolute highest level to guarantee CSS cascade
-if (isLightMode) {
-    document.documentElement.classList.add('light-mode');
-    document.body.classList.add('light-mode');
-}
-
-document.body.className += ` view-${Config.viewMode} manager-all-inspectors empty-state-active`;
+document.body.className = `view-${Config.viewMode} manager-all-inspectors empty-state-active`;
 if (Config.viewMode === 'managermobilesplit') document.body.classList.add('split-show-map');
 
 const currentQuery = window.location.search;
@@ -81,12 +72,10 @@ sessionStorage.setItem('sproute_last_query', currentQuery);
 let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
 
-// Use 'streets-v12' for a rich, vibrant standard map instead of the washed-out 'light-v11'
-const currentMapStyle = isLightMode ? 'mapbox://styles/mapbox/streets-v12' : 'mapbox://styles/mapbox/dark-v11';
-
+// Permanently committed to the rich geographic light-mode map
 const mapConfig = { 
     container: 'map', 
-    style: currentMapStyle, 
+    style: 'mapbox://styles/mapbox/streets-v12', 
     center: [-96.797, 32.776], 
     zoom: 11, 
     attributionControl: false, 
