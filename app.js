@@ -1,7 +1,8 @@
-/* Dashboard - V17.0 */
+/* Dashboard - V18.2 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Fresh start in new chat. */
+/* 1. Removed the temporary V18.1 fallback patch from handleGenerateRoute(), as the new V18.2 "Start Over" function perfectly formats stops naturally, keeping the algorithm clean. */
+/* 2. Maintained the robust silentSaveRouteState() wipe logic ensuring backend state fully resets to Pending when routing is cleared. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -270,10 +271,15 @@ export function silentSaveRouteState() {
     const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
     if (inspId === 'all' || !inspId) return;
     let routedStops = AppState.stops.filter(s => { if (!isRouteAssigned(s.status)) return false; if (Config.isManagerView) return String(s.driverId) === String(inspId); return s.routeTargetId === String(Config.routeId); });
-    if (routedStops.length === 0) return;
+    
     let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
     let macroState = 'Ready';
-    if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
+    
+    // Explicitly reset the backend state to Pending if all routed stops have been removed (e.g. Start Over)
+    if (routedStops.length === 0) macroState = 'Pending';
+    else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
+    else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
+    
     let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState };
     if (!Config.isManagerView) payload.routeId = Config.routeId;
     apiFetch(payload).catch(e => console.log(e));
@@ -309,7 +315,7 @@ export async function handleGenerateRoute() {
             const routeKey = `${s.driverId}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`; return AppState.dirtyRoutes.has(routeKey) || !isRouteAssigned(s.status);
         });
     }
-    
+
     let sentClusters = [...new Set(stopsToOptimize.map(s => s.cluster))].filter(c => c !== 'X').sort();
     let flatStopsPayload = stopsToOptimize.map(s => { return minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1); });
     const eps = getActiveEndpoints(); stopsToOptimize.forEach(s => s.routeState = 'Queued'); UI.render(); 
