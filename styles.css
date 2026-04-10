@@ -1,7 +1,9 @@
-/* Dashboard - V18.10 */
+/* Dashboard - V18.11 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Moved the light-mode class to target both :root and body recursively, completely bulletproofing the CSS cascade against all mobile browser quirks and nested iframes. */
+/* 1. Updated global CSS variables to precisely match brand specs (--green: #85BA4E, --blue: #349BDE). */
+/* 2. Completely rebuilt the .light-mode theme to act as a crisp, universal neutral UI (matched perfectly to Glide's #FAFAFA wrapper), using #F1F5F9 for headers to beautifully frame pure #FFFFFF list rows. */
+/* 3. Upgraded the Inspector Dropdown elements in light mode to look like structured, rounded pill-cards instead of floating text. */
 
 :root { 
     --blue: #349BDE; 
@@ -19,26 +21,49 @@
     --text-muted: #888888;
 }
 
-/* Light Mode Overrides (Controlled via class dynamically in app.js) */
+/* Universal Light/Neutral Theme Overrides */
 :root.light-mode, body.light-mode { 
-    --bg-base: #f3f4f6;
-    --bg-panel: #ffffff;
-    --bg-hover: #e5e7eb;
-    --bg-header: #ffffff;
-    --border-color: #d1d5db;
-    --text-main: #111827;
-    --text-muted: #6b7280;
+    --bg-base: #FAFAFA; 
+    --bg-panel: #FFFFFF; 
+    --bg-hover: #F0F7FF; 
+    --bg-header: #F1F5F9; 
+    --border-color: #E2E8F0; 
+    --text-main: #1E293B; 
+    --text-muted: #64748B; 
 }
 
+/* Light Mode Overrides: Map Overlays & Rows */
 body.light-mode #map-hint, :root.light-mode #map-hint { 
-    background: rgba(255,255,255,0.75); 
+    background: rgba(255,255,255,0.85); 
     color: #111; 
     border-color: rgba(0,0,0,0.1); 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 body.light-mode .list-subheading, :root.light-mode .list-subheading {
-    background: var(--bg-hover) !important;
+    background: var(--bg-header) !important;
     color: var(--text-main) !important;
+    border-top: 1px solid var(--border-color);
+}
+
+body.light-mode .num-badge, :root.light-mode .num-badge {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Light Mode Overrides: Inspector Dropdowns */
+body.light-mode .glide-row .insp-select, :root.light-mode .glide-row .insp-select {
+    background-color: #F8FAFC !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 14px !important;
+    padding-left: 12px !important;
+}
+
+body.manager-all-inspectors.light-mode .glide-row .insp-select, 
+:root.light-mode body.manager-all-inspectors .glide-row .insp-select {
+    background-color: #F1F5F9 !important;
+    border: 1px solid #E2E8F0 !important;
+    padding: 2px 24px 2px 10px !important;
+    height: 28px !important;
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
