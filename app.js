@@ -1,8 +1,9 @@
-/* Dashboard - V18.2 */
+/* Dashboard - V18.4 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Removed the temporary V18.1 fallback patch from handleGenerateRoute(), as the new V18.2 "Start Over" function perfectly formats stops naturally, keeping the algorithm clean. */
-/* 2. Maintained the robust silentSaveRouteState() wipe logic ensuring backend state fully resets to Pending when routing is cleared. */
+/* 1. Added themeParam to the Config object to parse ?theme= from the URL. */
+/* 2. Replaced the window.matchMedia OS observer with a strict check against Config.themeParam. */
+/* 3. Injected the 'light-mode' class into the document.body initialization if the URL param equals 'light'. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -24,6 +25,7 @@ export const Config = {
     companyParam: new URLSearchParams(window.location.search).get('company'),
     adminParam: new URLSearchParams(window.location.search).get('admin'),
     viewMode: (new URLSearchParams(window.location.search).get('view') || 'inspector').toLowerCase(),
+    themeParam: (new URLSearchParams(window.location.search).get('theme') || 'dark').toLowerCase(),
     get isManagerView() { return ['manager', 'managermobile', 'managermobilesplit'].includes(this.viewMode); }
 };
 
@@ -62,7 +64,9 @@ export const AppState = {
     pollRetries: 0
 };
 
-document.body.className = `view-${Config.viewMode} manager-all-inspectors empty-state-active`;
+const isLightMode = Config.themeParam === 'light';
+
+document.body.className = `view-${Config.viewMode} manager-all-inspectors empty-state-active ${isLightMode ? 'light-mode' : ''}`;
 if (Config.viewMode === 'managermobilesplit') document.body.classList.add('split-show-map');
 
 const currentQuery = window.location.search;
@@ -73,9 +77,16 @@ sessionStorage.setItem('sproute_last_query', currentQuery);
 let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
 
+const currentMapStyle = isLightMode ? 'mapbox://styles/mapbox/light-v11' : 'mapbox://styles/mapbox/dark-v11';
+
 const mapConfig = { 
-    container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
-    attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
+    container: 'map', 
+    style: currentMapStyle, 
+    center: [-96.797, 32.776], 
+    zoom: 11, 
+    attributionControl: false, 
+    boxZoom: false, 
+    preserveDrawingBuffer: true,
     cooperativeGestures: (Config.viewMode === 'inspector' || Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit')
 };
 
