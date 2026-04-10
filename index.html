@@ -3,11 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V17.6
+            VERSION: V17.7
             CHANGES:
-            1. Added flex: 1 to #route-divider-group so the 1/2/3 buttons expand equally with the slider.
-            2. Shrunk #inspector-filter height to 30px to match rocker switch.
-            3. Added outline-btn class to Optimize and Send Route buttons.
+            1. Restructured #routing-controls into a dynamic #parameters-container and state-based #routing-action-buttons groups.
+            2. Kept the outline-btn logic for clear module action states.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -115,10 +114,11 @@
             </div>
         </div>
 
-        <div id="routing-controls" style="display: none; height: 60px; padding: 0 0 0 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
             
-            <div id="routing-module-wrapper" class="routing-module-wrapper" style="flex: 1; height: 100%; padding: 8px 0; box-sizing: border-box; margin-right: 15px;">
-                <div id="routing-module-core" class="routing-module-core">
+            <div id="routing-module-core" class="routing-module-core" style="display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; width: 100%;">
+                
+                <div id="parameters-container" style="display:flex; flex:1; gap:20px; height:100%; padding: 8px 0; box-sizing: border-box;">
                     <div id="route-divider-group" style="display:flex; gap:8px; flex: 1; height: 100%;">
                         <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
                             <div class="rbtn-indicator" id="rbtn-ind-1"></div>
@@ -153,35 +153,41 @@
                     </div>
                 </div>
 
-                <div id="start-over-overlay" class="start-over-overlay">
-                    <button class="btn-start-over" onclick="handleStartOver()"><i class="fa-solid fa-rotate-left"></i> Start Over</button>
+                <div id="routing-action-buttons" style="display:flex; height: 100%; box-sizing: border-box; transition: width 0.2s;">
+                    
+                    <div id="action-group-pending" style="display:none; width:100%; height:100%;">
+                        <button id="btn-header-generate" class="module-action-btn outline-btn" onclick="handleGenerateRoute()" style="background:var(--green); color:var(--bg-header);">
+                            <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
+                        </button>
+                    </div>
+
+                    <div id="action-group-staging" style="display:none; width:100%; height:100%; align-items: center; gap: 10px; padding: 10px 0;">
+                        <button class="module-action-btn outline-btn" onclick="handleStartOver()" style="background:#333; color:white; border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-rotate-left"></i> Start Over
+                        </button>
+                        <button class="module-action-btn outline-btn" onclick="handleCalculate()" style="background:#444; color:white; border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-calculator"></i> Re-Calculate
+                        </button>
+                        <button class="module-action-btn outline-btn" onclick="handleGenerateRoute()" style="background:#2C3D4F; color:white; border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-route"></i> Re-Optimize
+                        </button>
+                    </div>
+
+                    <div id="action-group-ready" style="display:none; width:100%; height:100%; align-items: center; gap: 10px; padding: 10px 0;">
+                        <button class="module-action-btn outline-btn" onclick="handleStartOver()" style="background:#333; color:white; border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-rotate-left"></i> Start Over
+                        </button>
+                        <button id="btn-header-restore" class="module-action-btn outline-btn" onclick="handleRestoreOriginal()" style="display:none; background:var(--bg-hover); color:var(--text-main); border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
+                        </button>
+                        <button id="btn-header-send-route" class="module-action-btn outline-btn" onclick="handleOpenEmailModal()" style="background:#2E4053; color:white; border-radius: 6px; flex:2;">
+                            <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
+                        </button>
+                    </div>
+
                 </div>
+
             </div>
-
-            <div id="routing-action-buttons" style="width: 140px; height: 100%; border-left: 1px solid var(--border-color); flex-shrink: 0; box-sizing: border-box;">
-                
-                <button id="btn-header-restore" class="module-action-btn" onclick="handleRestoreOriginal()" style="display:none; background:var(--bg-hover); color:var(--text-main);">
-                    <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
-                </button>
-                
-                <button id="btn-header-send-route" class="module-action-btn outline-btn" onclick="handleOpenEmailModal()" style="display:none; background:#2E4053; color:white;">
-                    <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
-                </button>
-                
-                <button id="btn-header-generate" class="module-action-btn outline-btn" onclick="handleGenerateRoute()" style="display:none; background:var(--green); color:var(--bg-header);">
-                    <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
-                </button>
-
-                <div id="staged-action-group" class="stacked-action-btns" style="display: none;">
-                    <button id="btn-header-recalc" class="module-action-btn top-half" onclick="handleCalculate()" style="background:#444; color:white;">
-                        <i class="fa-solid fa-calculator"></i> Re-Calculate
-                    </button>
-                    <button id="btn-header-optimize-insp" class="module-action-btn bottom-half outline-btn" onclick="handleGenerateRoute()" style="background:#2C3D4F; color:white;">
-                        <i class="fa-solid fa-route"></i> Re-Optimize
-                    </button>
-                </div>
-            </div>
-
         </div>
 
         <div id="map-container" style="flex: 1; position: relative; min-height: 0;">
