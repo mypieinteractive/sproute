@@ -3,10 +3,9 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V17.9
+            VERSION: V18.0
             CHANGES:
-            1. Updated #action-group-pending to use flex alignment and padding, matching Staging and Ready groups.
-            2. Updated #btn-header-generate inline styles to add border-radius and flex: 1, matching the traditional button look.
+            1. Added min-height: 0 to #sidebar to prevent flexbox child blowout during active window resizing.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -206,7 +205,7 @@
 
     <div id="resizer"></div>
 
-    <div id="sidebar" style="display: flex; flex-direction: column;">
+    <div id="sidebar" style="display: flex; flex-direction: column; min-height: 0;">
         <div id="route-view-toggles" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; gap: 8px; flex-shrink: 0;">
             <button class="route-view-btn active" id="view-rall-btn" onclick="setRouteViewFilter('all')">All Routes</button>
             <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
