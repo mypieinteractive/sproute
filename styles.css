@@ -1,24 +1,97 @@
-/* Dashboard - V19.0 */
+/* Dashboard - V19.1 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Fully committed the app to a single, unified light theme, removing all dark mode variables and @media overrides. */
-/* 2. Set --bg-header to #FAFAFA to perfectly match the Glide wrapper. */
-/* 3. Updated .rocker-switch height to 38px to perfectly align bottoms with the main action buttons. */
+/* 1. Added --brand-dark variable (#34495E). */
+/* 2. Overhauled light-mode map selection pins to highlight as a bold --brand-dark instead of white. */
+/* 3. Deeply integrated --brand-dark into light-mode list subheadings and active route buttons to break up the white and heavily brand the UI. */
+/* 4. Restored .rocker-switch height to 30px. */
 
 :root { 
-    --blue: #349BDE; 
-    --fade-blue: rgba(52, 155, 222, 0.2); 
+    --blue: #3498DB; 
+    --fade-blue: rgba(52, 152, 219, 0.2); 
     --red: #e74c3c; 
     --green: #85BA4E; 
     --purple: #8e44ad; 
     --orange: #f39c12; 
-    --bg-base: #FAFAFA;
-    --bg-panel: #FFFFFF;
-    --bg-hover: #F0F7FF;
-    --bg-header: #FAFAFA;
-    --border-color: #E2E8F0;
-    --text-main: #1E293B;
-    --text-muted: #64748B;
+    --brand-dark: #34495E;
+    --bg-base: #171717;
+    --bg-panel: #1e1e1e;
+    --bg-hover: #2a2a2a;
+    --bg-header: #171717;
+    --border-color: #333333;
+    --text-main: #e0e0e0;
+    --text-muted: #888888;
+}
+
+/* Universal Light/Neutral Theme Overrides */
+:root.light-mode, body.light-mode { 
+    --bg-base: #FAFAFA; 
+    --bg-panel: #FFFFFF; 
+    --bg-hover: rgba(52, 152, 219, 0.08); /* Soft brand-blue tint for row hovering */
+    --bg-header: #FAFAFA; 
+    --border-color: #E2E8F0; 
+    --text-main: #1E293B; 
+    --text-muted: #64748B; 
+}
+
+/* Light Mode Overrides: Map Overlays & Selection */
+body.light-mode #map-hint, :root.light-mode #map-hint { 
+    background: rgba(255,255,255,0.85); 
+    color: #111; 
+    border-color: rgba(0,0,0,0.1); 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+body.light-mode .marker.bulk-selected .pin-visual, 
+:root.light-mode .marker.bulk-selected .pin-visual { 
+    background-color: var(--brand-dark) !important; 
+    color: #ffffff !important; 
+    box-shadow: 0 0 15px rgba(52, 73, 94, 0.5); 
+    transform: scale(1.15); 
+    border-color: var(--brand-dark) !important; 
+}
+
+/* Light Mode Overrides: Breaking up the white with Brand Dark */
+body.light-mode .list-subheading, :root.light-mode .list-subheading {
+    background: var(--brand-dark) !important;
+    color: #FFFFFF !important;
+    border-top: none;
+}
+
+body.light-mode .route-btn.active, :root.light-mode .route-btn.active {
+    background: var(--brand-dark);
+    color: #FFFFFF;
+    border-color: var(--brand-dark);
+}
+
+body.light-mode .route-btn.active .rbtn-title, :root.light-mode .route-btn.active .rbtn-title,
+body.light-mode .route-btn.active .rbtn-time, :root.light-mode .route-btn.active .rbtn-time {
+    color: #FFFFFF !important;
+}
+
+/* Soft tint for the routing module background */
+body.light-mode #routing-controls, :root.light-mode #routing-controls {
+    background: #F8FAFC; 
+}
+
+body.light-mode .num-badge, :root.light-mode .num-badge {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Light Mode Overrides: Inspector Dropdowns */
+body.light-mode .glide-row .insp-select, :root.light-mode .glide-row .insp-select {
+    background-color: #F8FAFC !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 14px !important;
+    padding-left: 12px !important;
+}
+
+body.manager-all-inspectors.light-mode .glide-row .insp-select, 
+:root.light-mode body.manager-all-inspectors .glide-row .insp-select {
+    background-color: #F1F5F9 !important;
+    border: 1px solid #E2E8F0 !important;
+    padding: 2px 24px 2px 10px !important;
+    height: 28px !important;
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
@@ -166,9 +239,9 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 
 .list-subheading {
-    padding: 6px 12px; background: var(--bg-hover) !important; color: var(--text-main) !important;
+    padding: 6px 12px; background: var(--bg-header); color: #ffffff;
     font-weight: 500; font-size: 11px; text-transform: uppercase;
-    border-bottom: 1px solid var(--border-color); border-top: 1px solid var(--border-color); letter-spacing: 1px;
+    border-bottom: 1px solid var(--border-color); letter-spacing: 1px;
     display: flex; justify-content: space-between; align-items: center;
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
@@ -246,10 +319,10 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 
 /* List Row Specific Assignee Select */
 .glide-row .insp-select {
-    background-color: #F8FAFC !important;
-    border: 1px solid var(--border-color) !important;
-    border-radius: 14px !important;
-    padding: 4px 24px 4px 12px !important;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 24px 4px 8px;
     color: var(--text-main);
     font-weight: 500;
     font-size: 13px;
@@ -259,14 +332,14 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 
 /* Strip button styling for "All Inspectors" view */
 body.manager-all-inspectors .glide-row .insp-select {
-    background-color: var(--bg-base) !important;
-    border: 1px solid var(--border-color) !important;
-    padding: 2px 24px 2px 10px !important;
-    height: 28px !important;
+    background-color: transparent !important;
+    border: none !important;
+    padding: 0 16px 0 0 !important;
+    height: auto !important;
 }
 
 /* Rocker Switch */
-.rocker-switch { display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; height: 38px; }
+.rocker-switch { display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; height: 30px; }
 .rocker-switch input { display: none; }
 .rocker-switch label { padding: 0 16px; font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; }
 
@@ -425,7 +498,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .marker.bulk-selected { z-index: 1000 !important; }
 
 .pin-visual { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: white; transition: transform 0.1s, box-shadow 0.1s, background-color 0.2s; box-sizing: border-box; }
-.marker.bulk-selected .pin-visual { background-color: #ffffff !important; color: #000000 !important; box-shadow: 0 0 15px rgba(0, 0, 0, 0.2); transform: scale(1.15); border-color: #ffffff !important; }
 .marker.completed .pin-visual { background-color: #555 !important; color: white !important; border-color: #555 !important; }
 .marker-warning { position: absolute; top: -10px; right: -10px; font-size: 16px; pointer-events: none; z-index: 5; }
 
