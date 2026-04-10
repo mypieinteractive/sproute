@@ -1,9 +1,9 @@
-/* Dashboard - V17.6 */
+/* Dashboard - V17.7 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added visibility toggle logic in updateSummary() to hide miles/hours when AppState.currentRoutingState is 'Pending' or 'Staging'. */
-/* 2. Passed SortableJS abort logic if currentRoutingState === 'Pending'. */
-/* 3. Updated performResize logic to calculate heights using (window.innerHeight - 40) natively to stay inside body bounds without overflowing. */
+/* 1. Added State checking to updateRoutingUI to dynamically shift layout widths and action buttons depending on Routing State. */
+/* 2. Added lastSelectedId logic and Shift/Cmd modifier parsing inside item.onclick for deep multi-select behavior. */
+/* 3. Removed checkEndpointModified() from handleEndpointInput() to stop DOM wiping during keystrokes, fixing the endpoint typing bug. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -171,20 +171,21 @@ export function updatePrioritySliderUI() {
 
 export function updateRoutingUI() {
     const routingControls = document.getElementById('routing-controls');
-    const routingModuleWrapper = document.getElementById('routing-module-wrapper');
-    const routingModuleCore = document.getElementById('routing-module-core');
-    const startOverOverlay = document.getElementById('start-over-overlay');
-    const stagedActionGroup = document.getElementById('staged-action-group');
+    const paramContainer = document.getElementById('parameters-container');
+    const actionBtns = document.getElementById('routing-action-buttons');
     
-    const btnGen = document.getElementById('btn-header-generate');
-    const btnRestore = document.getElementById('btn-header-restore');
-    const btnSend = document.getElementById('btn-header-send-route');
+    const btnPending = document.getElementById('action-group-pending');
+    const btnStaging = document.getElementById('action-group-staging');
+    const btnReady = document.getElementById('action-group-ready');
 
     // 1. Hide everything initially
-    [btnGen, btnRestore, btnSend, stagedActionGroup, routingModuleWrapper].forEach(el => { if (el) el.style.display = 'none'; });
-    if (routingControls) routingControls.style.display = 'none';
-    if (routingModuleCore) routingModuleCore.classList.remove('staging-locked');
-    if (startOverOverlay) startOverOverlay.classList.remove('active');
+    if(routingControls) routingControls.style.display = 'none';
+    if(paramContainer) paramContainer.style.display = 'none';
+    if(btnPending) btnPending.style.display = 'none';
+    if(btnStaging) btnStaging.style.display = 'none';
+    if(btnReady) btnReady.style.display = 'none';
+    if(actionBtns) actionBtns.style.borderLeft = 'none';
+    
     updatePrioritySliderUI();
 
     // 2. Global "All Inspectors" check (Managers only)
@@ -224,7 +225,6 @@ export function updateRoutingUI() {
         currentState = 'Staging';
     }
     
-    // Store globally so Sortable can read it and prevent dragging if Pending
     AppState.currentRoutingState = currentState;
 
     // 5. Route View Toggles Update
@@ -246,43 +246,36 @@ export function updateRoutingUI() {
         }
     }
 
-    // Update Send Route(s) text dynamically based on total routes
+    // Update Send Route(s) text dynamically
     const sendBtnText = document.getElementById('btn-header-send-route-text');
-    if (sendBtnText) {
-        sendBtnText.innerText = AppState.currentRouteCount > 1 ? "Send Routes" : "Send Route";
-    }
+    if (sendBtnText) sendBtnText.innerText = AppState.currentRouteCount > 1 ? "Send Routes" : "Send Route";
 
     // 6. Enforce UI Rules based on strict state
     if (Config.isManagerView) {
+        if (routingControls) routingControls.style.display = 'flex';
         if (currentState === 'Pending') {
-            if (routingControls) routingControls.style.display = 'flex';
-            if (routingModuleWrapper) routingModuleWrapper.style.display = 'flex';
-            if (btnGen) {
-                btnGen.style.display = 'flex';
-                document.getElementById('btn-header-generate-text').innerText = "Optimize";
-            }
+            if (paramContainer) paramContainer.style.display = 'flex';
+            if (actionBtns) { actionBtns.style.width = '140px'; actionBtns.style.borderLeft = '1px solid var(--border-color)'; }
+            if (btnPending) btnPending.style.display = 'flex';
         } else if (currentState === 'Staging') {
-            if (routingControls) routingControls.style.display = 'flex';
-            if (routingModuleWrapper) routingModuleWrapper.style.display = 'flex';
-            if (routingModuleCore) routingModuleCore.classList.add('staging-locked');
-            if (startOverOverlay) startOverOverlay.classList.add('active');
-            if (stagedActionGroup) stagedActionGroup.style.display = 'flex';
+            if (actionBtns) actionBtns.style.width = '100%';
+            if (btnStaging) btnStaging.style.display = 'flex';
         } else if (currentState === 'Ready') {
-            if (routingControls) routingControls.style.display = 'flex';
-            if (routingModuleWrapper) routingModuleWrapper.style.display = 'flex';
-            if (routingModuleCore) routingModuleCore.classList.add('staging-locked'); // Lock in Ready state
-            if (startOverOverlay) startOverOverlay.classList.add('active'); // Add overlay in Ready state
-            if (btnSend) btnSend.style.display = 'flex';
-            if (AppState.isAlteredRoute && btnRestore) btnRestore.style.display = 'flex';
+            if (actionBtns) actionBtns.style.width = '100%';
+            if (btnReady) btnReady.style.display = 'flex';
+            const restoreBtn = document.getElementById('btn-header-restore');
+            if (restoreBtn) restoreBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
         }
     } else {
-        // Inspector View (Never sees routing module core, only action buttons if applicable)
+        // Inspector View
         if (currentState === 'Staging') {
             if (routingControls) routingControls.style.display = 'flex';
-            if (stagedActionGroup) stagedActionGroup.style.display = 'flex';
+            if (actionBtns) actionBtns.style.width = '100%';
+            if (btnStaging) btnStaging.style.display = 'flex';
         } else if (AppState.isAlteredRoute && currentState === 'Ready') {
             if (routingControls) routingControls.style.display = 'flex';
-            if (btnRestore) btnRestore.style.display = 'flex';
+            if (actionBtns) actionBtns.style.width = '100%';
+            if (btnReady) btnReady.style.display = 'flex';
         }
     }
 }
@@ -448,9 +441,34 @@ export function render() {
         }
         
         item.onclick = (e) => {
-            if (!e.shiftKey) AppState.selectedIds.clear();
-            AppState.selectedIds.has(s.id) ? AppState.selectedIds.delete(s.id) : AppState.selectedIds.add(s.id);
-            updateSelectionUI(); document.getElementById(`item-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const isMacCmd = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
+            
+            if (e.shiftKey && window.lastSelectedId) {
+                const activeForSelection = AppState.stops.filter(st => isStopVisible(st, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
+                const idx1 = activeForSelection.findIndex(st => String(st.id) === String(window.lastSelectedId));
+                const idx2 = activeForSelection.findIndex(st => String(st.id) === String(s.id));
+                if (idx1 > -1 && idx2 > -1) {
+                    const start = Math.min(idx1, idx2);
+                    const end = Math.max(idx1, idx2);
+                    AppState.selectedIds.clear();
+                    for(let i = start; i <= end; i++) {
+                        AppState.selectedIds.add(activeForSelection[i].id);
+                    }
+                }
+            } else if (isMacCmd) {
+                AppState.selectedIds.has(s.id) ? AppState.selectedIds.delete(s.id) : AppState.selectedIds.add(s.id);
+                window.lastSelectedId = s.id;
+            } else {
+                AppState.selectedIds.clear();
+                AppState.selectedIds.add(s.id);
+                window.lastSelectedId = s.id;
+            }
+
+            updateSelectionUI();
+            
+            if (!e.shiftKey && !isMacCmd) {
+                document.getElementById(`item-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         };
         return item;
     };
@@ -647,7 +665,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" style="font-size: 14px; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="address-header-input" data-nodrag="true" style="font-size: 14px; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
             </div>
             <div style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; visibility: hidden;">${dummySort}</div>
@@ -827,7 +845,6 @@ export function reorderStopsFromDOM() {
 let geocodeTimeout;
 
 export async function handleEndpointInput(e, type) {
-    checkEndpointModified();
     clearTimeout(geocodeTimeout);
     const val = e.target.value;
     let dropdown = document.getElementById(`autocomplete-${type}`);
@@ -876,16 +893,6 @@ function renderAutocomplete(features, inputEl, type) {
         };
         dropdown.appendChild(item);
     });
-}
-
-function checkEndpointModified() {
-    const sVal = document.getElementById('input-endpoint-start')?.value || '';
-    const eVal = document.getElementById('input-endpoint-end')?.value || '';
-    const eps = getActiveEndpoints();
-    const sOrig = eps.start?.address || '';
-    const eOrig = eps.end?.address || '';
-    if ((sVal.trim() !== sOrig.trim()) || (eVal.trim() !== eOrig.trim())) markRouteDirty('endpoints', 0);
-    triggerFullRender();
 }
 
 async function selectEndpoint(type, address, lat, lng, inputEl) {
@@ -1346,8 +1353,8 @@ function performResize(e) {
     if (!isResizing) return;
     let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
     
-    // Calculate total actual container height taking the global 40px gap into account
-    let containerHeight = window.innerHeight - 40;
+    // Calculate total actual container height natively from window bounds
+    let containerHeight = window.innerHeight;
     
     if (Config.viewMode === 'managermobile') {
         let newHeight = containerHeight - clientY; 
