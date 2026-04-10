@@ -1,7 +1,8 @@
-/* Dashboard - V18.0 */
+/* Dashboard - V18.6 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Updated the calc offsets from 280px down to 200px to flawlessly match the user's revised Glide web-embed mask constraints. */
+/* 1. Replaced width: 100vw and height: 100vh on #modal-overlay and #unmatched-modal with top/bottom/left/right: 0 to guarantee perfect vertical centering within the dynamic iframe height. */
+/* 2. Replaced 90vh on modal-box with 90% to obey parent bounds rather than viewport bounds. */
 
 :root { 
     --blue: #2563eb; 
@@ -421,8 +422,13 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .marker-warning { position: absolute; top: -10px; right: -10px; font-size: 16px; pointer-events: none; z-index: 5; }
 
 .boxdraw { background: rgba(37, 99, 235, 0.3); border: 1px solid var(--blue); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
-#modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center; }
-.modal-box { max-height: 90vh; overflow-y: auto; margin: auto; }
+
+/* Vertically Center Modals using absolute bounds */
+#modal-overlay { 
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+    background: rgba(0,0,0,0.7); z-index: 100000; align-items: center; justify-content: center; 
+}
+.modal-box { max-height: 90%; overflow-y: auto; margin: 0; }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
 .grey-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; background-color: transparent; border: 2px solid #555; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; transition: 0.2s; }
@@ -452,4 +458,10 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .loading-text { color: #F8FAFC; font-size: 18px; font-weight: 500; font-family: sans-serif; letter-spacing: 0.5px; margin-bottom: 8px; animation: pulse-text 2s infinite ease-in-out; }
 .loading-subtext { color: #94A3B8; font-size: 13px; font-family: sans-serif; }
 @keyframes pulse-text { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* Vertically Center Unmatched Modal */
+#unmatched-modal {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+    background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center;
+}
 .mapboxgl-touch-pan-blocker { color: transparent !important; }
