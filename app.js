@@ -1,7 +1,8 @@
-/* Dashboard - V19.1 */
+/* Dashboard - V19.0 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated map configuration to use 'streets-v12' for a rich, geographic base layer. */
+/* 1. Removed dynamic theme observer and URL parameter parsing. */
+/* 2. Hardcoded the map style directly to mapbox://styles/mapbox/light-v11. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -72,10 +73,10 @@ sessionStorage.setItem('sproute_last_query', currentQuery);
 let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
 
-// Load the rich geographic Street theme (Will be tinted green via CSS opacity)
+// Permanently load the Mapbox Light theme (It will be tinted green via CSS opacity in styles.css)
 const mapConfig = { 
     container: 'map', 
-    style: 'mapbox://styles/mapbox/streets-v12', 
+    style: 'mapbox://styles/mapbox/light-v11', 
     center: [-96.797, 32.776], 
     zoom: 11, 
     attributionControl: false, 
