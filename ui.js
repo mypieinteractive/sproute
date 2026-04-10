@@ -1,7 +1,7 @@
-/* Dashboard - V17.8 */
+/* Dashboard - V18.0 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated performResize to use document.body.clientHeight so the slider math perfectly respects the explicitly offset CSS boundaries instead of the full window innerHeight. */
+/* 1. Added a robust syncBodyHeight() function hooked to window resize events that explicitly forces document.body.style.height to match the true window.innerHeight (minus the 200px offset). This bypasses CSS calculation bugs in dynamically sized iframes, ensuring the bottom of the app is perfectly preserved. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1378,3 +1378,17 @@ function performResize(e) {
 document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
 function stopResize() { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizerEl.classList.remove('active'); mapWrapEl.style.pointerEvents = 'auto'; resizeMap(); } }
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
+
+// --- Dynamic Height Sync ---
+function syncBodyHeight() {
+    document.body.style.height = (window.innerHeight - 200) + 'px';
+    const mapWrapper = document.getElementById('map-wrapper');
+    const sidebar = document.getElementById('sidebar');
+    if (mapWrapper) mapWrapper.style.minHeight = '0';
+    if (sidebar) sidebar.style.minHeight = '0';
+    const map = getMapInstance();
+    if (map) map.resize();
+}
+window.addEventListener('resize', syncBodyHeight);
+document.addEventListener('DOMContentLoaded', syncBodyHeight);
+syncBodyHeight();
