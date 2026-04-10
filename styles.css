@@ -1,7 +1,7 @@
-/* Dashboard - V17.8 */
+/* Dashboard - V17.9 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Updated body height to explicitly calculate calc(100dvh - 280px) to prevent the bottom from being masked by the Glide iframe container. */
+/* 1. Replaced the inset .outline-btn::after hack with a standard 2px border directly on the .module-action-btn to outline the true perimeter of the button. */
 
 :root { 
     --blue: #2563eb; 
@@ -202,9 +202,9 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .module-action-btn:active { opacity: 0.8; }
 .module-action-btn:hover { filter: brightness(1.1); }
 
-.outline-btn::after {
-    content: ''; position: absolute; top: 4px; right: 4px; bottom: 4px; left: 4px;
-    border: 2px solid rgba(255,255,255,0.25); border-radius: 4px; pointer-events: none;
+/* Apply traditional external border to buttons requiring outline */
+.module-action-btn.outline-btn {
+    border: 2px solid rgba(255, 255, 255, 0.25) !important;
 }
 
 .stacked-action-btns { display: flex; flex-direction: column; height: 100%; width: 100%; }
