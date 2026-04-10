@@ -1,9 +1,7 @@
-/* Dashboard - V17.7 */
+/* Dashboard - V17.8 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added State checking to updateRoutingUI to dynamically shift layout widths and action buttons depending on Routing State. */
-/* 2. Added lastSelectedId logic and Shift/Cmd modifier parsing inside item.onclick for deep multi-select behavior. */
-/* 3. Removed checkEndpointModified() from handleEndpointInput() to stop DOM wiping during keystrokes, fixing the endpoint typing bug. */
+/* 1. Updated performResize to use document.body.clientHeight so the slider math perfectly respects the explicitly offset CSS boundaries instead of the full window innerHeight. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1353,8 +1351,8 @@ function performResize(e) {
     if (!isResizing) return;
     let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
     
-    // Calculate total actual container height natively from window bounds
-    let containerHeight = window.innerHeight;
+    // Calculate total actual container height natively from window bounds to respect the CSS body cutoff
+    let containerHeight = document.body.clientHeight;
     
     if (Config.viewMode === 'managermobile') {
         let newHeight = containerHeight - clientY; 
