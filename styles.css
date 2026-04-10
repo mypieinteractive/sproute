@@ -1,8 +1,7 @@
-/* Dashboard - V17.7 */
+/* Dashboard - V17.8 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Updated body to position: absolute, height/width 100% to seamlessly adapt to the Glide iframe constraints. */
-/* 2. Ensured .endpoint-input and .address-header-input have pointer-events: auto and user-select: text to prevent SortableJS or CSS overrides from blocking cursor selection. */
+/* 1. Updated body height to explicitly calculate calc(100dvh - 280px) to prevent the bottom from being masked by the Glide iframe container. */
 
 :root { 
     --blue: #2563eb; 
@@ -24,8 +23,9 @@
 
 body { 
     margin: 0; padding: 0; 
-    height: 100%; width: 100%; 
-    position: absolute; top: 0; left: 0;
+    height: calc(100vh - 280px); /* Fallback */
+    height: calc(100dvh - 280px); /* Explicit match to Glide parent mask */
+    width: 100vw; 
     display: flex; flex-direction: column; 
     background: var(--bg-base); color: var(--text-main); overflow: hidden; 
 }
