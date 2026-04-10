@@ -1,7 +1,8 @@
-/* Dashboard - V18.5 */
+/* Dashboard - V18.6 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated handleOpenEmailModal() to explicitly target document.getElementById('map-container') for the html2canvas capture instead of map-wrapper. This guarantees the routing module buttons and header UI physically cannot bleed into the screenshot payload. */
+/* 1. Updated handleStartOver to ensure it strictly forces cluster to 0 instead of 'X', correctly mapping it as a fresh blank slate upload. Also explicitly resets priority slider to 0 and routes to 1. */
+/* 2. Modified showAddOrderModal and showUploadModal to ensure that if Config.isManagerView is active, the inspector pills always render, and natively injects the .active class into the HTML if an inspector is already pre-selected. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -942,8 +943,11 @@ export function showAddOrderModal() {
     let selectedApp = null;
 
     let inspectorHtml = '';
-    if (Config.isManagerView && AppState.currentInspectorFilter === 'all' && !isIndividual) {
-        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => `<div class="pill-btn add-insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
+    if (Config.isManagerView && !isIndividual) {
+        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => {
+            let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
+            return `<div class="pill-btn add-insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
+        }).join('');
         inspectorHtml = `<div class="form-group"><label>Inspector <span style="float:right; font-weight:normal;">Required</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">${inspBtns}</div></div>`;
     }
 
@@ -1004,8 +1008,11 @@ export function showUploadModal(file) {
     let selectedCsvType = null;
 
     let inspectorHtml = '';
-    if (Config.isManagerView && AppState.currentInspectorFilter === 'all' && !isIndividual) {
-        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => `<div class="pill-btn insp-pill" data-val="${insp.id}">${insp.name}</div>`).join('');
+    if (Config.isManagerView && !isIndividual) {
+        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => {
+            let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
+            return `<div class="pill-btn insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
+        }).join('');
         inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">Inspector <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
     }
 
@@ -1068,7 +1075,6 @@ export function handleOpenEmailModal() {
         const btn = document.getElementById('btn-submit-dispatch');
         btn.innerText = 'Dispatching...'; btn.disabled = true;
 
-        // By explicitly targeting #map-container instead of #map-wrapper, we guarantee the routing controls cannot bleed into the screenshot payload
         const mapContainer = document.getElementById('map-container');
         const overlaysToHide = mapContainer.querySelectorAll('.map-overlay-btns, #map-hint');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
