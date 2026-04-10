@@ -1,7 +1,7 @@
-/* Dashboard - V18.0 */
+/* Dashboard - V18.2 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added a robust syncBodyHeight() function hooked to window resize events that explicitly forces document.body.style.height to match the true window.innerHeight (minus the 200px offset). This bypasses CSS calculation bugs in dynamically sized iframes, ensuring the bottom of the app is perfectly preserved. */
+/* 1. Overhauled handleStartOver() to function as a true "Blank Slate" reset. It now forcefully resets all stops for the current driver to cluster 0 (Route 1), resets the priority slider to 0, and snaps the routing UI back to 1 Route, perfectly mimicking a fresh CSV upload state and preventing algorithmic baseline corruption. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
