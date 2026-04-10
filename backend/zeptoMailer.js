@@ -1,16 +1,11 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.2
- * * CHANGES:
- * V15.2 - ZeptoMail Formatting & Bug Fixes. 
- * 1. Fixed map image rendering by shifting base64 payload from 'attachments' to ZeptoMail's 'inline_images' array.
- * 2. Rewrote Due Date comparison logic to use strict 'YYYY-MM-DD' string matching against the calculated local timezone to fix inaccurate offset highlighting.
- * 3. Adjusted route numbering logic to properly map 0-indexed clusters to 1-indexed UI headers (Route 1, 2, 3) and restored corresponding table colors.
- * 4. Fixed casing in the hardcoded dashboard link (sproute instead of Sproute).
- * * V15.1 - ZeptoMail Authorization & Local Timezone Accuracy Fix. Added the 
- * required 'Zoho-enczapikey ' prefix handler for the ZEPTO_TOKEN. Integrated 'geo-tz' 
- * to dynamically extract the exact IANA Timezone string based on the latitude and 
- * longitude of the route's first stop.
+ * VERSION: V15.3
+ * CHANGES:
+ * V15.3 - UI Alignment & Date Formatting Fixes. 
+ * 1. Fixed Due Date parsing to correctly handle ISO strings (split on 'T'), ensuring text displays properly instead of '--'.
+ * 2. Fixed Route Numbering. The UI already passes 1-indexed clusters, so we removed the redundant +1 offset that caused 'Route 3 and 4'.
+ * 3. Added detailed summary metrics (Miles, Time, Orders, Due Dates) directly into the Route Subheading bars in the email table.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -69,9 +64,12 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             }
         }
 
+        const serviceDelay = comp.serviceDelayMins ? parseInt(comp.serviceDelayMins) : 0;
+
         // 4. Calculate Route Statistics & Grouping
         let totalMiles = 0, dueToday = 0, pastDue = 0, totalSecs = 0;
         let routesMap = {};
+        let routeStats = {}; // Specific stats mapped per route subheading
         
         // Generate a strict YYYY-MM-DD string for today in the local timezone
         const formatter = new Intl.DateTimeFormat('en-US', { timeZone: localTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -83,41 +81,72 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
 
         stagingStops.forEach(s => {
             // Minified format: [rowId, cluster, address, client, app, due, type, eta, dist, lat, lng, status, durationSecs]
-            // Default to 0 if cluster is missing so it groups gracefully
-            let rLabel = String(Array.isArray(s) ? s[1] : (s.cluster !== undefined ? s.cluster : (s.R || s.routeNum || 0)));
+            // Default to 1 if cluster is missing so it groups gracefully
+            let rLabel = String(Array.isArray(s) ? s[1] : (s.cluster !== undefined ? s.cluster : (s.R || s.routeNum || 1)));
+            
+            if (!routesMap[rLabel]) routesMap[rLabel] = [];
+            if (!routeStats[rLabel]) routeStats[rLabel] = { miles: 0, secs: 0, dueToday: 0, pastDue: 0, count: 0 };
+            
+            routesMap[rLabel].push(s);
+
             let dDate = Array.isArray(s) ? s[5] : s.dueDate;
             let dist = Array.isArray(s) ? s[8] : s.dist;
             let dur = Array.isArray(s) ? s[12] : s.durationSecs;
 
-            if (!routesMap[rLabel]) routesMap[rLabel] = [];
-            routesMap[rLabel].push(s);
-
             totalMiles += parseFloat(dist || 0);
             totalSecs += parseFloat(dur || 0);
+            
+            routeStats[rLabel].miles += parseFloat(dist || 0);
+            routeStats[rLabel].secs += parseFloat(dur || 0);
+            routeStats[rLabel].count++;
 
             if (dDate) {
-                // Safe string comparison (e.g. "2026-04-09" vs "2026-04-10") avoids UTC parsing drift
-                if (dDate < localTodayStr) pastDue++;
-                else if (dDate === localTodayStr) dueToday++;
+                // Safe string comparison handling ISO timezone 'T'
+                let dStr = dDate.split('T')[0];
+                
+                if (dStr < localTodayStr) {
+                    pastDue++;
+                    routeStats[rLabel].pastDue++;
+                } else if (dStr === localTodayStr) {
+                    dueToday++;
+                    routeStats[rLabel].dueToday++;
+                }
             }
         });
 
-        const serviceDelay = comp.serviceDelayMins ? parseInt(comp.serviceDelayMins) : 0;
         const totalOrders = stagingStops.length;
         const totalHrs = totalOrders > 0 ? ((totalSecs + (totalOrders * serviceDelay * 60)) / 3600).toFixed(1) : 0;
 
         // 5. Build the HTML Table Rows
         let tableRows = "";
-        // Match standard route colors mapped to 0-indexed clusters
-        const hexColors = { "0": "#000075", "1": "#4363d8", "2": "#469990" }; 
+        // Match standard route colors (Indexed at 0)
+        const hexColors = ["#000075", "#4363d8", "#469990"]; 
         
         Object.keys(routesMap).sort().forEach(rKey => {
             let rStops = routesMap[rKey];
-            let rColor = hexColors[rKey] || "#374151";
-            let displayRouteNum = parseInt(rKey) + 1; // Shifts 0,1,2 to Display as Route 1,2,3
+            
+            // The frontend passes clusters natively as 1, 2, 3 now. We don't need to offset by +1.
+            let displayRouteNum = parseInt(rKey); 
+            let rColor = hexColors[displayRouteNum - 1] || "#374151";
+
+            let stats = routeStats[rKey];
+            let hrs = stats.count > 0 ? ((stats.secs + (stats.count * serviceDelay * 60)) / 3600).toFixed(1) : 0;
+            let dueText = stats.pastDue > 0 ? `<span style="color:#ef4444">${stats.pastDue} Past Due</span>` : (stats.dueToday > 0 ? `<span style="color:#f59e0b">${stats.dueToday} Due Today</span>` : `0 Due`);
+            
+            let routeSubInfo = `<span style="color:#6b7280; font-weight:normal; text-transform:none;">${stats.miles.toFixed(1)} mi &nbsp;|&nbsp; ${hrs} hrs &nbsp;|&nbsp; ${stats.count} stops &nbsp;|&nbsp; ${dueText}</span>`;
 
             if (Object.keys(routesMap).length > 1) {
-                tableRows += `<tr style="background-color: #f3f4f6;"><td colspan="7" style="padding: 8px 10px; font-weight: bold; color: ${rColor}; font-size: 11px; text-align: left; letter-spacing: 0.5px; border-bottom: 1px solid #d1d5db;">ROUTE ${displayRouteNum}</td></tr>`;
+                tableRows += `
+                <tr style="background-color: #f3f4f6;">
+                    <td colspan="7" style="padding: 8px 10px; border-bottom: 1px solid #d1d5db;">
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td style="font-weight: bold; color: ${rColor}; font-size: 11px; text-align: left; letter-spacing: 0.5px;">ROUTE ${displayRouteNum}</td>
+                                <td style="text-align: right; font-size: 11px;">${routeSubInfo}</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>`;
             }
 
             let localSeq = 1;
@@ -131,12 +160,16 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
 
                 let dueBg = "#374151", dueFmt = '--';
                 if (dDate) {
-                    let dateParts = dDate.split('-');
-                    if (dateParts.length === 3) {
-                        dueFmt = `${parseInt(dateParts[1])}/${parseInt(dateParts[2])}`; // Drop leading zeros for month/day
-                    }
-                    if (dDate < localTodayStr) dueBg = "#ef4444"; 
-                    else if (dDate === localTodayStr) dueBg = "#f59e0b";
+                    try {
+                        let dStr = dDate.split('T')[0]; // Isolate YYYY-MM-DD
+                        let dateParts = dStr.split('-');
+                        if (dateParts.length >= 3) {
+                            dueFmt = `${parseInt(dateParts[1], 10)}/${parseInt(dateParts[2], 10)}`; // Drop leading zeros
+                        }
+                        
+                        if (dStr < localTodayStr) dueBg = "#ef4444"; 
+                        else if (dStr === localTodayStr) dueBg = "#f59e0b";
+                    } catch(e) {}
                 }
 
                 let appVal = (app || '--').substring(0,2).toUpperCase();
