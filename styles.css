@@ -1,10 +1,8 @@
-/* Dashboard - V17.6 */
+/* Dashboard - V17.7 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Set body height to calc(100vh - 40px) and updated view modes to use % instead of vh to respect container boundaries. */
-/* 2. Added outline-btn pseudo-element CSS for standardizing the button UI inside the module action block. */
-/* 3. Updated grey-checkbox styling to transparent background with #555 border for dark theme matching. */
-/* 4. Lowered rocker-switch and insp-select height to 30px. */
+/* 1. Updated body to position: absolute, height/width 100% to seamlessly adapt to the Glide iframe constraints. */
+/* 2. Ensured .endpoint-input and .address-header-input have pointer-events: auto and user-select: text to prevent SortableJS or CSS overrides from blocking cursor selection. */
 
 :root { 
     --blue: #2563eb; 
@@ -23,7 +21,14 @@
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
-body { margin: 0; padding: 0; height: calc(100vh - 40px); width: 100vw; display: flex; flex-direction: column; background: var(--bg-base); color: var(--text-main); overflow: hidden; }
+
+body { 
+    margin: 0; padding: 0; 
+    height: 100%; width: 100%; 
+    position: absolute; top: 0; left: 0;
+    display: flex; flex-direction: column; 
+    background: var(--bg-base); color: var(--text-main); overflow: hidden; 
+}
 
 /* Scrollbar Customization */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -388,6 +393,7 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
     background: transparent !important; border: 1px solid transparent !important; color: var(--text-main);
     font-weight: 500; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 6px; margin: 0; height: 30px;
     border-radius: 4px; transition: 0.2s background-color, 0.2s border-color; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
+    user-select: text !important; pointer-events: auto !important;
 }
 .glide-table-header .address-header-input { height: 30px; }
 .address-header-input::placeholder { color: var(--text-muted); font-weight: 500; }
