@@ -1,27 +1,94 @@
-/* Dashboard - V19.2 */
+/* Dashboard - V19.3 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Fully committed the app to a single, unified light theme, removing all dark mode variables and @media overrides. */
-/* 2. Added --brand-dark variable (#34495E) and integrated it deeply into the UI (Subheadings, Active Route buttons, Map Selection Highlights) to frame the white list rows and prevent wash-out. */
-/* 3. Injected an absolutely positioned pseudo-element over the #map container with the --green variable to act as a soft, multiply-blend colored glass over the base map tiles. */
+/* 1. Added --brand-primary (#032B39) and --brand-secondary (#1D414D) per user specifications to heavily brand the list headers, summary bars, routing background, and selection states. */
+/* 2. Reduced Mapbox canvas opacity to 0.65 to dramatically increase the bleed-through of the green map tint. */
+/* 3. Re-colored modal fonts and selection pins to use the primary brand blue. */
 
-:root { 
+:root, body { 
     --blue: #3498DB; 
     --fade-blue: rgba(52, 152, 219, 0.2); 
     --red: #e74c3c; 
     --green: #85BA4E; 
     --purple: #8e44ad; 
     --orange: #f39c12; 
-    --brand-dark: #34495E;
+    --brand-primary: #032B39;
+    --brand-secondary: #1D414D;
     
     /* Permanent Light Theme */
     --bg-base: #FAFAFA;
     --bg-panel: #FFFFFF;
-    --bg-hover: #F0F7FF;
-    --bg-header: #FAFAFA;
+    --bg-hover: rgba(3, 43, 57, 0.05); /* Soft primary tint for row hovering */
+    --bg-header: #FAFAFA; /* Matches global header to Glide Wrapper */
     --border-color: #E2E8F0;
-    --text-main: #1E293B;
+    --text-main: var(--brand-primary);
     --text-muted: #64748B;
+}
+
+/* Map Overlays & Selection */
+#map-hint { 
+    background: rgba(255,255,255,0.85); 
+    color: #111; 
+    border-color: rgba(0,0,0,0.1); 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.marker.bulk-selected .pin-visual { 
+    background-color: var(--brand-primary) !important; 
+    color: #ffffff !important; 
+    box-shadow: 0 0 15px rgba(3, 43, 57, 0.5); 
+    transform: scale(1.15); 
+    border-color: var(--brand-primary) !important; 
+}
+
+/* Brand Secondary Injection: List Subheadings & Routing Controls */
+.list-subheading {
+    background: var(--brand-secondary) !important;
+    color: #FFFFFF !important;
+    border-top: none;
+}
+
+#routing-controls { 
+    background: var(--brand-secondary); 
+}
+
+/* Ensure text inside routing controls is white/light against the dark secondary background */
+#priority-container label, 
+#priority-container span {
+    color: rgba(255,255,255,0.9) !important;
+}
+
+#routing-controls .route-btn {
+    background: rgba(0,0,0,0.2);
+}
+
+#routing-controls .route-btn.active {
+    background: var(--brand-primary);
+    border-color: var(--brand-primary);
+}
+
+#routing-controls .route-btn.active .rbtn-title, 
+#routing-controls .route-btn.active .rbtn-time {
+    color: #FFFFFF !important;
+}
+
+.num-badge {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Inspector Dropdowns */
+.glide-row .insp-select {
+    background-color: #F8FAFC !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 14px !important;
+    padding-left: 12px !important;
+}
+
+body.manager-all-inspectors .glide-row .insp-select {
+    background-color: #F1F5F9 !important;
+    border: 1px solid #E2E8F0 !important;
+    padding: 2px 24px 2px 10px !important;
+    height: 28px !important;
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
@@ -158,7 +225,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 /* MAP HEADER (Top Map Bar) */
 #map-header {
     height: 38px;
-    background: var(--bg-header);
+    background: var(--brand-primary);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
@@ -168,23 +235,13 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     z-index: 10;
 }
 
-.list-subheading {
-    padding: 6px 12px; background: var(--brand-dark) !important; color: #ffffff !important;
-    font-weight: 500; font-size: 11px; text-transform: uppercase;
-    border-bottom: 1px solid var(--border-color); letter-spacing: 1px;
-    display: flex; justify-content: space-between; align-items: center;
-    position: sticky; z-index: 15; top: 0; margin-top: -1px;
-}
-body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 37px; }
-
-.route-summary-text { font-weight: normal; font-size: 11px; text-transform: none; color: #FFFFFF; opacity: 0.9; }
+#global-summary-stats #summary-metrics { color: rgba(255,255,255,0.7) !important; }
+#global-summary-stats #stat-total { color: #ffffff !important; }
 
 /* ROUTING MODULE: Wrapper, Core, Overlay, and Flush Action Buttons */
 .routing-module-wrapper { position: relative; display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; }
 .routing-module-core { display: flex; flex: 1; gap: 20px; width: 100%; align-items: center; transition: opacity 0.2s, filter 0.2s; height: 100%; }
 .routing-module-core.staging-locked { opacity: 0.5; pointer-events: none; filter: grayscale(80%); }
-
-#routing-controls { background: #F8FAFC; }
 
 .start-over-overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -223,8 +280,6 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
     border-radius: 6px; padding: 6px 10px; cursor: pointer; min-width: 85px;
     transition: 0.2s; opacity: 0.6; display: flex; align-items: center; justify-content: center; gap: 8px;
 }
-.route-btn.active { border-color: var(--brand-dark); opacity: 1; background: var(--brand-dark); color: #FFFFFF; }
-.route-btn.active .rbtn-title, .route-btn.active .rbtn-time { color: #FFFFFF !important; }
 .rbtn-content { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
 .rbtn-indicator { display: flex; flex-direction: column; gap: 3px; }
 .rbtn-circle { width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; }
@@ -250,27 +305,6 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .insp-select option { background: var(--bg-panel); color: var(--text-main); font-weight: 500; }
 .insp-select:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* List Row Specific Assignee Select */
-.glide-row .insp-select {
-    background-color: #F8FAFC !important;
-    border: 1px solid var(--border-color) !important;
-    border-radius: 14px !important;
-    padding: 4px 24px 4px 12px !important;
-    color: var(--text-main);
-    font-weight: 500;
-    font-size: 13px;
-    height: 28px;
-    background-position: right 6px center;
-}
-
-/* Strip button styling for "All Inspectors" view */
-body.manager-all-inspectors .glide-row .insp-select {
-    background-color: #F1F5F9 !important;
-    border: 1px solid #E2E8F0 !important;
-    padding: 2px 24px 2px 10px !important;
-    height: 28px !important;
-}
-
 /* Rocker Switch */
 .rocker-switch { display: flex; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; height: 30px; }
 .rocker-switch input { display: none; }
@@ -295,19 +329,10 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* --- MAPBOX GREEN TINT HACK --- */
 #map { 
     position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; 
-    background-color: #e5f0d8; /* The map container is painted a soft brand-green */
+    background-color: var(--green); /* The map container is painted brand-green */
 }
 .mapboxgl-canvas {
-    opacity: 0.85; /* The map tiles become 15% transparent, perfectly inheriting the green background WITHOUT tinting your HTML marker pins */
-}
-
-#map-hint { 
-    position: absolute; top: 15px; left: 15px; 
-    background: rgba(255,255,255,0.85); 
-    color: #111; 
-    border-color: rgba(0,0,0,0.1); 
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; z-index: 200; pointer-events: none; transition: opacity 0.2s; 
+    opacity: 0.65; /* The map tiles become transparent, perfectly inheriting the green background WITHOUT tinting your HTML marker pins */
 }
 
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
@@ -335,7 +360,9 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--border-color); background: var(--bg-panel); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: var(--bg-base); }
-.stop-item.selected { background: var(--fade-blue) !important; }
+
+/* Selection state is an elegant soft tint of the primary brand color */
+.stop-item.selected, .glide-row.selected { background: rgba(3, 43, 57, 0.1) !important; }
 
 .sortable-chosen { transform: scale(1.02); box-shadow: 0 12px 28px rgba(0,0,0,0.1) !important; border: 2px solid var(--blue) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; z-index: 1000; background-color: var(--bg-hover) !important; }
 .sortable-drag { opacity: 0.8 !important; }
@@ -369,9 +396,38 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 .icon-btn { font-size: 28px; cursor: pointer; padding: 4px; }
 
 /* Enforce bold grey fonts for headers */
-.glide-table-header { display: flex; height: 38px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: 500; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; text-transform: uppercase; background: var(--bg-header); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
+.glide-table-header { display: flex; height: 38px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: 500; border-bottom: 1px solid var(--border-color); font-size: 12px; text-transform: uppercase; background: var(--brand-primary); position: sticky; top: 0; z-index: 20; margin-top: -1px; }
 
-/* Vertical Dividers for Header & Rows */
+/* Headers utilize the dark primary background, so text must be light */
+.glide-table-header, .glide-table-header .col-eta, .glide-table-header .col-due, .glide-table-header .col-addr { 
+    color: rgba(255,255,255,0.8) !important; 
+}
+
+/* Address Input Header perfect alignment styling */
+.address-header-input {
+    background: transparent !important; border: 1px solid transparent !important; color: #ffffff;
+    font-weight: 500; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 6px; margin: 0; height: 30px;
+    border-radius: 4px; transition: 0.2s background-color, 0.2s border-color; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
+    user-select: text !important; pointer-events: auto !important;
+}
+.glide-table-header .address-header-input { height: 30px; }
+.address-header-input::placeholder { color: rgba(255,255,255,0.6); font-weight: 500; }
+.address-header-input:hover { background-color: rgba(255, 255, 255, 0.1) !important; }
+.address-header-input:focus, .address-header-input:active { background-color: rgba(255, 255, 255, 0.15) !important; border-color: var(--blue) !important; }
+
+.clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: rgba(255,255,255,0.6); font-size: 12px; }
+.clear-search-icon:hover { color: #ffffff; }
+
+/* Custom Tooltip */
+.custom-tooltip {
+    position: absolute; top: -28px; right: 0; background: #333; color: #fff;
+    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
+    font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.address-search-wrapper:hover .custom-tooltip { opacity: 1; }
+
+/* Vertical Dividers for Rows */
 .col-eta, .col-due, .col-addr, .col-app { border-right: 1px solid var(--border-color); }
 
 /* Bypass Vertical Dividers explicitly for Static Endpoints */
@@ -379,19 +435,16 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 
 .glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid var(--border-color); font-size: 14px; color: var(--text-main); align-items: center; cursor: pointer; background: var(--bg-panel); transition: background 0.2s; }
 .glide-row:hover { background: var(--bg-hover); }
-.glide-row.selected { background: var(--fade-blue) !important; }
 .glide-row.completed { opacity: 0.5; }
 
 .sortable { cursor: pointer; transition: color 0.2s; display: flex; align-items: center; }
-.sortable:hover { color: var(--text-main); }
+.sortable:hover { color: #ffffff; }
 .col-num { width: 30px; margin-left: 12px; color: var(--text-muted); font-size: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-.num-badge { width: 26px; height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 13px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .glide-row.completed .num-badge { background-color: #555 !important; color: white !important; border-color: #555 !important; }
 
 /* Unbold data text */
 .col-eta { width: 75px; font-weight: 400; color: var(--text-main); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-due { width: 65px; display: flex; align-items: center; justify-content: center; gap: 2px; font-weight: 400; flex-shrink: 0;}
-.glide-table-header .col-eta, .glide-table-header .col-due, .glide-table-header .col-addr { font-weight: 500 !important; color: var(--text-muted) !important; }
 .col-due.due-today { color: var(--orange); }
 .col-due.past-due { color: var(--red); font-weight: 600; }
 
@@ -410,40 +463,6 @@ body.view-managermobile #resizer::after { content: ''; position: absolute; top: 
 /* Widened app column to prevent overlap with client column */
 .col-app { width: 55px; color: var(--text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .col-client { width: 70px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; }
-
-/* Address Input Header perfect alignment styling */
-.address-header-input {
-    background: transparent !important; border: 1px solid transparent !important; color: var(--text-main);
-    font-weight: 500; font-size: 12px; text-transform: uppercase; width: 100%; padding: 0 24px 0 6px; margin: 0; height: 30px;
-    border-radius: 4px; transition: 0.2s background-color, 0.2s border-color; outline: none; text-align: left; box-sizing: border-box; min-width: 0;
-    user-select: text !important; pointer-events: auto !important;
-}
-.glide-table-header .address-header-input { height: 30px; }
-.address-header-input::placeholder { color: var(--text-muted); font-weight: 500; }
-.address-header-input:hover { background-color: rgba(0, 0, 0, 0.05) !important; }
-.address-header-input:focus, .address-header-input:active { background-color: rgba(0, 0, 0, 0.08) !important; border-color: var(--blue) !important; }
-
-.clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--text-muted); font-size: 12px; }
-.clear-search-icon:hover { color: var(--text-main); }
-
-/* Custom Tooltip */
-.custom-tooltip {
-    position: absolute; top: -28px; right: 0; background: #333; color: #fff;
-    padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
-    opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
-    font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-.address-search-wrapper:hover .custom-tooltip { opacity: 1; }
-
-.marker { position: absolute !important; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 50%; z-index: 1; }
-.marker.bulk-selected { z-index: 1000 !important; }
-
-.pin-visual { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: white; transition: transform 0.1s, box-shadow 0.1s, background-color 0.2s; box-sizing: border-box; }
-.marker.bulk-selected .pin-visual { background-color: var(--brand-dark) !important; color: #ffffff !important; box-shadow: 0 0 15px rgba(52, 73, 94, 0.5); transform: scale(1.15); border-color: var(--brand-dark) !important; }
-.marker.completed .pin-visual { background-color: #555 !important; color: white !important; border-color: #555 !important; }
-.marker-warning { position: absolute; top: -10px; right: -10px; font-size: 16px; pointer-events: none; z-index: 5; }
-
-.boxdraw { background: rgba(37, 99, 235, 0.3); border: 1px solid var(--blue); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
 
 /* Vertically Center Modals using absolute bounds */
 #modal-overlay { 
