@@ -5,10 +5,15 @@
 /* 2. Modified functions like getVisualStyle and calculateClusters to accept state as parameters, preventing circular dependencies. */
 
 export const MASTER_PALETTE = [
-    '#4363d8', '#ffd8b1', '#469990', '#808000', '#000075', 
-    '#bfef45', '#fffac8', '#f58231', '#42d4f4', '#3cb44b', 
-    '#a9a9a9', '#800000', '#aaffc3', '#f032e6', '#ffe119', 
-    '#e6194B', '#9A6324', '#fabed4', '#dcbeff', '#911eb4'
+'#D94633', // Deep Coral
+    '#2A75D3', // Strong Blue
+    '#059669', // Emerald Green
+    '#7C3AED', // Deep Violet
+    '#D97706', // Burnt Orange
+    '#0891B2', // Bold Teal
+    '#BE185D', // Dark Rose
+    '#4F46E5', // Indigo
+    '#B45309'  // Dark Amber
 ];
 
 export const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
