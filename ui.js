@@ -1,12 +1,12 @@
-/* Dashboard - V18.6 */
+/* Dashboard - V18.7 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated handleStartOver to ensure it strictly forces cluster to 0 instead of 'X', correctly mapping it as a fresh blank slate upload. Also explicitly resets priority slider to 0 and routes to 1. */
-/* 2. Modified showAddOrderModal and showUploadModal to ensure that if Config.isManagerView is active, the inspector pills always render, and natively injects the .active class into the HTML if an inspector is already pre-selected. */
+/* 1. Imported updateMapSelectionStyles from map.js. */
+/* 2. Added updateMapSelectionStyles(AppState.selectedIds) inside updateSelectionUI() to permanently sync map pin highlighting with list selection (including Shift and Cmd/Ctrl multi-selects). */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
-import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap } from './map.js';
+import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
 
 // --- Overlays & Modals ---
 
@@ -682,6 +682,11 @@ export function updateSelectionUI() {
         const row = document.getElementById(`item-${id}`); 
         if (row) row.classList.add('selected');
     });
+
+    // Ensure map pins sync with list selection
+    if (typeof updateMapSelectionStyles === 'function') {
+        updateMapSelectionStyles(AppState.selectedIds);
+    }
 
     const has = AppState.selectedIds.size > 0; 
     let hasRouted = false;
