@@ -1,7 +1,7 @@
-/* Dashboard - V18.9 */
+/* Dashboard - V18.10 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated html2canvas logic in handleOpenEmailModal() to dynamically read the active CSS theme background variable (--bg-base) rather than hardcoding a dark background for the email snapshot. */
+/* 1. Fully eliminated the "Optional" tags from showAddOrderModal() to match user spec. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -873,9 +873,9 @@ function renderAutocomplete(features, inputEl, type) {
     let dropdown = document.getElementById(`autocomplete-${type}`);
     if (!dropdown) {
         dropdown = document.createElement('div'); dropdown.id = `autocomplete-${type}`; dropdown.className = 'autocomplete-dropdown';
-        dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel, #1E293B)'; dropdown.style.border = '1px solid var(--border-color, #334155)';
+        dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel)'; dropdown.style.border = '1px solid var(--border-color)';
         dropdown.style.zIndex = '1000'; dropdown.style.width = '100%'; dropdown.style.maxHeight = '200px'; dropdown.style.overflowY = 'auto';
-        dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
         inputEl.parentNode.appendChild(dropdown);
     }
     dropdown.innerHTML = '';
@@ -883,11 +883,11 @@ function renderAutocomplete(features, inputEl, type) {
     
     features.forEach(f => {
         const item = document.createElement('div');
-        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color, #334155)';
-        item.style.color = 'var(--text-main, #F8FAFC)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
+        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color)';
+        item.style.color = 'var(--text-main)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
         
-        item.onmouseenter = () => item.style.background = 'var(--blue, #3B82F6)';
-        item.onmouseleave = () => item.style.background = 'transparent';
+        item.onmouseenter = () => { item.style.background = 'var(--bg-hover)'; item.style.color = 'var(--blue)'; };
+        item.onmouseleave = () => { item.style.background = 'transparent'; item.style.color = 'var(--text-main)'; };
         item.onmousedown = (e) => {
             e.preventDefault(); 
             AppState.latestSuggestions[type] = f; 
@@ -956,7 +956,7 @@ export function showAddOrderModal() {
     }
 
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
-    let appHtml = `<div class="form-group"><label>App <span style="float:right; font-weight:normal;">Optional</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
+    let appHtml = `<div class="form-group"><label>App</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
 
     mc.innerHTML = `
         <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
@@ -964,13 +964,13 @@ export function showAddOrderModal() {
             ${inspectorHtml} ${appHtml}
             <div class="form-group"><label>Address <span style="float:right; font-weight:normal;">Required</span></label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
             <div class="grid-2-col">
-                <div class="form-group"><label>Latitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
-                <div class="form-group"><label>Longitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
+                <div class="form-group"><label>Latitude</label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
+                <div class="form-group"><label>Longitude</label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
             </div>
             <div class="form-group"><label>Due Date <span style="float:right; font-weight:normal;">Required</span></label><input type="date" id="add-due" class="form-control" value="${new Date().toISOString().split('T')[0]}"></div>
             <div class="grid-2-col">
-                <div class="form-group"><label>Client <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
-                <div class="form-group"><label>Order Type <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
+                <div class="form-group"><label>Client</label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
+                <div class="form-group"><label>Order Type</label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
             </div>
             <div style="display: flex; gap: 12px; justify-content: flex-start; margin-top: 10px;">
                 <button id="btn-submit-add" style="padding: 10px 24px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; opacity: 0.5;" disabled>Add Order</button>
