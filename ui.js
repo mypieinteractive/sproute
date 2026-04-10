@@ -1,7 +1,7 @@
-/* Dashboard - V18.3 */
+/* Dashboard - V18.4 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Completely removed the aggressive executeRouteReset() logic from selectEndpoint(). Updating an endpoint now gracefully saves the coordinates, moves the map pins, and shifts the UI into Staging. */
+/* 1. Added #routing-controls to the overlaysToHide list in handleOpenEmailModal() to prevent the routing parameter UI from bleeding into the base64 map image snapshot. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1069,7 +1069,7 @@ export function handleOpenEmailModal() {
         btn.innerText = 'Dispatching...'; btn.disabled = true;
 
         const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-view-toggle');
+        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-view-toggle, #routing-controls');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
 
         const bounds = new mapboxgl.LngLatBounds();
