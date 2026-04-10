@@ -1,10 +1,9 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.4
+ * VERSION: V15.5
  * CHANGES:
- * V15.4 - List Order & Date Parsing Overhaul.
- * 1. Added timeToMins() helper to strictly sort the HTML table rows by ETA sequentially.
- * 2. Rewrote Date Parsing to handle both ISO strings ('T') and standard 'MM/DD/YYYY' formats to fix the '--' display bug and accurately count Due/Past Due metrics.
+ * V15.5 - Date String Lexicographical Bug Fix.
+ * 1. Rewrote normalizeDate() to forcefully parse and inject leading zeros into single-digit months and days (e.g., converting "2026-4-1" to "2026-04-01" and "4/2/26" to "2026-04-02"). This fixes a lexicographical string comparison bug where "2026-4" evaluated as mathematically greater than "2026-04", which was causing the mailer to under-count Past Due orders.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -37,15 +36,37 @@ function timeToMins(timeStr) {
 function normalizeDate(dDate) {
     if (!dDate) return null;
     let str = String(dDate);
-    if (str.includes('T')) return str.split('T')[0];
-    if (str.includes('/')) {
-        let parts = str.split('/');
-        if (parts.length === 3) {
-            // Assumes MM/DD/YYYY format and converts to YYYY-MM-DD
-            return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+    
+    // Strip time from ISO formats
+    if (str.includes('T')) str = str.split('T')[0];
+    // Strip time from space-separated formats
+    if (str.includes(' ')) str = str.split(' ')[0];
+
+    // Standardize delimiters to hyphens
+    str = str.replace(/\//g, '-');
+    
+    let parts = str.split('-');
+    if (parts.length === 3) {
+        // If year is the first element (YYYY-MM-DD)
+        if (parts[0].length === 4) {
+            return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        } 
+        // If year is the last element (MM-DD-YYYY or MM-DD-YY)
+        else if (parts[2].length === 4 || parts[2].length === 2) {
+            let year = parts[2].length === 2 ? "20" + parts[2] : parts[2];
+            return `${year}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
         }
     }
-    return str.split(' ')[0]; // Fallback
+    
+    // Ultimate fallback: Let JS try to parse it if format is completely bizarre
+    try {
+        let d = new Date(dDate);
+        if (!isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+    } catch(e) {}
+
+    return str;
 }
 
 async function sendRouteEmail(db, payload, routeId, driverData) {
@@ -163,7 +184,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             let hrs = stats.count > 0 ? ((stats.secs + (stats.count * serviceDelay * 60)) / 3600).toFixed(1) : 0;
             let dueText = stats.pastDue > 0 ? `<span style="color:#ef4444">${stats.pastDue} Past Due</span>` : (stats.dueToday > 0 ? `<span style="color:#f59e0b">${stats.dueToday} Due Today</span>` : `0 Due`);
             
-            let routeSubInfo = `<span style="color:#6b7280; font-weight:normal; text-transform:none;">${stats.miles.toFixed(1)} mi  |  ${hrs} hrs  |  ${stats.count} stops  |  ${dueText}</span>`;
+            let routeSubInfo = `<span style="color:#6b7280; font-weight:normal; text-transform:none;">${stats.miles.toFixed(1)} mi &nbsp;|&nbsp; ${hrs} hrs &nbsp;|&nbsp; ${stats.count} stops &nbsp;|&nbsp; ${dueText}</span>`;
 
             if (Object.keys(routesMap).length > 1) {
                 tableRows += `
