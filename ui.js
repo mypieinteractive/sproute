@@ -1,7 +1,7 @@
-/* Dashboard - V18.4 */
+/* Dashboard - V18.5 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added #routing-controls to the overlaysToHide list in handleOpenEmailModal() to prevent the routing parameter UI from bleeding into the base64 map image snapshot. */
+/* 1. Updated handleOpenEmailModal() to explicitly target document.getElementById('map-container') for the html2canvas capture instead of map-wrapper. This guarantees the routing module buttons and header UI physically cannot bleed into the screenshot payload. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1068,8 +1068,9 @@ export function handleOpenEmailModal() {
         const btn = document.getElementById('btn-submit-dispatch');
         btn.innerText = 'Dispatching...'; btn.disabled = true;
 
-        const mapWrapper = document.getElementById('map-wrapper');
-        const overlaysToHide = mapWrapper.querySelectorAll('.map-overlay-btns, #map-hint, #map-header, #route-summary, #mobile-view-toggle, #routing-controls');
+        // By explicitly targeting #map-container instead of #map-wrapper, we guarantee the routing controls cannot bleed into the screenshot payload
+        const mapContainer = document.getElementById('map-container');
+        const overlaysToHide = mapContainer.querySelectorAll('.map-overlay-btns, #map-hint');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
 
         const bounds = new mapboxgl.LngLatBounds();
@@ -1082,6 +1083,7 @@ export function handleOpenEmailModal() {
             if (dLat > 0.00001 && dLng > 0.00001) { let ratio = dLng / dLat; if (ratio > 1) { finalWidth = 800; finalHeight = Math.max(350, Math.floor(800 / ratio)); } else { finalHeight = 800; finalWidth = Math.max(350, Math.floor(800 * ratio)); } }
         }
 
+        const mapWrapper = document.getElementById('map-wrapper');
         const originalWrapperStyle = mapWrapper.style.cssText;
         mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
         const map = getMapInstance();
@@ -1091,7 +1093,7 @@ export function handleOpenEmailModal() {
         }
 
         let mapBase64 = '';
-        try { mapBase64 = (await html2canvas(mapWrapper, { useCORS: true, backgroundColor: '#171717', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
+        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#171717', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
 
         mapWrapper.style.cssText = originalWrapperStyle;
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
