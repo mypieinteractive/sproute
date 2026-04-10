@@ -1,7 +1,7 @@
-/* Dashboard - V18.5 */
+/* Dashboard - V18.6 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated theme injection to apply 'light-mode' to document.documentElement (the <html> tag) instead of just the body, ensuring CSS variables cascade flawlessly across all browsers and iframes. */
+/* 1. Swapped the dynamic map style from the minimalist 'light-v11' to the standard 'streets-v12' to restore rich geographical colors (parks, water, etc.) to the map in light mode. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -81,7 +81,8 @@ sessionStorage.setItem('sproute_last_query', currentQuery);
 let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
 
-const currentMapStyle = isLightMode ? 'mapbox://styles/mapbox/light-v11' : 'mapbox://styles/mapbox/dark-v11';
+// Use 'streets-v12' for a rich, vibrant standard map instead of the washed-out 'light-v11'
+const currentMapStyle = isLightMode ? 'mapbox://styles/mapbox/streets-v12' : 'mapbox://styles/mapbox/dark-v11';
 
 const mapConfig = { 
     container: 'map', 
