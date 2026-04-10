@@ -1,7 +1,7 @@
-/* Dashboard - V17.9 */
+/* Dashboard - V18.0 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Replaced the inset .outline-btn::after hack with a standard 2px border directly on the .module-action-btn to outline the true perimeter of the button. */
+/* 1. Updated the calc offsets from 280px down to 200px to flawlessly match the user's revised Glide web-embed mask constraints. */
 
 :root { 
     --blue: #2563eb; 
@@ -23,8 +23,8 @@
 
 body { 
     margin: 0; padding: 0; 
-    height: calc(100vh - 280px); /* Fallback */
-    height: calc(100dvh - 280px); /* Explicit match to Glide parent mask */
+    height: calc(100vh - 200px); /* Fallback */
+    height: calc(100dvh - 200px); /* Explicit match to Glide parent mask */
     width: 100vw; 
     display: flex; flex-direction: column; 
     background: var(--bg-base); color: var(--text-main); overflow: hidden; 
