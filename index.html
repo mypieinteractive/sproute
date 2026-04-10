@@ -3,9 +3,9 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V18.3
+            VERSION: V19.0
             CHANGES:
-            1. Swapped hardcoded background and border colors for the Unmatched Modal to match the CSS variables to seamlessly support the new Light Theme structure.
+            1. Updated inline height of #inspector-filter to 38px to perfectly bottom-align with the 38px global action buttons.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -59,7 +59,7 @@
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: center; gap: 15px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 30px;"></select>
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 38px;"></select>
             </div>
             <div class="rocker-switch">
                 <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
