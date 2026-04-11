@@ -3,9 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.4
+            VERSION: V19.5
             CHANGES:
-            1. Converted #map-header and #routing-action-buttons to use the clean light theme (white background, deep teal text and outlines).
+            1. Converted primary action buttons ([+ Add], [Send Route]) to the Sproute Green accent.
+            2. Updated the active Rocker Switch color to the new Green accent.
         */
         
         .custom-tooltip {
@@ -16,7 +17,7 @@
         }
         .address-search-wrapper:hover .custom-tooltip { opacity: 1; }
         
-        .rocker-switch input:checked + label { background: var(--blue) !important; color: white !important; }
+        .rocker-switch input:checked + label { background: var(--accent) !important; color: white !important; }
     </style>
     
     <meta charset="utf-8">
@@ -68,7 +69,7 @@
         </div>
         <div id="header-right-controls">
             <div id="add-menu-wrapper" style="position: relative;">
-                <div class="header-action-btn" style="background: var(--blue); color: white; padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
+                <div class="header-action-btn" style="background: var(--accent); color: white; padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
                     <i class="fa-solid fa-plus"></i> <span style="margin-left: 6px;">Add</span>
                 </div>
                 <div class="add-dropdown-menu" style="right: 0;">
@@ -90,8 +91,8 @@
         <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; width: 100%;">
             <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 1200px; height: 60vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
                 <input type="file" id="main-file-input" accept=".csv" style="display: none;">
-                <div style="background: rgba(29, 146, 214, 0.1); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
-                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--blue);"></i>
+                <div style="background: rgba(133, 186, 78, 0.1); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
+                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--accent);"></i>
                 </div>
                 <div class="dropzone-sub" style="font-size: 16px; color: var(--text-muted); pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
             </div>
@@ -177,7 +178,7 @@
                         <button id="btn-header-restore" class="module-action-btn outline-btn" onclick="handleRestoreOriginal()" style="display:none; border-radius: 6px; flex:1;">
                             <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
                         </button>
-                        <button id="btn-header-send-route" class="module-action-btn filled-blue" onclick="handleOpenEmailModal()" style="border-radius: 6px; flex:2;">
+                        <button id="btn-header-send-route" class="module-action-btn filled-green" onclick="handleOpenEmailModal()" style="border-radius: 6px; flex:2;">
                             <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
                         </button>
                     </div>
@@ -257,7 +258,7 @@
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <button id="btn-unmatched-skip" style="padding: 10px 16px; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s;">Skip</button>
-            <button id="btn-unmatched-submit" style="padding: 10px 24px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Match Coordinates</button>
+            <button id="btn-unmatched-submit" style="padding: 10px 24px; background: var(--accent); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Match Coordinates</button>
         </div>
     </div>
 </div>
