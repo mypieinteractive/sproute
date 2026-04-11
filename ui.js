@@ -325,18 +325,18 @@ export function render() {
             <div class="col-due ${sortClass}" ${sortClick('dueDate')}>Due ${sortIcon('dueDate')}</div>
             
             <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
-                <div class="address-search-wrapper" style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
+                <div class="address-search-wrapper" style="position:relative; flex: 1; display:flex; align-items:center; height:30px;">
                     <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
                     <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
                     <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 8px; z-index: 5;"></i>
                     <div class="custom-tooltip">Click to search orders</div>
                 </div>
-                <div class="${sortClass}" ${sortClick('address')} style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center;">${sortIcon('address')}</div>
+                <div class="${sortClass}" ${sortClick('address')} style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; width: 20px; justify-content: center;">${sortIcon('address')}</div>
             </div>
 
             <div class="col-app ${sortClass}" ${sortClick('app')}>App ${sortIcon('app')}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
-            <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
+            <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'flex'}; justify-content: center;">Inspector ${sortIcon('driverName')}</div>
         `;
         
         const headerContainer = document.getElementById('list-header-container');
@@ -376,7 +376,7 @@ export function render() {
 
         if (Config.isManagerView) {
             item.className = `glide-row ${s.status.toLowerCase().replace(' ', '-')} ${AppState.currentDisplayMode}`;
-            let inspectorHtml = `<div class="col-insp" style="display: ${isSingleInspector ? 'none' : 'block'};">${s.driverName || Config.driverParam || 'Unassigned'}</div>`;
+            let inspectorHtml = `<div class="col-insp" style="display: ${isSingleInspector ? 'none' : 'flex'}; justify-content: center;">${s.driverName || Config.driverParam || 'Unassigned'}</div>`;
             
             if (AppState.inspectors.length > 0) {
                 const optionsHtml = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map((insp) => {
@@ -662,7 +662,7 @@ export function createEndpointRow(type, endpointData) {
         </div>
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
-            <div style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
+            <div style="position:relative; flex: 1; display:flex; align-items:center; height:30px;">
                 <input type="text" id="input-endpoint-${type}" class="endpoint-input" data-nodrag="true" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
             </div>
