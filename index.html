@@ -5,7 +5,8 @@
         /* FILE: index.html
             VERSION: V19.13
             CHANGES:
-            1. Lowered max-height on #main-dropzone to prevent cutoff in empty state.
+            1. Simplified #empty-state-container structure and removed nested flex block to natively center dropzone.
+            2. Added inline margin: auto to #unmatched-modal inner block to lock centering.
         */
         
         .custom-tooltip {
@@ -95,14 +96,12 @@
 <div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
     
     <div id="empty-state-container">
-        <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; width: 100%;">
-            <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 800px; height: 400px; max-height: 50vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
-                <input type="file" id="main-file-input" accept=".csv" style="display: none;">
-                <div style="background: var(--fade-accent); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
-                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--accent);"></i>
-                </div>
-                <div class="dropzone-sub" style="font-size: 16px; color: var(--text-muted); pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
+        <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 800px; height: 400px; max-height: 50vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
+            <input type="file" id="main-file-input" accept=".csv" style="display: none;">
+            <div style="background: var(--fade-accent); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
+                <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--accent);"></i>
             </div>
+            <div class="dropzone-sub" style="font-size: 16px; color: var(--text-muted); pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
         </div>
     </div>
 
@@ -220,7 +219,7 @@
 <div id="modal-overlay"><div class="modal-box" id="modal-content"></div></div>
 
 <div id="unmatched-modal">
-    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; overflow: hidden;">
+    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; overflow: hidden; margin: auto;">
         <div id="unmatched-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-panel); opacity: 0.9; z-index: 50; flex-direction: column; align-items: center; justify-content: center;">
             <div class="loader" style="width: 36px; height: 36px; margin-bottom: 12px; border-width: 3px;"></div>
             <div style="color: var(--text-main); font-weight: 400; font-size: 14px;">Validating...</div>
