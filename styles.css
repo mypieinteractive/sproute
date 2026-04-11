@@ -1,12 +1,9 @@
 /* Dashboard - V18.17 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Global background reverted to #171717. */
-/* 2. Accent colors updated to #4E764D with #60845F hover states. */
-/* 3. Re-mapped List Header and Routing Module to #151515. */
-/* 4. Subheadings and endpoint rows mapped to inherit from List Header and unselected row backgrounds (#171717). */
-/* 5. Typographic button match to Glide (500 weight, 0.3px spacing). All other text forced to normal (400) weight. */
-/* 6. Scrollbar logic updated to hide globally unless hovered over the list. */
+/* 1. Reverted body and sync height logic to use 100dvh (removed the -200px constraint) to prevent top clipping. */
+/* 2. Removed top: 37px override on .list-subheading so it correctly sticks to top: 0 below the isolated header. */
+/* 3. Added .danger-btn class to format the Start Over buttons in red. */
 
 :root { 
     /* Base / Accent */
@@ -35,6 +32,8 @@
     --sidebar-bg: #171717;
 
     /* Summary Bar */
+    --summary-bg: #344E41;
+    --summary-border: #242424;
     --summary-text-main: #FAFAFA;
 
     /* Routing Controls */
@@ -68,14 +67,13 @@
 
 body { 
     margin: 0; padding: 0; 
-    height: calc(100vh - 200px);
-    height: calc(100dvh - 200px);
+    height: 100vh;
+    height: 100dvh;
     width: 100vw; 
     display: flex; flex-direction: column; 
     background: var(--bg-base); color: var(--text-main); overflow: hidden; 
 }
 
-/* Scrollbar specific to #stop-list hover visibility */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
@@ -182,7 +180,6 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
     display: flex; justify-content: space-between; align-items: center;
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
-body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 37px; }
 .route-summary-text { font-weight: 400; font-size: 11px; text-transform: none; color: var(--row-text-muted); }
 
 /* ROUTING MODULE (Dark Workspace) */
@@ -207,6 +204,8 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .module-action-btn:active { opacity: 0.8; }
 .module-action-btn:hover { filter: brightness(1.1); }
 .module-action-btn.outline-btn { border: 1px solid rgba(255,255,255,0.25) !important; color: white; background: rgba(255,255,255,0.1); }
+.module-action-btn.danger-btn { border: 1px solid var(--red) !important; color: var(--red); background: transparent; }
+.module-action-btn.danger-btn:hover { background: rgba(231, 76, 60, 0.1) !important; color: var(--red) !important; }
 .module-action-btn.filled-green { border: 1px solid var(--accent) !important; background: var(--accent); color: white; }
 .module-action-btn.filled-green:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
 
@@ -302,7 +301,7 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 #sidebar { display: flex; flex-direction: column; background: var(--sidebar-bg); z-index: 10; container-type: inline-size; container-name: sidebar; overflow-x: hidden; }
 #route-view-toggles { padding: 10px 15px; background: var(--route-mod-bg); border-bottom: 1px solid var(--route-mod-border); flex-direction: row; gap: 8px; flex-shrink: 0; }
 #list-header-container { flex: none; z-index: 20; background: var(--list-hdr-bg); }
-#stop-list { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; position: relative; }
+#stop-list { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
 
 /* DARK WORKSPACE ROWS */
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--row-border); background: var(--row-bg); min-height: 60px; cursor: pointer; position: relative; }
