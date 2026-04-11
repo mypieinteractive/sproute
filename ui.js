@@ -1,7 +1,8 @@
-/* Dashboard - V18.9 */
+/* Dashboard - V18.11 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Replaced var(--blue) and var(--green) with var(--accent) for all primary modal action buttons and icons to match the new Sproute Green theme. */
+/* 1. Replaced hardcoded font-weights (500, 600, bold, <b>) with normal 400-weight inline styles and classes to strip heavy text. */
+/* 2. Replaced massive inline style declarations on modal submit buttons with the unified .modal-primary-btn class. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -32,11 +33,11 @@ export function customAlert(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
-                <h3 style="margin-top:0; font-weight: 500;">Alert</h3>
-                <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
+            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0; font-weight: 400;">Alert</h3>
+                <p style="font-size: 15px; margin-bottom: 20px; font-weight: 400;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
-                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--accent); color:white; font-weight:500; cursor:pointer;" id="modal-alert-ok">OK</button>
+                    <button class="modal-primary-btn" id="modal-alert-ok">OK</button>
                 </div>
             </div>`;
         document.getElementById('modal-alert-ok').onclick = () => { m.style.display = 'none'; resolve(); };
@@ -50,12 +51,12 @@ export function customConfirm(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
-                <h3 style="margin-top:0; font-weight: 500;">Confirm</h3>
-                <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
+            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <h3 style="margin-top:0; font-weight: 400;">Confirm</h3>
+                <p style="font-size: 15px; margin-bottom: 20px; font-weight: 400;">${msg}</p>
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
-                    <button style="padding:10px 20px; border: 1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight: 500;" id="modal-confirm-cancel">Cancel</button>
-                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--accent); color:white; font-weight:500; cursor:pointer;" id="modal-confirm-ok">OK</button>
+                    <button style="padding:10px 20px; border: 1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight: 400;" id="modal-confirm-cancel">Cancel</button>
+                    <button class="modal-primary-btn" id="modal-confirm-ok">OK</button>
                 </div>
             </div>`;
         document.getElementById('modal-confirm-ok').onclick = () => { m.style.display = 'none'; resolve(true); };
@@ -98,7 +99,7 @@ export function updateInspectorDropdown() {
     AppState.inspectors.forEach((i, idx) => { 
         if (validInspectorIds.has(String(i.id)) && isTrueInspector(i.isInspector)) {
             const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
-            filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 500;">${i.name}</option>`; 
+            filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 400;">${i.name}</option>`; 
         }
     });
     
@@ -324,7 +325,7 @@ export function render() {
             <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
                 <div class="address-search-wrapper" style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
                     <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
-                    <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
+                    <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
                     <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 8px; z-index: 5;"></i>
                     <div class="custom-tooltip">Click to search orders</div>
                 </div>
@@ -372,7 +373,7 @@ export function render() {
                 const optionsHtml = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map((insp) => {
                     const originalIdx = AppState.inspectors.indexOf(insp);
                     const color = MASTER_PALETTE[originalIdx % MASTER_PALETTE.length];
-                    return `<option value="${insp.id}" style="color: ${color}; font-weight: 500;" ${String(s.driverId) === String(insp.id) ? 'selected' : ''}>${insp.name}</option>`;
+                    return `<option value="${insp.id}" style="color: ${color}; font-weight: 400;" ${String(s.driverId) === String(insp.id) ? 'selected' : ''}>${insp.name}</option>`;
                 }).join('');
                 
                 let currentInspColor = 'var(--text-main)';
@@ -383,7 +384,7 @@ export function render() {
 
                 inspectorHtml = `
                     <div class="col-insp" onclick="event.stopPropagation()" style="display: ${isSingleInspector ? 'none' : 'block'};">
-                        <select class="insp-select" onchange="handleInspectorChange(event, '${s.id}', this)" style="color: ${currentInspColor}; font-weight: 500;" ${!AppState.PERMISSION_MODIFY ? 'disabled' : ''}>
+                        <select class="insp-select" onchange="handleInspectorChange(event, '${s.id}', this)" style="color: ${currentInspColor}; font-weight: 400;" ${!AppState.PERMISSION_MODIFY ? 'disabled' : ''}>
                             ${!s.driverId ? `<option value="" disabled selected hidden>Select Inspector...</option>` : ''}
                             ${optionsHtml}
                         </select>
@@ -416,7 +417,7 @@ export function render() {
                 <div class="stop-sidebar ${urgencyClass}">${displayIndex}</div>
                 <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
                 <div class="stop-content">
-                    <b>${(s.address||'').split(',')[0]}</b>
+                    <div class="stop-addr-title">${(s.address||'').split(',')[0]}</div>
                     <div class="row-meta">${metaDisplay}</div>
                     <div class="row-details">${s.type || ''}</div>
                 </div>
@@ -647,14 +648,14 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-num" style="display:flex; justify-content:center; align-items:center; color:var(--text-muted); font-size:16px;">
             ${icon}
         </div>
-        <div class="col-eta" style="color:var(--text-muted); font-weight:500; display:${isAllInspectors ? 'none' : 'flex'}; justify-content:center; align-items:center; text-align:center;">
+        <div class="col-eta" style="color:var(--text-muted); font-weight:400; display:${isAllInspectors ? 'none' : 'flex'}; justify-content:center; align-items:center; text-align:center;">
             ${labelText}
         </div>
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input" data-nodrag="true" style="font-size: 14px; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
-                <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 12px; pointer-events: none;"></i>
+                <input type="text" id="input-endpoint-${type}" class="address-header-input endpoint-input" data-nodrag="true" style="font-size: 14px; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
             </div>
             <div style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; visibility: hidden;">${dummySort}</div>
         </div>
@@ -941,8 +942,8 @@ export function showAddOrderModal() {
     let appHtml = `<div class="form-group"><label>App</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
 
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="add-close-icon"></i></div>
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 400;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="add-close-icon"></i></div>
             ${inspectorHtml} ${appHtml}
             <div class="form-group"><label>Address</label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
             <div class="grid-2-col">
@@ -955,8 +956,8 @@ export function showAddOrderModal() {
                 <div class="form-group"><label>Order Type</label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
             </div>
             <div style="display: flex; gap: 12px; justify-content: flex-start; margin-top: 10px;">
-                <button id="btn-submit-add" style="padding: 10px 24px; background: var(--border-color); color: var(--text-muted); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;" disabled>Add Order</button>
-                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
+                <button id="btn-submit-add" class="modal-primary-btn" disabled>Add Order</button>
+                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button>
             </div>
         </div>`;
     m.style.display = 'flex';
@@ -964,8 +965,8 @@ export function showAddOrderModal() {
     const checkValidity = () => {
         const btn = document.getElementById('btn-submit-add');
         if (selectedInspector && document.getElementById('add-address').value.trim() && document.getElementById('add-due').value) {
-            btn.disabled = false; btn.style.background = 'var(--accent)'; btn.style.color = 'white';
-        } else { btn.disabled = true; btn.style.background = 'var(--border-color)'; btn.style.color = 'var(--text-muted)'; }
+            btn.disabled = false;
+        } else { btn.disabled = true; }
     };
 
     document.querySelectorAll('.add-insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.add-insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
@@ -999,27 +1000,27 @@ export function showUploadModal(file) {
             let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
             return `<div class="pill-btn insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
         }).join('');
-        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">Inspector</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
+        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 400;">Inspector</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
     }
 
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
 
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="upload-close-icon"></i></div>
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 400;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="upload-close-icon"></i></div>
             ${inspectorHtml}
-            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">App</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
+            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 400;">App</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
-                <button id="btn-submit-upload" style="padding: 10px 24px; background: var(--border-color); color: var(--text-muted); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;" disabled>Submit</button>
-                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
+                <button id="btn-submit-upload" class="modal-primary-btn" disabled>Submit</button>
+                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button>
             </div>
         </div>`;
     m.style.display = 'flex';
 
     const checkValidity = () => {
         const btn = document.getElementById('btn-submit-upload');
-        if (selectedInspector && selectedCsvType) { btn.disabled = false; btn.style.background = 'var(--accent)'; btn.style.color = 'white'; } 
-        else { btn.disabled = true; btn.style.background = 'var(--border-color)'; btn.style.color = 'var(--text-muted)'; }
+        if (selectedInspector && selectedCsvType) { btn.disabled = false; } 
+        else { btn.disabled = true; }
     };
 
     document.querySelectorAll('.insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
@@ -1045,14 +1046,14 @@ export function handleOpenEmailModal() {
     mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
     
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
-            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 500;">Customize Email Message</h3>
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 400;">Customize Email Message</h3>
             <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
             <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
-            <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--accent); font-weight: normal;">${insp.name}</span> at <span style="color: var(--accent); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
-            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: var(--accent); color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Cancel</button></div>
+            <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--accent); font-weight: 400;">${insp.name}</span> at <span style="color: var(--accent); font-weight: 400;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" class="modal-primary-btn">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button></div>
         </div>`;
 
     document.getElementById('btn-cancel-dispatch').onclick = () => m.style.display = 'none';
@@ -1085,7 +1086,7 @@ export function handleOpenEmailModal() {
         }
 
         let mapBase64 = '';
-        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#FAFAFA', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
+        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#171717', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
 
         mapWrapper.style.cssText = originalWrapperStyle;
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
@@ -1102,7 +1103,7 @@ export function handleOpenEmailModal() {
                 m.style.display = 'none';
                 AppState.stops.forEach(s => { if (String(s.driverId) === String(AppState.currentInspectorFilter) && isRouteAssigned(s.status)) { s.routeState = 'Dispatched'; s.status = 'Dispatched'; } });
                 if (Config.isManagerView) { const filterEl = document.getElementById('inspector-filter'); if (filterEl) filterEl.value = 'all'; window.handleInspectorFilterChange('all'); } else { triggerFullRender(); }
-                const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 500; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+                const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
                 setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
             } else throw new Error("Dispatch failed");
         } catch (e) {
@@ -1129,7 +1130,7 @@ async function nextUnmatchedAddress() {
     if (AppState.currentUnmatchedIndex < AppState.unmatchedAddressesQueue.length) openUnmatchedModal();
     else {
         document.getElementById('unmatched-modal').style.display = 'none';
-        const toast = document.createElement('div'); toast.innerText = 'Address matching complete.'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 500; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+        const toast = document.createElement('div'); toast.innerText = 'Address matching complete.'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2000);
         await loadData(); 
     }
@@ -1219,7 +1220,7 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     finally { hideOverlay(); }
 };
 
-window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);"><h3 style="margin-top:0;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--accent); color:white; font-weight:500; cursor:pointer;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
+window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><h3 style="margin-top:0; font-weight:400;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button class="modal-primary-btn" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:10px 24px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight:400;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
 window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; window.launchMaps(p, la, ln, addr); };
 window.launchMaps = function(p, la, ln, addr) { let safeAddr = encodeURIComponent(addr || "Destination"); if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; };
 
