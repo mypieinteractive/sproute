@@ -1,8 +1,8 @@
-/* Dashboard - V19.0 */
+/* Dashboard - V18.2 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Removed dynamic theme observer and URL parameter parsing. */
-/* 2. Hardcoded the map style directly to mapbox://styles/mapbox/light-v11. */
+/* 1. Removed the temporary V18.1 fallback patch from handleGenerateRoute(), as the new V18.2 "Start Over" function perfectly formats stops naturally, keeping the algorithm clean. */
+/* 2. Maintained the robust silentSaveRouteState() wipe logic ensuring backend state fully resets to Pending when routing is cleared. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -73,15 +73,9 @@ sessionStorage.setItem('sproute_last_query', currentQuery);
 let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
 
-// Permanently load the Mapbox Light theme (It will be tinted green via CSS opacity in styles.css)
 const mapConfig = { 
-    container: 'map', 
-    style: 'mapbox://styles/mapbox/light-v11', 
-    center: [-96.797, 32.776], 
-    zoom: 11, 
-    attributionControl: false, 
-    boxZoom: false, 
-    preserveDrawingBuffer: true,
+    container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
+    attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
     cooperativeGestures: (Config.viewMode === 'inspector' || Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit')
 };
 
