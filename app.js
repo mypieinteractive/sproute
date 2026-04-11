@@ -73,7 +73,7 @@ let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
 
 const mapConfig = { 
-    container: 'map', style: 'mapbox://styles/mapbox/light-v11', center: [-96.797, 32.776], zoom: 11, 
+    container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
     attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
     cooperativeGestures: (Config.viewMode === 'inspector' || Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit')
 };
