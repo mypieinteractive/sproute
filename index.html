@@ -3,10 +3,11 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.2
+            VERSION: V19.3
             CHANGES:
-            1. Adjusted header-list-zone alignment to perfectly align the drop-down and rocker buttons with the Add/Undo actions.
-            2. Updated action-group button colors in the routing module for perfect contrast against the new light theme palette.
+            1. Unified map-header background to the dark brand color, and updated text elements for contrast.
+            2. Updated action button outlines (undo, dropdown, rocker) to strictly use the new var(--brand-mid) color.
+            3. Synchronized inline search glass icon color to match the other header labels.
         */
         
         /* Instant Custom Tooltip for Address Header */
@@ -48,7 +49,7 @@
     
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding-right: 15px;">
         <div id="header-action-container">
-            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-main); font-weight: 500; border-radius: 6px;">
+            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--brand-mid); color: var(--text-main); font-weight: 500; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
             </button>
         </div>
@@ -60,7 +61,7 @@
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 30px;"></select>
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 30px; border: 1px solid var(--brand-mid);"></select>
             </div>
             <div class="rocker-switch">
                 <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
@@ -103,11 +104,11 @@
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0;">
         
-        <div id="map-header">
+        <div id="map-header" style="background: var(--brand-dark);">
             <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500;">
-                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+                <div id="summary-metrics" style="color: rgba(255,255,255,0.8);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
                 <div id="order-stats" class="hide-mobile-text">
-                    <span id="stat-total" style="color: var(--text-main);">0 Orders</span> | 
+                    <span id="stat-total" style="color: #ffffff;">0 Orders</span> | 
                     <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
                     <span id="stat-past" style="color: var(--red);">0 Past Due</span>
                 </div>
