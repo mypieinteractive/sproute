@@ -1,8 +1,7 @@
-/* Dashboard - V18.8 */
+/* Dashboard - V18.9 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated modal styling dynamically within JS to utilize global CSS variables (var(--bg-panel), var(--text-main), var(--border-color)) for seamless light theme integration. */
-/* 2. Removed the "Optional" helper text from the Add Order Modal. */
+/* 1. Replaced var(--blue) and var(--green) with var(--accent) for all primary modal action buttons and icons to match the new Sproute Green theme. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -37,7 +36,7 @@ export function customAlert(msg) {
                 <h3 style="margin-top:0; font-weight: 500;">Alert</h3>
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
-                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:500; cursor:pointer;" id="modal-alert-ok">OK</button>
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--accent); color:white; font-weight:500; cursor:pointer;" id="modal-alert-ok">OK</button>
                 </div>
             </div>`;
         document.getElementById('modal-alert-ok').onclick = () => { m.style.display = 'none'; resolve(); };
@@ -56,7 +55,7 @@ export function customConfirm(msg) {
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
                     <button style="padding:10px 20px; border: 1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight: 500;" id="modal-confirm-cancel">Cancel</button>
-                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:500; cursor:pointer;" id="modal-confirm-ok">OK</button>
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--accent); color:white; font-weight:500; cursor:pointer;" id="modal-confirm-ok">OK</button>
                 </div>
             </div>`;
         document.getElementById('modal-confirm-ok').onclick = () => { m.style.display = 'none'; resolve(true); };
@@ -286,7 +285,7 @@ export function drawRoute() {
 
 export function getSortIcon(col) {
     if (AppState.currentSort.col !== col) return '<i class="fa-solid fa-sort" style="opacity:0.3; margin-left:4px;"></i>';
-    return AppState.currentSort.asc ? '<i class="fa-solid fa-sort-up" style="margin-left:4px; color:var(--blue);"></i>' : '<i class="fa-solid fa-sort-down" style="margin-left:4px; color:var(--blue);"></i>';
+    return AppState.currentSort.asc ? '<i class="fa-solid fa-sort-up" style="margin-left:4px; color:var(--accent);"></i>' : '<i class="fa-solid fa-sort-down" style="margin-left:4px; color:var(--accent);"></i>';
 }
 
 export function render() {
@@ -423,8 +422,8 @@ export function render() {
                 </div>
                 <div class="due-date-container ${urgencyClass}">${dueFmt}</div>
                 <div class="stop-actions">
-                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--green)" onclick="toggleComplete(event, '${s.id}')"></i>
-                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--blue)" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
+                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--accent)" onclick="toggleComplete(event, '${s.id}')"></i>
+                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--accent)" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
                 </div>
             `;
         }
@@ -965,7 +964,7 @@ export function showAddOrderModal() {
     const checkValidity = () => {
         const btn = document.getElementById('btn-submit-add');
         if (selectedInspector && document.getElementById('add-address').value.trim() && document.getElementById('add-due').value) {
-            btn.disabled = false; btn.style.background = 'var(--green)'; btn.style.color = 'white';
+            btn.disabled = false; btn.style.background = 'var(--accent)'; btn.style.color = 'white';
         } else { btn.disabled = true; btn.style.background = 'var(--border-color)'; btn.style.color = 'var(--text-muted)'; }
     };
 
@@ -1019,7 +1018,7 @@ export function showUploadModal(file) {
 
     const checkValidity = () => {
         const btn = document.getElementById('btn-submit-upload');
-        if (selectedInspector && selectedCsvType) { btn.disabled = false; btn.style.background = 'var(--blue)'; btn.style.color = 'white'; } 
+        if (selectedInspector && selectedCsvType) { btn.disabled = false; btn.style.background = 'var(--accent)'; btn.style.color = 'white'; } 
         else { btn.disabled = true; btn.style.background = 'var(--border-color)'; btn.style.color = 'var(--text-muted)'; }
     };
 
@@ -1052,8 +1051,8 @@ export function handleOpenEmailModal() {
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
             <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
-            <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> at <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
-            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Cancel</button></div>
+            <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--accent); font-weight: normal;">${insp.name}</span> at <span style="color: var(--accent); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: var(--accent); color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Cancel</button></div>
         </div>`;
 
     document.getElementById('btn-cancel-dispatch').onclick = () => m.style.display = 'none';
@@ -1220,7 +1219,7 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     finally { hideOverlay(); }
 };
 
-window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);"><h3 style="margin-top:0;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:500; cursor:pointer;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
+window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);"><h3 style="margin-top:0;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--accent); color:white; font-weight:500; cursor:pointer;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
 window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; window.launchMaps(p, la, ln, addr); };
 window.launchMaps = function(p, la, ln, addr) { let safeAddr = encodeURIComponent(addr || "Destination"); if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; };
 
@@ -1263,7 +1262,7 @@ function handleFileSelection(file) {
 
 if (mainDropzone && mainInput) {
     mainDropzone.onclick = () => mainInput.click();
-    mainDropzone.ondragover = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--blue)'; mainDropzone.style.backgroundColor = 'var(--bg-hover)'; };
+    mainDropzone.ondragover = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--accent)'; mainDropzone.style.backgroundColor = 'var(--bg-hover)'; };
     mainDropzone.ondragleave = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; };
     mainDropzone.ondrop = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]); };
     mainInput.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); mainInput.value = ''; } };
