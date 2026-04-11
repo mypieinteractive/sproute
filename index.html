@@ -3,14 +3,11 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.3
+            VERSION: V19.4
             CHANGES:
-            1. Unified map-header background to the dark brand color, and updated text elements for contrast.
-            2. Updated action button outlines (undo, dropdown, rocker) to strictly use the new var(--brand-mid) color.
-            3. Synchronized inline search glass icon color to match the other header labels.
+            1. Converted #map-header and #routing-action-buttons to use the clean light theme (white background, deep teal text and outlines).
         */
         
-        /* Instant Custom Tooltip for Address Header */
         .custom-tooltip {
             position: absolute; top: -28px; right: 0; background: #333; color: #fff;
             padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
@@ -19,7 +16,6 @@
         }
         .address-search-wrapper:hover .custom-tooltip { opacity: 1; }
         
-        /* Force Rocker Switch to match [+] button color */
         .rocker-switch input:checked + label { background: var(--blue) !important; color: white !important; }
     </style>
     
@@ -49,7 +45,7 @@
     
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding-right: 15px;">
         <div id="header-action-container">
-            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--brand-mid); color: var(--text-main); font-weight: 500; border-radius: 6px;">
+            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--brand-mid); color: var(--brand-mid); font-weight: 600; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
             </button>
         </div>
@@ -61,7 +57,7 @@
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 500; height: 30px; border: 1px solid var(--brand-mid);"></select>
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 600; height: 30px; border: 1px solid var(--brand-mid);"></select>
             </div>
             <div class="rocker-switch">
                 <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
@@ -104,18 +100,18 @@
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0;">
         
-        <div id="map-header" style="background: var(--brand-dark);">
-            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500;">
-                <div id="summary-metrics" style="color: rgba(255,255,255,0.8);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+        <div id="map-header">
+            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600;">
+                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
                 <div id="order-stats" class="hide-mobile-text">
-                    <span id="stat-total" style="color: #ffffff;">0 Orders</span> | 
+                    <span id="stat-total" style="color: var(--brand-mid);">0 Orders</span> | 
                     <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
                     <span id="stat-past" style="color: var(--red);">0 Past Due</span>
                 </div>
             </div>
         </div>
 
-        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; background: var(--brand-mid); border-bottom: none; flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; background: #FFFFFF; border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
             
             <div id="routing-module-core" class="routing-module-core" style="display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; width: 100%;">
                 
@@ -145,11 +141,11 @@
                     </div>
 
                     <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
-                        <label style="font-size:13px; font-weight:500; color:#ffffff; margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
+                        <label style="font-size:13px; font-weight:600; color:var(--brand-mid); margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
                         <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()" style="width: 100%; margin-bottom: 4px;">
                         <div style="display:flex; justify-content:space-between; width: 100%;">
-                            <span style="font-size:12px; color:rgba(255,255,255,0.7); white-space: nowrap;">Efficiency</span>
-                            <span style="font-size:12px; color:rgba(255,255,255,0.7); white-space: nowrap;">Due Dates</span>
+                            <span style="font-size:12px; color:var(--text-muted); white-space: nowrap;">Efficiency</span>
+                            <span style="font-size:12px; color:var(--text-muted); white-space: nowrap;">Due Dates</span>
                         </div>
                     </div>
                 </div>
@@ -157,31 +153,31 @@
                 <div id="routing-action-buttons" style="display:flex; height: 100%; box-sizing: border-box; transition: width 0.2s;">
                     
                     <div id="action-group-pending" style="display:none; width:100%; height:100%; align-items: center; justify-content: center; padding: 10px 0;">
-                        <button id="btn-header-generate" class="module-action-btn outline-btn" onclick="handleGenerateRoute()" style="background:var(--green); color: white; border-radius: 6px; padding: 8px 24px; width: auto; height: auto;">
+                        <button id="btn-header-generate" class="module-action-btn filled-green" onclick="handleGenerateRoute()" style="border-radius: 6px; padding: 8px 24px; width: auto; height: auto;">
                             <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
                         </button>
                     </div>
 
                     <div id="action-group-staging" style="display:none; width:100%; height:100%; align-items: center; gap: 10px; padding: 10px 0;">
-                        <button class="module-action-btn outline-btn" onclick="handleStartOver()" style="background:rgba(255,255,255,0.15); color:white; border-radius: 6px; flex:1;">
+                        <button class="module-action-btn outline-btn" onclick="handleStartOver()" style="border-radius: 6px; flex:1;">
                             <i class="fa-solid fa-rotate-left"></i> Start Over
                         </button>
-                        <button class="module-action-btn outline-btn" onclick="handleCalculate()" style="background:rgba(255,255,255,0.25); color:white; border-radius: 6px; flex:1;">
+                        <button class="module-action-btn outline-btn" onclick="handleCalculate()" style="border-radius: 6px; flex:1;">
                             <i class="fa-solid fa-calculator"></i> Re-Calculate
                         </button>
-                        <button class="module-action-btn outline-btn" onclick="handleGenerateRoute()" style="background:var(--green); color:white; border-radius: 6px; flex:1;">
+                        <button class="module-action-btn filled-green" onclick="handleGenerateRoute()" style="border-radius: 6px; flex:1;">
                             <i class="fa-solid fa-route"></i> Re-Optimize
                         </button>
                     </div>
 
                     <div id="action-group-ready" style="display:none; width:100%; height:100%; align-items: center; gap: 10px; padding: 10px 0;">
-                        <button class="module-action-btn outline-btn" onclick="handleStartOver()" style="background:rgba(255,255,255,0.15); color:white; border-radius: 6px; flex:1;">
+                        <button class="module-action-btn outline-btn" onclick="handleStartOver()" style="border-radius: 6px; flex:1;">
                             <i class="fa-solid fa-rotate-left"></i> Start Over
                         </button>
-                        <button id="btn-header-restore" class="module-action-btn outline-btn" onclick="handleRestoreOriginal()" style="display:none; background:var(--bg-hover); color:var(--text-main); border-radius: 6px; flex:1;">
+                        <button id="btn-header-restore" class="module-action-btn outline-btn" onclick="handleRestoreOriginal()" style="display:none; border-radius: 6px; flex:1;">
                             <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
                         </button>
-                        <button id="btn-header-send-route" class="module-action-btn outline-btn" onclick="handleOpenEmailModal()" style="background:var(--blue); color:white; border-radius: 6px; flex:2;">
+                        <button id="btn-header-send-route" class="module-action-btn filled-blue" onclick="handleOpenEmailModal()" style="border-radius: 6px; flex:2;">
                             <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
                         </button>
                     </div>
