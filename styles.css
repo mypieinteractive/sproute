@@ -21,8 +21,8 @@
     --text-muted: #666666;
     
     /* Brand Theme Colors - Deep Greens */
-    --brand-dark: #0F291E; 
-    --brand-mid: #1A402E;
+    --brand-dark: #1A402E; 
+    --brand-mid: #4E682E; 
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
