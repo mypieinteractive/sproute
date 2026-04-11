@@ -3,17 +3,18 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.8
+            VERSION: V19.10
             CHANGES:
-            1. Cleaned up inline colors to utilize the new granular CSS variables from styles.css.
-            2. Added comprehensive Theme Dev Tool into the Global Header to allow live RGB testing of all dashboard elements.
+            1. All inline font weights shifted to 400 (normal).
+            2. Global header properly utilizes the --global-hdr-bg, text, and icons correctly with hover states.
+            3. Added updated dev theme tool variables to match new dark structure.
         */
         
         .custom-tooltip {
             position: absolute; top: -28px; right: 0; background: #333; color: #fff;
             padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
             opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
-            font-weight: normal; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            font-weight: 400; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         .address-search-wrapper:hover .custom-tooltip { opacity: 1; }
         
@@ -42,24 +43,31 @@
     </div>
 </div>
 
-<div id="global-header" style="padding: 0 1px; background: var(--bg-header); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
+<div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
     
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding-right: 15px;">
         <div id="header-action-container">
-            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 600; border-radius: 6px;">
-                <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
+            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
+                <i class="fa-solid fa-arrow-rotate-left" style="color: var(--global-hdr-icon);"></i> <span style="color: var(--global-hdr-text);">Undo</span>
             </button>
         </div>
         
-        <div id="dev-theme-tool" style="display: flex; align-items: center; gap: 8px; background: var(--bg-panel); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <div id="dev-theme-tool" style="display: flex; align-items: center; gap: 8px; background: var(--bg-panel); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
             <i class="fa-solid fa-palette" style="color: var(--text-muted); font-size: 14px;"></i>
-            <select id="dev-color-select" style="background: transparent; border: none; color: var(--text-main); font-size: 13px; font-weight: 600; outline: none; cursor: pointer;">
-                <optgroup label="Global">
-                    <option value="--accent">Accent (Green)</option>
+            <select id="dev-color-select" style="background: transparent; border: none; color: var(--text-main); font-size: 13px; font-weight: 400; outline: none; cursor: pointer;">
+                <optgroup label="Global / Modals">
+                    <option value="--accent">Accent (Primary)</option>
+                    <option value="--accent-hover">Accent (Hover)</option>
+                    <option value="--bg-base">Background Base (#171717)</option>
+                    <option value="--bg-panel">Background Panel (#1E1E1E)</option>
+                    <option value="--border-color">Border Color</option>
+                    <option value="--text-main">Text Main</option>
+                    <option value="--text-muted">Text Muted</option>
                 </optgroup>
                 <optgroup label="Global Header (Top)">
                     <option value="--global-hdr-bg">Background</option>
                     <option value="--global-hdr-icon">Outlines/Icons</option>
+                    <option value="--global-hdr-text">Text</option>
                 </optgroup>
                 <optgroup label="Sidebar Shell">
                     <option value="--sidebar-bg">Base Background</option>
@@ -105,7 +113,7 @@
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 600; height: 30px;"></select>
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 400; height: 30px;"></select>
             </div>
             <div class="rocker-switch">
                 <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
@@ -116,8 +124,8 @@
         </div>
         <div id="header-right-controls">
             <div id="add-menu-wrapper" style="position: relative;">
-                <div class="header-action-btn" style="background: var(--accent); color: white; padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
-                    <i class="fa-solid fa-plus"></i> <span style="margin-left: 6px;">Add</span>
+                <div class="header-action-btn primary-btn" style="padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
+                    <i class="fa-solid fa-plus" style="color: var(--text-main);"></i> <span style="margin-left: 6px; color: var(--text-main);">Add</span>
                 </div>
                 <div class="add-dropdown-menu" style="right: 0;">
                     <div class="add-dropdown-item" onclick="document.getElementById('hidden-global-file-input').click()">
@@ -138,7 +146,7 @@
         <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; width: 100%;">
             <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 1200px; height: 60vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
                 <input type="file" id="main-file-input" accept=".csv" style="display: none;">
-                <div style="background: rgba(133, 186, 78, 0.1); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
+                <div style="background: var(--fade-accent); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
                     <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--accent);"></i>
                 </div>
                 <div class="dropzone-sub" style="font-size: 16px; color: var(--text-muted); pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
@@ -149,7 +157,7 @@
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0;">
         
         <div id="map-header">
-            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600;">
+            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 400;">
                 <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
                 <div id="order-stats" class="hide-mobile-text">
                     <span id="stat-total">0 Orders</span> | 
@@ -189,7 +197,7 @@
                     </div>
 
                     <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
-                        <label style="font-size:13px; font-weight:600; margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
+                        <label style="font-size:13px; font-weight:400; margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
                         <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()" style="width: 100%; margin-bottom: 4px;">
                         <div style="display:flex; justify-content:space-between; width: 100%;">
                             <span style="font-size:12px; color:var(--row-text-muted); white-space: nowrap;">Efficiency</span>
@@ -270,13 +278,13 @@
 <div id="modal-overlay"><div class="modal-box" id="modal-content"></div></div>
 
 <div id="unmatched-modal">
-    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.15); position: relative; overflow: hidden;">
+    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; overflow: hidden;">
         <div id="unmatched-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-panel); opacity: 0.9; z-index: 50; flex-direction: column; align-items: center; justify-content: center;">
             <div class="loader" style="width: 36px; height: 36px; margin-bottom: 12px; border-width: 3px;"></div>
-            <div style="color: var(--text-main); font-weight: 500; font-size: 14px;">Validating...</div>
+            <div style="color: var(--text-main); font-weight: 400; font-size: 14px;">Validating...</div>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h3 id="unmatched-modal-title" style="margin: 0; font-size: 18px; font-weight: 500;">Match Addresses</h3>
+            <h3 id="unmatched-modal-title" style="margin: 0; font-size: 18px; font-weight: 400;">Match Addresses</h3>
         </div>
         <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">The following address could not be automatically matched. Please provide coordinates or a corrected address.</p>
         <div class="form-group">
@@ -295,17 +303,17 @@
         </div>
         <div style="display: flex; align-items: center; margin: 15px 0;">
             <div style="flex-grow: 1; height: 1px; background: var(--border-color);"></div>
-            <span style="padding: 0 10px; color: var(--text-muted); font-size: 11px; font-weight: 500; text-transform: uppercase;">Or</span>
+            <span style="padding: 0 10px; color: var(--text-muted); font-size: 11px; font-weight: 400; text-transform: uppercase;">Or</span>
             <div style="flex-grow: 1; height: 1px; background: var(--border-color);"></div>
         </div>
         <div class="form-group" style="margin-bottom: 24px;">
             <label>Corrected Address</label>
             <input type="text" id="unmatched-corrected" class="form-control" placeholder="Enter a valid address to search...">
-            <div id="unmatched-error" style="color: var(--red); font-size: 12px; font-weight: 500; margin-top: 6px; display: none;">Address not found. Please try again or enter coordinates.</div>
+            <div id="unmatched-error" style="color: var(--red); font-size: 12px; font-weight: 400; margin-top: 6px; display: none;">Address not found. Please try again or enter coordinates.</div>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <button id="btn-unmatched-skip" style="padding: 10px 16px; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s;">Skip</button>
-            <button id="btn-unmatched-submit" style="padding: 10px 24px; background: var(--accent); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Match Coordinates</button>
+            <button id="btn-unmatched-skip" style="padding: 10px 16px; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 6px; font-size: 14px; font-weight: 400; cursor: pointer; transition: 0.2s;">Skip</button>
+            <button id="btn-unmatched-submit" class="modal-primary-btn">Match Coordinates</button>
         </div>
     </div>
 </div>
