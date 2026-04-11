@@ -1,10 +1,11 @@
-/* Dashboard - V18.12 */
+/* Dashboard - V18.13 */
 /* FILE: ui.js */
 /* Changes: */
 /* 1. Appends list header to the new segregated #list-header-container to isolate scrollbars correctly to #stop-list. */
 /* 2. Routing controls vertical line removed (borderLeft = 'none'). */
 /* 3. Endpoint fields explicitly match the address search bar structure precisely to fix layout blockiness. */
 /* 4. Capturing overlay clones the global-header stats onto the map container to ensure emails include the data. */
+/* 5. syncBodyHeight updated to cleanly map to window.innerHeight without arbitrary padding reductions. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1362,7 +1363,7 @@ function stopResize() { if (isResizing) { isResizing = false; document.body.styl
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
 
 function syncBodyHeight() {
-    document.body.style.height = (window.innerHeight - 200) + 'px';
+    document.body.style.height = window.innerHeight + 'px';
     const mapWrapper = document.getElementById('map-wrapper');
     const sidebar = document.getElementById('sidebar');
     if (mapWrapper) mapWrapper.style.minHeight = '0';
