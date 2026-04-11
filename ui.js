@@ -1,8 +1,8 @@
-/* Dashboard - V18.7 */
+/* Dashboard - V18.8 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Imported updateMapSelectionStyles from map.js. */
-/* 2. Added updateMapSelectionStyles(AppState.selectedIds) inside updateSelectionUI() to permanently sync map pin highlighting with list selection (including Shift and Cmd/Ctrl multi-selects). */
+/* 1. Updated modal styling dynamically within JS to utilize global CSS variables (var(--bg-panel), var(--text-main), var(--border-color)) for seamless light theme integration. */
+/* 2. Removed the "Optional" helper text from the Add Order Modal. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -33,7 +33,7 @@ export function customAlert(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
                 <h3 style="margin-top:0; font-weight: 500;">Alert</h3>
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
@@ -51,11 +51,11 @@ export function customConfirm(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
                 <h3 style="margin-top:0; font-weight: 500;">Confirm</h3>
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
-                    <button style="padding:10px 20px; border:none; border-radius:6px; background:#444; color:white; cursor:pointer; font-weight: 500;" id="modal-confirm-cancel">Cancel</button>
+                    <button style="padding:10px 20px; border: 1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight: 500;" id="modal-confirm-cancel">Cancel</button>
                     <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:500; cursor:pointer;" id="modal-confirm-ok">OK</button>
                 </div>
             </div>`;
@@ -177,7 +177,6 @@ export function updateRoutingUI() {
     const btnStaging = document.getElementById('action-group-staging');
     const btnReady = document.getElementById('action-group-ready');
 
-    // 1. Hide everything initially
     if(routingControls) routingControls.style.display = 'none';
     if(paramContainer) paramContainer.style.display = 'none';
     if(btnPending) btnPending.style.display = 'none';
@@ -187,7 +186,6 @@ export function updateRoutingUI() {
     
     updatePrioritySliderUI();
 
-    // 2. Global "All Inspectors" check (Managers only)
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const routeToggles = document.getElementById('route-view-toggles');
         if (routeToggles) routeToggles.style.display = 'none';
@@ -195,7 +193,6 @@ export function updateRoutingUI() {
         return;
     }
 
-    // 3. Filter target stops based on view
     let targetStops = Config.isManagerView ? AppState.stops.filter(s => String(s.driverId) === String(AppState.currentInspectorFilter)) : AppState.stops;
     targetStops = targetStops.filter(s => s.status !== 'Deleted' && s.status !== 'Cancelled');
 
@@ -204,7 +201,6 @@ export function updateRoutingUI() {
         return;
     }
 
-    // 4. Determine True State (Pending, Staging, Ready)
     const unroutedCount = targetStops.filter(s => !isRouteAssigned(s.status)).length;
     let isDirty = false;
     
@@ -226,7 +222,6 @@ export function updateRoutingUI() {
     
     AppState.currentRoutingState = currentState;
 
-    // 5. Route View Toggles Update
     let maxCluster = -1;
     targetStops.forEach(s => {
         if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster;
@@ -245,11 +240,9 @@ export function updateRoutingUI() {
         }
     }
 
-    // Update Send Route(s) text dynamically
     const sendBtnText = document.getElementById('btn-header-send-route-text');
     if (sendBtnText) sendBtnText.innerText = AppState.currentRouteCount > 1 ? "Send Routes" : "Send Route";
 
-    // 6. Enforce UI Rules based on strict state
     if (Config.isManagerView) {
         if (routingControls) routingControls.style.display = 'flex';
         if (currentState === 'Pending') {
@@ -266,7 +259,6 @@ export function updateRoutingUI() {
             if (restoreBtn) restoreBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
         }
     } else {
-        // Inspector View
         if (currentState === 'Staging') {
             if (routingControls) routingControls.style.display = 'flex';
             if (actionBtns) actionBtns.style.width = '100%';
@@ -296,8 +288,6 @@ export function getSortIcon(col) {
     if (AppState.currentSort.col !== col) return '<i class="fa-solid fa-sort" style="opacity:0.3; margin-left:4px;"></i>';
     return AppState.currentSort.asc ? '<i class="fa-solid fa-sort-up" style="margin-left:4px; color:var(--blue);"></i>' : '<i class="fa-solid fa-sort-down" style="margin-left:4px; color:var(--blue);"></i>';
 }
-
-// --- Rendering Engine ---
 
 export function render() {
     updateHeaderUI();
@@ -683,7 +673,6 @@ export function updateSelectionUI() {
         if (row) row.classList.add('selected');
     });
 
-    // Ensure map pins sync with list selection
     if (typeof updateMapSelectionStyles === 'function') {
         updateMapSelectionStyles(AppState.selectedIds);
     }
@@ -721,8 +710,6 @@ export function updateSelectionUI() {
     }
 }
 
-// --- SortableJS Integration ---
-
 let sortableInstances = [];
 let sortableUnrouted = null;
 
@@ -733,7 +720,6 @@ export function initSortable() {
 
     if (!AppState.PERMISSION_MODIFY) return;
 
-    // Disables list moving/reordering entirely if the active route state is purely Pending
     if (AppState.currentRoutingState === 'Pending') return;
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
@@ -844,8 +830,6 @@ export function reorderStopsFromDOM() {
     AppState.stops = [...otherStops, ...newUnrouted, ...newRouted];
 }
 
-// --- Endpoints & Geocoding UI ---
-
 let geocodeTimeout;
 
 export async function handleEndpointInput(e, type) {
@@ -874,9 +858,9 @@ function renderAutocomplete(features, inputEl, type) {
     let dropdown = document.getElementById(`autocomplete-${type}`);
     if (!dropdown) {
         dropdown = document.createElement('div'); dropdown.id = `autocomplete-${type}`; dropdown.className = 'autocomplete-dropdown';
-        dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel, #1E293B)'; dropdown.style.border = '1px solid var(--border-color, #334155)';
+        dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel)'; dropdown.style.border = '1px solid var(--border-color)';
         dropdown.style.zIndex = '1000'; dropdown.style.width = '100%'; dropdown.style.maxHeight = '200px'; dropdown.style.overflowY = 'auto';
-        dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
         inputEl.parentNode.appendChild(dropdown);
     }
     dropdown.innerHTML = '';
@@ -884,10 +868,10 @@ function renderAutocomplete(features, inputEl, type) {
     
     features.forEach(f => {
         const item = document.createElement('div');
-        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color, #334155)';
-        item.style.color = 'var(--text-main, #F8FAFC)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
+        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color)';
+        item.style.color = 'var(--text-main)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
         
-        item.onmouseenter = () => item.style.background = 'var(--blue, #3B82F6)';
+        item.onmouseenter = () => item.style.background = 'var(--bg-hover)';
         item.onmouseleave = () => item.style.background = 'transparent';
         item.onmousedown = (e) => {
             e.preventDefault(); 
@@ -937,8 +921,6 @@ async function saveEndpointToBackend(type, address, lat, lng) {
     } finally { hideOverlay(); }
 }
 
-// --- Specific Modals ---
-
 export function showAddOrderModal() {
     const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
     mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
@@ -953,29 +935,29 @@ export function showAddOrderModal() {
             let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
             return `<div class="pill-btn add-insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
         }).join('');
-        inspectorHtml = `<div class="form-group"><label>Inspector <span style="float:right; font-weight:normal;">Required</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">${inspBtns}</div></div>`;
+        inspectorHtml = `<div class="form-group"><label>Inspector</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">${inspBtns}</div></div>`;
     }
 
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
-    let appHtml = `<div class="form-group"><label>App <span style="float:right; font-weight:normal;">Optional</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
+    let appHtml = `<div class="form-group"><label>App</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
 
     mc.innerHTML = `
-        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="add-close-icon"></i></div>
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="add-close-icon"></i></div>
             ${inspectorHtml} ${appHtml}
-            <div class="form-group"><label>Address <span style="float:right; font-weight:normal;">Required</span></label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
+            <div class="form-group"><label>Address</label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
             <div class="grid-2-col">
-                <div class="form-group"><label>Latitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
-                <div class="form-group"><label>Longitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
+                <div class="form-group"><label>Latitude</label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
+                <div class="form-group"><label>Longitude</label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
             </div>
-            <div class="form-group"><label>Due Date <span style="float:right; font-weight:normal;">Required</span></label><input type="date" id="add-due" class="form-control" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div class="form-group"><label>Due Date</label><input type="date" id="add-due" class="form-control" value="${new Date().toISOString().split('T')[0]}"></div>
             <div class="grid-2-col">
-                <div class="form-group"><label>Client <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
-                <div class="form-group"><label>Order Type <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
+                <div class="form-group"><label>Client</label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
+                <div class="form-group"><label>Order Type</label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
             </div>
             <div style="display: flex; gap: 12px; justify-content: flex-start; margin-top: 10px;">
-                <button id="btn-submit-add" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; opacity: 0.5;" disabled>Add Order</button>
-                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
+                <button id="btn-submit-add" style="padding: 10px 24px; background: var(--border-color); color: var(--text-muted); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;" disabled>Add Order</button>
+                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
             </div>
         </div>`;
     m.style.display = 'flex';
@@ -983,8 +965,8 @@ export function showAddOrderModal() {
     const checkValidity = () => {
         const btn = document.getElementById('btn-submit-add');
         if (selectedInspector && document.getElementById('add-address').value.trim() && document.getElementById('add-due').value) {
-            btn.disabled = false; btn.style.opacity = '1'; btn.style.background = 'var(--green)';
-        } else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = '#35475b'; }
+            btn.disabled = false; btn.style.background = 'var(--green)'; btn.style.color = 'white';
+        } else { btn.disabled = true; btn.style.background = 'var(--border-color)'; btn.style.color = 'var(--text-muted)'; }
     };
 
     document.querySelectorAll('.add-insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.add-insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
@@ -1018,27 +1000,27 @@ export function showUploadModal(file) {
             let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
             return `<div class="pill-btn insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
         }).join('');
-        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">Inspector <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
+        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">Inspector</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
     }
 
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
 
     mc.innerHTML = `
-        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="upload-close-icon"></i></div>
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="upload-close-icon"></i></div>
             ${inspectorHtml}
-            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">App <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
+            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">App</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
-                <button id="btn-submit-upload" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; opacity: 0.5;" disabled>Submit</button>
-                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
+                <button id="btn-submit-upload" style="padding: 10px 24px; background: var(--border-color); color: var(--text-muted); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;" disabled>Submit</button>
+                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
             </div>
         </div>`;
     m.style.display = 'flex';
 
     const checkValidity = () => {
         const btn = document.getElementById('btn-submit-upload');
-        if (selectedInspector && selectedCsvType) { btn.disabled = false; btn.style.opacity = '1'; btn.style.background = 'var(--blue)'; } 
-        else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = '#35475b'; }
+        if (selectedInspector && selectedCsvType) { btn.disabled = false; btn.style.background = 'var(--blue)'; btn.style.color = 'white'; } 
+        else { btn.disabled = true; btn.style.background = 'var(--border-color)'; btn.style.color = 'var(--text-muted)'; }
     };
 
     document.querySelectorAll('.insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
@@ -1064,14 +1046,14 @@ export function handleOpenEmailModal() {
     mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
     
     mc.innerHTML = `
-        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 500;">Customize Email Message</h3>
-            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5;">CC the Company Email<br><span style="font-size: 14px; color: #9a9a9a;">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5;">CC Me<br><span style="font-size: 14px; color: #9a9a9a;">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
-            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: #e5e5e5;">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
-            <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
-            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Cancel</button></div>
+            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
+            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
+            <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> at <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Cancel</button></div>
         </div>`;
 
     document.getElementById('btn-cancel-dispatch').onclick = () => m.style.display = 'none';
@@ -1104,7 +1086,7 @@ export function handleOpenEmailModal() {
         }
 
         let mapBase64 = '';
-        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#171717', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
+        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#FAFAFA', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
 
         mapWrapper.style.cssText = originalWrapperStyle;
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
@@ -1179,11 +1161,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// --- UI Utilities Bound to Window ---
-
 window.setDisplayMode = function(mode) {
     AppState.currentDisplayMode = mode;
-    // Explicitly bypass static endpoints to lock them into detailed height
     document.querySelectorAll('.stop-item:not(.static-endpoint), .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
 };
 
@@ -1241,7 +1220,7 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     finally { hideOverlay(); }
 };
 
-window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<h3>Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:500;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:none; border-radius:6px; background:#444; color:#fff" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div>`; } else { window.launchMaps(p, la, ln, addr); } };
+window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.15);"><h3 style="margin-top:0;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button style="padding:12px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:500; cursor:pointer;" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:12px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
 window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; window.launchMaps(p, la, ln, addr); };
 window.launchMaps = function(p, la, ln, addr) { let safeAddr = encodeURIComponent(addr || "Destination"); if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; };
 
@@ -1273,7 +1252,6 @@ window.clearAddressSearch = function() {
     window.filterListDOM('');
 };
 
-// --- Drag & Drop Initialization ---
 const mainDropzone = document.getElementById('main-dropzone'); 
 const mainInput = document.getElementById('main-file-input');
 const hiddenFileInput = document.getElementById('hidden-global-file-input');
@@ -1322,7 +1300,6 @@ document.addEventListener('drop', (e) => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]);
 });
 
-// --- Resizer Logic ---
 const resizerEl = document.getElementById('resizer'); const sidebarEl = document.getElementById('sidebar'); const mapWrapEl = document.getElementById('map-wrapper');
 let isResizing = false;
 function startResize(e) { if(!Config.isManagerView) return; isResizing = true; resizerEl.classList.add('active'); document.body.style.cursor = Config.viewMode === 'managermobile' ? 'row-resize' : 'col-resize'; mapWrapEl.style.pointerEvents = 'none'; }
@@ -1332,7 +1309,6 @@ function performResize(e) {
     if (!isResizing) return;
     let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
     
-    // Calculate total actual container height natively from window bounds to respect the CSS body cutoff
     let containerHeight = document.body.clientHeight;
     
     if (Config.viewMode === 'managermobile') {
@@ -1343,14 +1319,12 @@ function performResize(e) {
     } else {
         let newWidth = window.innerWidth - clientX; 
         
-        // Strict constraint clamping to protect both the map routing UI and list UI
         let maxListWidth = Math.max(450, window.innerWidth - 620);
         if (newWidth > maxListWidth) newWidth = maxListWidth;
         if (newWidth < 450) newWidth = 450;
         
         sidebarEl.style.width = newWidth + 'px';
         
-        // Ensure the List Zone in the global header precisely mirrors the sidebar width
         const hlZone = document.getElementById('header-list-zone');
         if (hlZone) hlZone.style.width = newWidth + 'px';
     }
@@ -1360,7 +1334,6 @@ document.addEventListener('mousemove', performResize); document.addEventListener
 function stopResize() { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizerEl.classList.remove('active'); mapWrapEl.style.pointerEvents = 'auto'; resizeMap(); } }
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
 
-// --- Dynamic Height Sync ---
 function syncBodyHeight() {
     document.body.style.height = (window.innerHeight - 200) + 'px';
     const mapWrapper = document.getElementById('map-wrapper');
