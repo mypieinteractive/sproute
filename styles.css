@@ -1,9 +1,10 @@
-/* Dashboard - V18.11 */
+/* Dashboard - V18.12 */
 /* FILE: styles.css */
 /* Changes: */
 /* 1. Converted the Sidebar, List Rows, and Headers into a "Dark Workspace" using var(--brand-dark) and var(--brand-mid). */
-/* 2. Updated row typography to use crisp whites and light grays for perfect contrast against the dark backgrounds. */
-/* 3. Set floating map controls and route view toggles to match the dark workspace. */
+/* 2. Changed .list-subheading background to var(--brand-dark). */
+/* 3. Flipped row backgrounds: unselected is now --brand-mid, selected is --brand-dark. */
+/* 4. Updated row typography to use crisp whites and light grays for perfect contrast. */
 
 :root { 
     --accent: #85BA4E; 
@@ -134,7 +135,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 .add-dropdown-item:hover { background: var(--accent); color: white; }
 
-/* MAP HEADER (Dark) */
+/* MAP HEADER (Dark Workspace) */
 #map-header {
     height: 38px; background: var(--brand-dark); border-bottom: 1px solid var(--brand-mid);
     display: flex; align-items: center; justify-content: flex-end;
@@ -142,7 +143,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 
 .list-subheading {
-    padding: 6px 12px; background: var(--brand-mid); color: #ffffff;
+    padding: 6px 12px; background: var(--brand-dark); color: #ffffff;
     font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: none;
     display: flex; justify-content: space-between; align-items: center;
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
@@ -150,7 +151,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 body.view-manager .list-subheading, body.view-managermobile .list-subheading, body.view-managermobilesplit .list-subheading { top: 37px; }
 .route-summary-text { font-weight: 500; font-size: 11px; text-transform: none; color: rgba(255,255,255,0.7); }
 
-/* ROUTING MODULE (Dark) */
+/* ROUTING MODULE (Dark Workspace) */
 #routing-controls { background: var(--brand-dark) !important; border-bottom: 1px solid var(--brand-mid) !important; }
 #routing-controls label, #routing-controls span { color: #ffffff !important; font-weight: 600; }
 .routing-module-wrapper { position: relative; display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; }
@@ -194,7 +195,7 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .route-view-btn:hover { opacity: 1; background: var(--brand-mid); }
 .route-view-btn.active { opacity: 1; border-color: var(--accent); background: rgba(133, 186, 78, 0.15); color: var(--accent); }
 
-/* Global Header Light Dropdowns (No Change) */
+/* Global Header Light Dropdowns */
 .insp-select {
     background-color: var(--bg-panel); color: var(--brand-mid); border: 1px solid var(--brand-mid) !important; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; 
     background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%231D414D%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); 
@@ -255,10 +256,10 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 #route-view-toggles { padding: 10px 15px; background: var(--brand-dark); border-bottom: 1px solid var(--brand-mid); flex-direction: row; gap: 8px; flex-shrink: 0; }
 #stop-list { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; position: relative; }
 
-/* DARK WORKSPACE ROWS */
-.stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--brand-mid); background: var(--brand-dark); min-height: 60px; cursor: pointer; position: relative; }
+/* DARK WORKSPACE ROWS - Flipped Background Colors */
+.stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--brand-dark); background: var(--brand-mid); min-height: 60px; cursor: pointer; position: relative; }
 .stop-item.completed { opacity: 0.5; background: rgba(3,43,57,0.5); }
-.stop-item.selected { background: var(--brand-mid) !important; border-left: 4px solid var(--accent); }
+.stop-item.selected { background: var(--brand-dark) !important; border-left: 4px solid var(--accent); }
 
 .sortable-chosen { transform: scale(1.02); box-shadow: 0 12px 28px rgba(0,0,0,0.4) !important; border: 2px solid var(--accent) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; z-index: 1000; background-color: var(--brand-mid) !important; }
 .sortable-drag { opacity: 0.8 !important; }
@@ -295,10 +296,10 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 .col-eta, .col-due, .col-addr, .col-app { border-right: 1px solid var(--brand-mid); }
 .static-endpoint .col-eta, .static-endpoint .col-due, .static-endpoint .col-addr, .static-endpoint .col-app { border-right: none !important; }
 
-/* GLIDE ROWS (Dark) */
-.glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid var(--brand-mid); font-size: 14px; color: #ffffff; align-items: center; cursor: pointer; background: var(--brand-dark); transition: background 0.2s; }
-.glide-row:hover { background: var(--brand-mid); }
-.glide-row.selected { background: var(--brand-mid) !important; border-left: 4px solid var(--accent); }
+/* GLIDE ROWS (Dark) - Flipped Background Colors */
+.glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid var(--brand-dark); font-size: 14px; color: #ffffff; align-items: center; cursor: pointer; background: var(--brand-mid); transition: background 0.2s; }
+.glide-row:hover { background: var(--brand-dark); }
+.glide-row.selected { background: var(--brand-dark) !important; border-left: 4px solid var(--accent); }
 .glide-row.completed { opacity: 0.5; }
 
 .sortable { cursor: pointer; transition: color 0.2s; display: flex; align-items: center; }
