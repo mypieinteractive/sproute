@@ -1,7 +1,8 @@
-/* Dashboard - V18.10 */
+/* Dashboard - V18.7 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Fully eliminated the "Optional" tags from showAddOrderModal() to match user spec. */
+/* 1. Imported updateMapSelectionStyles from map.js. */
+/* 2. Added updateMapSelectionStyles(AppState.selectedIds) inside updateSelectionUI() to permanently sync map pin highlighting with list selection (including Shift and Cmd/Ctrl multi-selects). */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -32,7 +33,7 @@ export function customAlert(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
                 <h3 style="margin-top:0; font-weight: 500;">Alert</h3>
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
@@ -50,11 +51,11 @@ export function customConfirm(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="background: var(--bg-panel, #1E293B); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: white; text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
                 <h3 style="margin-top:0; font-weight: 500;">Confirm</h3>
                 <p style="font-size: 15px; margin-bottom: 20px;">${msg}</p>
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
-                    <button style="padding:10px 20px; border:1px solid var(--border-color); border-radius:6px; background:transparent; color:var(--text-main); cursor:pointer; font-weight: 500;" id="modal-confirm-cancel">Cancel</button>
+                    <button style="padding:10px 20px; border:none; border-radius:6px; background:#444; color:white; cursor:pointer; font-weight: 500;" id="modal-confirm-cancel">Cancel</button>
                     <button style="padding:10px 20px; border:none; border-radius:6px; background:var(--blue); color:white; font-weight:500; cursor:pointer;" id="modal-confirm-ok">OK</button>
                 </div>
             </div>`;
@@ -873,9 +874,9 @@ function renderAutocomplete(features, inputEl, type) {
     let dropdown = document.getElementById(`autocomplete-${type}`);
     if (!dropdown) {
         dropdown = document.createElement('div'); dropdown.id = `autocomplete-${type}`; dropdown.className = 'autocomplete-dropdown';
-        dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel)'; dropdown.style.border = '1px solid var(--border-color)';
+        dropdown.style.position = 'absolute'; dropdown.style.background = 'var(--bg-panel, #1E293B)'; dropdown.style.border = '1px solid var(--border-color, #334155)';
         dropdown.style.zIndex = '1000'; dropdown.style.width = '100%'; dropdown.style.maxHeight = '200px'; dropdown.style.overflowY = 'auto';
-        dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+        dropdown.style.borderRadius = '4px'; dropdown.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
         inputEl.parentNode.appendChild(dropdown);
     }
     dropdown.innerHTML = '';
@@ -883,11 +884,11 @@ function renderAutocomplete(features, inputEl, type) {
     
     features.forEach(f => {
         const item = document.createElement('div');
-        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color)';
-        item.style.color = 'var(--text-main)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
+        item.style.padding = '8px 10px'; item.style.cursor = 'pointer'; item.style.borderBottom = '1px solid var(--border-color, #334155)';
+        item.style.color = 'var(--text-main, #F8FAFC)'; item.style.fontSize = '13px'; item.innerText = f.place_name;
         
-        item.onmouseenter = () => { item.style.background = 'var(--bg-hover)'; item.style.color = 'var(--blue)'; };
-        item.onmouseleave = () => { item.style.background = 'transparent'; item.style.color = 'var(--text-main)'; };
+        item.onmouseenter = () => item.style.background = 'var(--blue, #3B82F6)';
+        item.onmouseleave = () => item.style.background = 'transparent';
         item.onmousedown = (e) => {
             e.preventDefault(); 
             AppState.latestSuggestions[type] = f; 
@@ -956,25 +957,25 @@ export function showAddOrderModal() {
     }
 
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
-    let appHtml = `<div class="form-group"><label>App</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
+    let appHtml = `<div class="form-group"><label>App <span style="float:right; font-weight:normal;">Optional</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
 
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="add-close-icon"></i></div>
+        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="add-close-icon"></i></div>
             ${inspectorHtml} ${appHtml}
             <div class="form-group"><label>Address <span style="float:right; font-weight:normal;">Required</span></label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
             <div class="grid-2-col">
-                <div class="form-group"><label>Latitude</label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
-                <div class="form-group"><label>Longitude</label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
+                <div class="form-group"><label>Latitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
+                <div class="form-group"><label>Longitude <span style="float:right; font-weight:normal;">Optional</span></label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
             </div>
             <div class="form-group"><label>Due Date <span style="float:right; font-weight:normal;">Required</span></label><input type="date" id="add-due" class="form-control" value="${new Date().toISOString().split('T')[0]}"></div>
             <div class="grid-2-col">
-                <div class="form-group"><label>Client</label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
-                <div class="form-group"><label>Order Type</label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
+                <div class="form-group"><label>Client <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
+                <div class="form-group"><label>Order Type <span style="float:right; font-weight:normal;">Optional</span></label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
             </div>
             <div style="display: flex; gap: 12px; justify-content: flex-start; margin-top: 10px;">
-                <button id="btn-submit-add" style="padding: 10px 24px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; opacity: 0.5;" disabled>Add Order</button>
-                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
+                <button id="btn-submit-add" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; opacity: 0.5;" disabled>Add Order</button>
+                <button id="btn-cancel-add" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
             </div>
         </div>`;
     m.style.display = 'flex';
@@ -983,7 +984,7 @@ export function showAddOrderModal() {
         const btn = document.getElementById('btn-submit-add');
         if (selectedInspector && document.getElementById('add-address').value.trim() && document.getElementById('add-due').value) {
             btn.disabled = false; btn.style.opacity = '1'; btn.style.background = 'var(--green)';
-        } else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = 'var(--blue)'; }
+        } else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = '#35475b'; }
     };
 
     document.querySelectorAll('.add-insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.add-insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
@@ -1023,13 +1024,13 @@ export function showUploadModal(file) {
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
 
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="upload-close-icon"></i></div>
+        <div style="background: #202123; padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 500;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: #888; font-size: 20px;" id="upload-close-icon"></i></div>
             ${inspectorHtml}
             <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">App <span style="float:right; font-size: 12px; font-weight: normal;">Required</span></div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
             <div style="display: flex; gap: 12px; justify-content: flex-start;">
-                <button id="btn-submit-upload" style="padding: 10px 24px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; opacity: 0.5;" disabled>Submit</button>
-                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
+                <button id="btn-submit-upload" style="padding: 10px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; opacity: 0.5;" disabled>Submit</button>
+                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;">Cancel</button>
             </div>
         </div>`;
     m.style.display = 'flex';
@@ -1037,7 +1038,7 @@ export function showUploadModal(file) {
     const checkValidity = () => {
         const btn = document.getElementById('btn-submit-upload');
         if (selectedInspector && selectedCsvType) { btn.disabled = false; btn.style.opacity = '1'; btn.style.background = 'var(--blue)'; } 
-        else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = 'var(--blue)'; }
+        else { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.background = '#35475b'; }
     };
 
     document.querySelectorAll('.insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
@@ -1062,17 +1063,15 @@ export function handleOpenEmailModal() {
     const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
     mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
     
-    const mapBgColor = getComputedStyle(document.body).getPropertyValue('--bg-base').trim() || '#171717';
-
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+        <div style="background: #2c2c2e; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: white; text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 500;">Customize Email Message</h3>
-            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
-            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
-            <div style="background: var(--bg-base); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--blue); font-weight: normal;">${insp.name}</span> at <span style="color: var(--blue); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
-            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: var(--blue); color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Cancel</button></div>
+            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: #3a3a3c; color: #fff; border: 1px solid #4a4a4c; border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5;">CC the Company Email<br><span style="font-size: 14px; color: #9a9a9a;">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
+            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: #e5e5e5;">CC Me<br><span style="font-size: 14px; color: #9a9a9a;">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
+            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: #e5e5e5;">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: #3a3a3c; color: white; border: 1px solid #4a4a4c; border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
+            <div style="background: #1e1e1e; border: 1px solid #333; padding: 16px; border-radius: 6px; font-size: 15px; color: #fff; margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.name}</span> <span style="color: white;">at</span> <span style="color: var(--blue, #3B82F6); font-weight: normal;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" style="padding: 12px 24px; background: #35475b; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: white; border: 1px solid #555; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer;">Cancel</button></div>
         </div>`;
 
     document.getElementById('btn-cancel-dispatch').onclick = () => m.style.display = 'none';
@@ -1105,7 +1104,7 @@ export function handleOpenEmailModal() {
         }
 
         let mapBase64 = '';
-        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: mapBgColor, scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
+        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#171717', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
 
         mapWrapper.style.cssText = originalWrapperStyle;
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
