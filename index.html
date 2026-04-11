@@ -3,9 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.7
+            VERSION: V19.8
             CHANGES:
-            1. Added temporary Theme Dev Tool in the global header to allow real-time CSS variable color adjustments.
+            1. Cleaned up inline colors to utilize the new granular CSS variables from styles.css.
+            2. Added comprehensive Theme Dev Tool into the Global Header to allow live RGB testing of all dashboard elements.
         */
         
         .custom-tooltip {
@@ -45,21 +46,53 @@
     
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding-right: 15px;">
         <div id="header-action-container">
-            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--brand-mid); color: var(--brand-mid); font-weight: 600; border-radius: 6px;">
+            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 600; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
             </button>
         </div>
         
-        <div id="dev-theme-tool" style="display: flex; align-items: center; gap: 8px; background: var(--bg-base); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <div id="dev-theme-tool" style="display: flex; align-items: center; gap: 8px; background: var(--bg-panel); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
             <i class="fa-solid fa-palette" style="color: var(--text-muted); font-size: 14px;"></i>
             <select id="dev-color-select" style="background: transparent; border: none; color: var(--text-main); font-size: 13px; font-weight: 600; outline: none; cursor: pointer;">
-                <option value="--brand-dark">Brand Dark (Headers/Sidebar)</option>
-                <option value="--brand-mid">Brand Mid (Rows/Borders)</option>
-                <option value="--accent">Accent (Sproute Green)</option>
-                <option value="--bg-base">Background Base</option>
-                <option value="--bg-panel">Background Panel</option>
-                <option value="--text-main">Text Main</option>
-                <option value="--text-muted">Text Muted</option>
+                <optgroup label="Global">
+                    <option value="--accent">Accent (Green)</option>
+                </optgroup>
+                <optgroup label="Global Header (Top)">
+                    <option value="--global-hdr-bg">Background</option>
+                    <option value="--global-hdr-icon">Outlines/Icons</option>
+                </optgroup>
+                <optgroup label="Sidebar Shell">
+                    <option value="--sidebar-bg">Base Background</option>
+                </optgroup>
+                <optgroup label="Map Summary Bar">
+                    <option value="--summary-bg">Background</option>
+                    <option value="--summary-border">Border</option>
+                    <option value="--summary-text-main">Main Text</option>
+                </optgroup>
+                <optgroup label="Routing Controls">
+                    <option value="--route-mod-bg">Background</option>
+                    <option value="--route-mod-border">Border</option>
+                    <option value="--route-mod-text">Main Text</option>
+                </optgroup>
+                <optgroup label="List Header">
+                    <option value="--list-hdr-bg">Background</option>
+                    <option value="--list-hdr-border">Border</option>
+                    <option value="--list-hdr-text">Text</option>
+                    <option value="--list-search-bg">Search Box Fill</option>
+                    <option value="--list-search-text">Search Box Text</option>
+                </optgroup>
+                <optgroup label="List Subheadings">
+                    <option value="--list-sub-bg">Background</option>
+                    <option value="--list-sub-text">Text</option>
+                </optgroup>
+                <optgroup label="List Rows">
+                    <option value="--row-bg">Background (Unselected)</option>
+                    <option value="--row-bg-hover">Background (Hover/Completed)</option>
+                    <option value="--row-bg-selected">Background (Selected)</option>
+                    <option value="--row-border">Dividers & Borders</option>
+                    <option value="--row-text-main">Main Text (Addresses)</option>
+                    <option value="--row-text-muted">Muted Text (ETA/Due)</option>
+                </optgroup>
             </select>
             <input type="color" id="dev-color-picker" style="cursor: pointer; padding: 0; border: none; width: 26px; height: 26px; background: transparent; border-radius: 4px;">
             <span id="dev-color-hex" style="font-family: monospace; font-size: 13px; color: var(--text-muted); width: 60px;">#000000</span>
@@ -72,7 +105,7 @@
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 600; height: 30px; border: 1px solid var(--brand-mid);"></select>
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 600; height: 30px;"></select>
             </div>
             <div class="rocker-switch">
                 <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
@@ -117,16 +150,16 @@
         
         <div id="map-header">
             <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600;">
-                <div id="summary-metrics" style="color: rgba(255,255,255,0.7);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+                <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
                 <div id="order-stats" class="hide-mobile-text">
-                    <span id="stat-total" style="color: #ffffff;">0 Orders</span> | 
+                    <span id="stat-total">0 Orders</span> | 
                     <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
                     <span id="stat-past" style="color: var(--red);">0 Past Due</span>
                 </div>
             </div>
         </div>
 
-        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; background: var(--brand-dark); border-bottom: 1px solid var(--brand-mid); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
             
             <div id="routing-module-core" class="routing-module-core" style="display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; width: 100%;">
                 
@@ -156,11 +189,11 @@
                     </div>
 
                     <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
-                        <label style="font-size:13px; font-weight:600; color:#ffffff; margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
+                        <label style="font-size:13px; font-weight:600; margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
                         <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()" style="width: 100%; margin-bottom: 4px;">
                         <div style="display:flex; justify-content:space-between; width: 100%;">
-                            <span style="font-size:12px; color:rgba(255,255,255,0.7); white-space: nowrap;">Efficiency</span>
-                            <span style="font-size:12px; color:rgba(255,255,255,0.7); white-space: nowrap;">Due Dates</span>
+                            <span style="font-size:12px; color:var(--row-text-muted); white-space: nowrap;">Efficiency</span>
+                            <span style="font-size:12px; color:var(--row-text-muted); white-space: nowrap;">Due Dates</span>
                         </div>
                     </div>
                 </div>
