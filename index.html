@@ -3,11 +3,11 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.10
+            VERSION: V19.11
             CHANGES:
-            1. All inline font weights shifted to 400 (normal).
-            2. Global header properly utilizes the --global-hdr-bg, text, and icons correctly with hover states.
-            3. Added updated dev theme tool variables to match new dark structure.
+            1. Removed Dev Theme Tool.
+            2. Moved global summary stats to the global header mapping.
+            3. Injected a static list-header-container structure inside the sidebar to trap the scroll bounds to #stop-list perfectly.
         */
         
         .custom-tooltip {
@@ -52,59 +52,15 @@
             </button>
         </div>
         
-        <div id="dev-theme-tool" style="display: flex; align-items: center; gap: 8px; background: var(--bg-panel); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-            <i class="fa-solid fa-palette" style="color: var(--text-muted); font-size: 14px;"></i>
-            <select id="dev-color-select" style="background: transparent; border: none; color: var(--text-main); font-size: 13px; font-weight: 400; outline: none; cursor: pointer;">
-                <optgroup label="Global / Modals">
-                    <option value="--accent">Accent (Primary)</option>
-                    <option value="--accent-hover">Accent (Hover)</option>
-                    <option value="--bg-base">Background Base (#171717)</option>
-                    <option value="--bg-panel">Background Panel (#1E1E1E)</option>
-                    <option value="--border-color">Border Color</option>
-                    <option value="--text-main">Text Main</option>
-                    <option value="--text-muted">Text Muted</option>
-                </optgroup>
-                <optgroup label="Global Header (Top)">
-                    <option value="--global-hdr-bg">Background</option>
-                    <option value="--global-hdr-icon">Outlines/Icons</option>
-                    <option value="--global-hdr-text">Text</option>
-                </optgroup>
-                <optgroup label="Sidebar Shell">
-                    <option value="--sidebar-bg">Base Background</option>
-                </optgroup>
-                <optgroup label="Map Summary Bar">
-                    <option value="--summary-bg">Background</option>
-                    <option value="--summary-border">Border</option>
-                    <option value="--summary-text-main">Main Text</option>
-                </optgroup>
-                <optgroup label="Routing Controls">
-                    <option value="--route-mod-bg">Background</option>
-                    <option value="--route-mod-border">Border</option>
-                    <option value="--route-mod-text">Main Text</option>
-                </optgroup>
-                <optgroup label="List Header">
-                    <option value="--list-hdr-bg">Background</option>
-                    <option value="--list-hdr-border">Border</option>
-                    <option value="--list-hdr-text">Text</option>
-                    <option value="--list-search-bg">Search Box Fill</option>
-                    <option value="--list-search-text">Search Box Text</option>
-                </optgroup>
-                <optgroup label="List Subheadings">
-                    <option value="--list-sub-bg">Background</option>
-                    <option value="--list-sub-text">Text</option>
-                </optgroup>
-                <optgroup label="List Rows">
-                    <option value="--row-bg">Background (Unselected)</option>
-                    <option value="--row-bg-hover">Background (Hover/Completed)</option>
-                    <option value="--row-bg-selected">Background (Selected)</option>
-                    <option value="--row-border">Dividers & Borders</option>
-                    <option value="--row-text-main">Main Text (Addresses)</option>
-                    <option value="--row-text-muted">Muted Text (ETA/Due)</option>
-                </optgroup>
-            </select>
-            <input type="color" id="dev-color-picker" style="cursor: pointer; padding: 0; border: none; width: 26px; height: 26px; background: transparent; border-radius: 4px;">
-            <span id="dev-color-hex" style="font-family: monospace; font-size: 13px; color: var(--text-muted); width: 60px;">#000000</span>
+        <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 400;">
+            <div id="summary-metrics" style="color: var(--row-text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+            <div id="order-stats" class="hide-mobile-text">
+                <span id="stat-total" style="color: var(--row-text-main);">0 Orders</span> | 
+                <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
+                <span id="stat-past" style="color: var(--red);">0 Past Due</span>
+            </div>
         </div>
+
         <div style="display: flex; align-items: center; gap: 15px;"></div>
     </div>
 
@@ -125,7 +81,7 @@
         <div id="header-right-controls">
             <div id="add-menu-wrapper" style="position: relative;">
                 <div class="header-action-btn primary-btn" style="padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
-                    <i class="fa-solid fa-plus" style="color: var(--text-main);"></i> <span style="margin-left: 6px; color: var(--text-main);">Add</span>
+                    <i class="fa-solid fa-plus" style="color: white;"></i> <span style="margin-left: 6px; color: white;">Add</span>
                 </div>
                 <div class="add-dropdown-menu" style="right: 0;">
                     <div class="add-dropdown-item" onclick="document.getElementById('hidden-global-file-input').click()">
@@ -155,17 +111,6 @@
     </div>
 
     <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0;">
-        
-        <div id="map-header">
-            <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 400;">
-                <div id="summary-metrics"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
-                <div id="order-stats" class="hide-mobile-text">
-                    <span id="stat-total">0 Orders</span> | 
-                    <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
-                    <span id="stat-past" style="color: var(--red);">0 Past Due</span>
-                </div>
-            </div>
-        </div>
 
         <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
             
@@ -267,7 +212,8 @@
             <button class="route-view-btn" id="view-r2-btn" onclick="setRouteViewFilter(2)">Route 3</button>
         </div>
         
-        <div id="stop-list" style="flex: 1; overflow-y: auto; position: relative;"></div>
+        <div id="list-header-container" style="flex: none; z-index: 20; background: var(--list-hdr-bg);"></div>
+        <div id="stop-list" style="flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;"></div>
     </div>
 </div>
 
@@ -319,45 +265,5 @@
 </div>
 
 <script type="module" src="app.js"></script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const selectEl = document.getElementById('dev-color-select');
-        const pickerEl = document.getElementById('dev-color-picker');
-        const hexEl = document.getElementById('dev-color-hex');
-
-        // Function to get the current value of a CSS variable
-        function getRootVar(varName) {
-            let val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-            // Handle shorthand hex (e.g., #fff) required by color picker
-            if (val.length === 4 && val.startsWith('#')) {
-                val = '#' + val[1] + val[1] + val[2] + val[2] + val[3] + val[3];
-            }
-            return val;
-        }
-
-        // Initialize the picker with the currently selected dropdown value
-        function initPicker() {
-            const currentHex = getRootVar(selectEl.value);
-            if (currentHex) {
-                pickerEl.value = currentHex;
-                hexEl.innerText = currentHex.toUpperCase();
-            }
-        }
-
-        // When the dropdown changes, update the picker to show that variable's color
-        selectEl.addEventListener('change', initPicker);
-
-        // When you drag the color picker, instantly update the CSS variable across the whole app
-        pickerEl.addEventListener('input', (e) => {
-            const newHex = e.target.value;
-            document.documentElement.style.setProperty(selectEl.value, newHex);
-            hexEl.innerText = newHex.toUpperCase();
-        });
-
-        // Run once on load
-        setTimeout(initPicker, 100);
-    });
-</script>
 </body>
 </html>
