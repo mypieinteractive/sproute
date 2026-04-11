@@ -1,8 +1,7 @@
-/* Dashboard - V18.18 */
+/* Dashboard - V18.19 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Updated #empty-state-container to explicitly anchor top: 58px and directly center to prevent low vertical pushing. */
-/* 2. Ensured .modal-box utilizes margin: auto to bulletproof vertical centering inside iframes. */
+/* 1. Corrected #empty-state-container to use top: 0. Because its parent is already offset by the header, this perfectly centers the dropzone vertically. */
 
 :root { 
     /* Base / Accent */
@@ -80,7 +79,7 @@ body {
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
-    display: flex; align-items: center; justify-content: center; position: absolute; top: 58px; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
+    display: flex; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
 }
 body.empty-state-active #map-wrapper, body.drag-override-empty #map-wrapper,
 body.empty-state-active #sidebar, body.drag-override-empty #sidebar,
@@ -408,7 +407,7 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
     display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
     background: rgba(0,0,0,0.6); z-index: 100000; align-items: center; justify-content: center; 
 }
-.modal-box { max-height: 90%; overflow-y: auto; margin: 0; }
+.modal-box { max-height: 90%; overflow-y: auto; margin: auto; }
 .modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
 .grey-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; background-color: transparent; border: 2px solid var(--row-text-muted); border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; transition: 0.2s; }
