@@ -1,11 +1,7 @@
 /* Dashboard - V18.18 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added .col-client to the border-right array so the divider appears between App, Client, and Inspector. */
-/* 2. Enforced justify-content: center on .col-insp for centered inspector names. */
-/* 3. Explicitly set .col-app and .col-client to flex-shrink: 0 with exact widths to perfectly align columns between headers and rows. */
-/* 4. Updated .compact row padding and min-heights to tightly pack the rows. */
-/* 5. Stripped any remaining boldness from compact address text. */
+/* 1. Updated #empty-state-container to position: absolute with inset: 0 to perfectly anchor it within the app body and prevent vertical overflow/cutoff. */
 
 :root { 
     /* Base / Accent */
@@ -83,7 +79,7 @@ body {
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
-    display: flex; flex-direction: column; width: 100vw; height: 100%; background: var(--bg-base); z-index: 50; 
+    display: flex; flex-direction: column; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
 }
 body.empty-state-active #map-wrapper, body.drag-override-empty #map-wrapper,
 body.empty-state-active #sidebar, body.drag-override-empty #sidebar,
