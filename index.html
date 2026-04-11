@@ -3,9 +3,9 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.6
+            VERSION: V19.7
             CHANGES:
-            1. Repainted all header, summary, and routing module elements inside the workspace with deep teal to complete the Dark Workspace integration.
+            1. Added temporary Theme Dev Tool in the global header to allow real-time CSS variable color adjustments.
         */
         
         .custom-tooltip {
@@ -48,6 +48,21 @@
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; border: 1px solid var(--brand-mid); color: var(--brand-mid); font-weight: 600; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left"></i> <span>Undo</span>
             </button>
+        </div>
+        
+        <div id="dev-theme-tool" style="display: flex; align-items: center; gap: 8px; background: var(--bg-base); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+            <i class="fa-solid fa-palette" style="color: var(--text-muted); font-size: 14px;"></i>
+            <select id="dev-color-select" style="background: transparent; border: none; color: var(--text-main); font-size: 13px; font-weight: 600; outline: none; cursor: pointer;">
+                <option value="--brand-dark">Brand Dark (Headers/Sidebar)</option>
+                <option value="--brand-mid">Brand Mid (Rows/Borders)</option>
+                <option value="--accent">Accent (Sproute Green)</option>
+                <option value="--bg-base">Background Base</option>
+                <option value="--bg-panel">Background Panel</option>
+                <option value="--text-main">Text Main</option>
+                <option value="--text-muted">Text Muted</option>
+            </select>
+            <input type="color" id="dev-color-picker" style="cursor: pointer; padding: 0; border: none; width: 26px; height: 26px; background: transparent; border-radius: 4px;">
+            <span id="dev-color-hex" style="font-family: monospace; font-size: 13px; color: var(--text-muted); width: 60px;">#000000</span>
         </div>
         <div style="display: flex; align-items: center; gap: 15px;"></div>
     </div>
@@ -263,5 +278,45 @@
 </div>
 
 <script type="module" src="app.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const selectEl = document.getElementById('dev-color-select');
+        const pickerEl = document.getElementById('dev-color-picker');
+        const hexEl = document.getElementById('dev-color-hex');
+
+        // Function to get the current value of a CSS variable
+        function getRootVar(varName) {
+            let val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+            // Handle shorthand hex (e.g., #fff) required by color picker
+            if (val.length === 4 && val.startsWith('#')) {
+                val = '#' + val[1] + val[1] + val[2] + val[2] + val[3] + val[3];
+            }
+            return val;
+        }
+
+        // Initialize the picker with the currently selected dropdown value
+        function initPicker() {
+            const currentHex = getRootVar(selectEl.value);
+            if (currentHex) {
+                pickerEl.value = currentHex;
+                hexEl.innerText = currentHex.toUpperCase();
+            }
+        }
+
+        // When the dropdown changes, update the picker to show that variable's color
+        selectEl.addEventListener('change', initPicker);
+
+        // When you drag the color picker, instantly update the CSS variable across the whole app
+        pickerEl.addEventListener('input', (e) => {
+            const newHex = e.target.value;
+            document.documentElement.style.setProperty(selectEl.value, newHex);
+            hexEl.innerText = newHex.toUpperCase();
+        });
+
+        // Run once on load
+        setTimeout(initPicker, 100);
+    });
+</script>
 </body>
 </html>
