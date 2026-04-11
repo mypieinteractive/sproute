@@ -3,11 +3,9 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.12
+            VERSION: V19.13
             CHANGES:
-            1. Adjusted header padding and div structure to perfectly align summary stats to the far right next to the resizer.
-            2. Integrated .danger-btn class to format Start Over in red.
-            3. Removed RGB tester artifacts from HTML.
+            1. Lowered max-height on #main-dropzone to prevent cutoff in empty state.
         */
         
         .custom-tooltip {
@@ -98,7 +96,7 @@
     
     <div id="empty-state-container">
         <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; width: 100%;">
-            <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 1200px; height: 60vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
+            <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 800px; height: 400px; max-height: 50vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
                 <input type="file" id="main-file-input" accept=".csv" style="display: none;">
                 <div style="background: var(--fade-accent); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
                     <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--accent);"></i>
