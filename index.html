@@ -3,10 +3,9 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.5
+            VERSION: V19.6
             CHANGES:
-            1. Converted primary action buttons ([+ Add], [Send Route]) to the Sproute Green accent.
-            2. Updated the active Rocker Switch color to the new Green accent.
+            1. Repainted all header, summary, and routing module elements inside the workspace with deep teal to complete the Dark Workspace integration.
         */
         
         .custom-tooltip {
@@ -53,7 +52,7 @@
         <div style="display: flex; align-items: center; gap: 15px;"></div>
     </div>
 
-    <div id="header-resizer-gap" style="width: 6px; flex: none;"></div>
+    <div id="header-resizer-gap" style="width: 6px; flex: none; background: transparent;"></div>
 
     <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
@@ -103,16 +102,16 @@
         
         <div id="map-header">
             <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600;">
-                <div id="summary-metrics" style="color: var(--text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+                <div id="summary-metrics" style="color: rgba(255,255,255,0.7);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
                 <div id="order-stats" class="hide-mobile-text">
-                    <span id="stat-total" style="color: var(--brand-mid);">0 Orders</span> | 
+                    <span id="stat-total" style="color: #ffffff;">0 Orders</span> | 
                     <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
                     <span id="stat-past" style="color: var(--red);">0 Past Due</span>
                 </div>
             </div>
         </div>
 
-        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; background: #FFFFFF; border-bottom: 1px solid var(--border-color); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; background: var(--brand-dark); border-bottom: 1px solid var(--brand-mid); flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
             
             <div id="routing-module-core" class="routing-module-core" style="display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; width: 100%;">
                 
@@ -142,11 +141,11 @@
                     </div>
 
                     <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
-                        <label style="font-size:13px; font-weight:600; color:var(--brand-mid); margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
+                        <label style="font-size:13px; font-weight:600; color:#ffffff; margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
                         <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()" style="width: 100%; margin-bottom: 4px;">
                         <div style="display:flex; justify-content:space-between; width: 100%;">
-                            <span style="font-size:12px; color:var(--text-muted); white-space: nowrap;">Efficiency</span>
-                            <span style="font-size:12px; color:var(--text-muted); white-space: nowrap;">Due Dates</span>
+                            <span style="font-size:12px; color:rgba(255,255,255,0.7); white-space: nowrap;">Efficiency</span>
+                            <span style="font-size:12px; color:rgba(255,255,255,0.7); white-space: nowrap;">Due Dates</span>
                         </div>
                     </div>
                 </div>
@@ -205,7 +204,7 @@
     <div id="resizer"></div>
 
     <div id="sidebar" style="display: flex; flex-direction: column; min-height: 0;">
-        <div id="route-view-toggles" style="display: none; padding: 10px 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); flex-direction: row; gap: 8px; flex-shrink: 0;">
+        <div id="route-view-toggles" style="display: none;">
             <button class="route-view-btn active" id="view-rall-btn" onclick="setRouteViewFilter('all')">All Routes</button>
             <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
             <button class="route-view-btn" id="view-r1-btn" onclick="setRouteViewFilter(1)">Route 2</button>
