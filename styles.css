@@ -9,8 +9,8 @@
     /* Base / Accent */
     --accent: #85BA4E;
     --fade-accent: rgba(133, 186, 78, 0.15); /* Non-editable overlay */
-    --bg-base: #FAFAFA;
-    --bg-panel: #FFFFFF;
+    --bg-base: #171717;
+    --bg-panel: #FAFAFA;
     --text-main: #333333;
     --text-muted: #666666;
     --border-color: #E0E0E0;
