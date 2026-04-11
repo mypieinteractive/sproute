@@ -1,7 +1,7 @@
-/* Dashboard - V18.3 */
+/* Dashboard - V18.4 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated the Mapbox style from dark-v11 to streets-v12 for the new Light Theme. */
+/* 1. Reverted the Mapbox style from streets-v12 to dark-v11 for the high-contrast map viewport. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -73,7 +73,7 @@ let pageLoadRetries = 0;
 const MAX_RETRIES = 5;
 
 const mapConfig = { 
-    container: 'map', style: 'mapbox://styles/mapbox/streets-v12', center: [-96.797, 32.776], zoom: 11, 
+    container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
     attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
     cooperativeGestures: (Config.viewMode === 'inspector' || Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit')
 };
