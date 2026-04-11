@@ -1,11 +1,7 @@
-/* Dashboard - V18.13 */
+/* Dashboard - V18.14 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Appends list header to the new segregated #list-header-container to isolate scrollbars correctly to #stop-list. */
-/* 2. Routing controls vertical line removed (borderLeft = 'none'). */
-/* 3. Endpoint fields explicitly match the address search bar structure precisely to fix layout blockiness. */
-/* 4. Capturing overlay clones the global-header stats onto the map container to ensure emails include the data. */
-/* 5. syncBodyHeight updated to cleanly map to window.innerHeight without arbitrary padding reductions. */
+/* 1. Explicitly sets display: none on #summary-metrics (miles/hours) when in 'All Inspectors' mode, while ensuring #global-summary-stats remains visible to show Total Orders across the company. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -600,9 +596,19 @@ export function updateSummary() {
     if (document.getElementById('stat-due')) document.getElementById('stat-due').innerText = `${dueToday} Due Today`;
     if (document.getElementById('stat-past')) document.getElementById('stat-past').innerText = `${pastDue} Past Due`;
 
-    const summaryMetrics = document.getElementById('global-summary-stats');
+    const globalSummary = document.getElementById('global-summary-stats');
+    if (globalSummary) {
+        globalSummary.style.visibility = 'visible'; 
+    }
+
+    const summaryMetrics = document.getElementById('summary-metrics');
     if (summaryMetrics) {
-        summaryMetrics.style.visibility = (AppState.currentRoutingState === 'Pending' || AppState.currentRoutingState === 'Staging') ? 'hidden' : 'visible';
+        if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
+            summaryMetrics.style.display = 'none';
+        } else {
+            summaryMetrics.style.display = 'block';
+            summaryMetrics.style.visibility = (AppState.currentRoutingState === 'Pending' || AppState.currentRoutingState === 'Staging') ? 'hidden' : 'visible';
+        }
     }
 }
 
