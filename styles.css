@@ -1,9 +1,11 @@
-/* Dashboard - V18.17 */
+/* Dashboard - V18.18 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Reverted body and sync height logic to use 100dvh (removed the -200px constraint) to prevent top clipping. */
-/* 2. Removed top: 37px override on .list-subheading so it correctly sticks to top: 0 below the isolated header. */
-/* 3. Added .danger-btn class to format the Start Over buttons in red. */
+/* 1. Added .col-client to the border-right array so the divider appears between App, Client, and Inspector. */
+/* 2. Enforced justify-content: center on .col-insp for centered inspector names. */
+/* 3. Explicitly set .col-app and .col-client to flex-shrink: 0 with exact widths to perfectly align columns between headers and rows. */
+/* 4. Updated .compact row padding and min-heights to tightly pack the rows. */
+/* 5. Stripped any remaining boldness from compact address text. */
 
 :root { 
     /* Base / Accent */
@@ -32,8 +34,6 @@
     --sidebar-bg: #171717;
 
     /* Summary Bar */
-    --summary-bg: #344E41;
-    --summary-border: #242424;
     --summary-text-main: #FAFAFA;
 
     /* Routing Controls */
@@ -312,9 +312,9 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 .sortable-drag { opacity: 0.8 !important; }
 .hidden-unrouted { display: none !important; }
 
-.stop-item.compact { min-height: 40px; }
+.stop-item.compact { min-height: 32px; }
 .stop-item.compact .stop-content { padding: 2px 0; }
-.glide-row.compact { padding: 4px 4px; min-height: 40px; }
+.glide-row.compact { padding: 2px 4px; min-height: 32px; }
 
 .stop-sidebar { width: 35px; background-color: var(--purple); color: white; display: flex; align-items: center; justify-content: center; font-weight: 400; font-size: 16px; flex-shrink: 0; }
 .stop-sidebar.due-today { background-color: var(--orange); }
@@ -340,8 +340,8 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 /* TABLE HEADERS (Dark) */
 .glide-table-header { display: flex; height: 38px; box-sizing: border-box; align-items: center; padding: 0 4px; font-weight: 400; border-bottom: 2px solid var(--list-hdr-border); color: var(--list-hdr-text); font-size: 12px; text-transform: uppercase; background: var(--list-hdr-bg); margin-top: -1px; }
 
-.col-eta, .col-due, .col-addr, .col-app { border-right: 1px solid var(--row-border); }
-.static-endpoint .col-eta, .static-endpoint .col-due, .static-endpoint .col-addr, .static-endpoint .col-app { border-right: none !important; }
+.col-eta, .col-due, .col-addr, .col-app, .col-client { border-right: 1px solid var(--row-border); box-sizing: border-box; }
+.static-endpoint .col-eta, .static-endpoint .col-due, .static-endpoint .col-addr, .static-endpoint .col-app, .static-endpoint .col-client { border-right: none !important; }
 
 /* GLIDE ROWS (Dark) */
 .glide-row { display: flex; padding: 10px 4px; border-bottom: 1px solid var(--row-border); font-size: 14px; color: var(--row-text-main); align-items: center; cursor: pointer; background: var(--row-bg); transition: background 0.2s; }
@@ -360,7 +360,7 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 .col-due.due-today { color: var(--orange) !important; }
 .col-due.past-due { color: var(--red) !important; font-weight: 400; }
 
-.col-insp { width: 120px; color: var(--row-text-muted); padding-left: 8px; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; }
+.col-insp { width: 120px; color: var(--row-text-muted); padding-left: 8px; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; }
 .col-addr { flex: 1 1 auto; min-width: 0; padding-left: 8px; padding-right: 6px; font-weight: 400; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
 .addr-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; font-weight: 400; color: var(--row-text-main); }
 
@@ -368,10 +368,10 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 .compact .meta-text { display: none !important; }
 
 .type-text { font-size: 11px; font-weight: 400 !important; color: var(--row-text-muted) !important; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-.glide-row.compact .type-text, .stop-item.compact .type-text, .compact .type-text { display: none !important; }
+.glide-row.compact .type-text, .stop-item.compact .type-text, .compact .type-text, .compact .stop-content b, .compact .stop-addr-title, .glide-row.compact .addr-text { font-weight: 400 !important; display: none !important; }
 
-.col-app { width: 55px; color: var(--row-text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-.col-client { width: 70px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-start; color: var(--row-text-muted); }
+.col-app { width: 55px; color: var(--row-text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.col-client { width: 80px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-start; color: var(--row-text-muted); box-sizing: border-box; }
 
 /* Address Input Header styling */
 .address-header-input {
