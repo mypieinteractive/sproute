@@ -1,10 +1,9 @@
-/* Dashboard - V18.12 */
+/* Dashboard - V18.13 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Converted the Sidebar, List Rows, and Headers into a "Dark Workspace" using var(--brand-dark) and var(--brand-mid). */
-/* 2. Changed .list-subheading background to var(--brand-dark). */
-/* 3. Flipped row backgrounds: unselected is now --brand-mid, selected is --brand-dark. */
-/* 4. Updated row typography to use crisp whites and light grays for perfect contrast. */
+/* 1. Shifted --brand-dark and --brand-mid from Teals to Deep Forest/Hunter Greens to fit the Sproute brand identity. */
+/* 2. Updated rgba() overlay values for the map-hint, start-over overlay, and completed rows to match the new dark green RGB (15, 41, 30). */
+/* 3. Updated the SVG dropdown arrow color to match the new Hunter Green. */
 
 :root { 
     --accent: #85BA4E; 
@@ -21,9 +20,9 @@
     --text-main: #333333;
     --text-muted: #666666;
     
-    /* Brand Theme Colors */
-    --brand-dark: #032B39;
-    --brand-mid: #1D414D;
+    /* Brand Theme Colors - Deep Greens */
+    --brand-dark: #0F291E; 
+    --brand-mid: #1A402E;
 }
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
@@ -160,7 +159,7 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 
 .start-over-overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-    opacity: 0; background: rgba(3,43,57,0.8); backdrop-filter: blur(2px); border-radius: 6px;
+    opacity: 0; background: rgba(15,41,30,0.8); backdrop-filter: blur(2px); border-radius: 6px;
     transition: 0.2s; z-index: 5; pointer-events: none;
 }
 .routing-module-wrapper:hover .start-over-overlay.active { opacity: 1; pointer-events: auto; }
@@ -195,10 +194,10 @@ body.view-manager .list-subheading, body.view-managermobile .list-subheading, bo
 .route-view-btn:hover { opacity: 1; background: var(--brand-mid); }
 .route-view-btn.active { opacity: 1; border-color: var(--accent); background: rgba(133, 186, 78, 0.15); color: var(--accent); }
 
-/* Global Header Light Dropdowns */
+/* Global Header Light Dropdowns - Updated SVG to match Forest Green */
 .insp-select {
     background-color: var(--bg-panel); color: var(--brand-mid); border: 1px solid var(--brand-mid) !important; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; 
-    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%231D414D%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); 
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%231A402E%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); 
     background-repeat: no-repeat; background-position: right 10px center; background-size: 10px auto;
 }
 .insp-select:focus { outline: none; border-color: var(--accent) !important; }
@@ -230,7 +229,7 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 #map-wrapper { display: flex; flex-direction: column; position: relative; background-color: #191A1A; }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; background: #191A1A !important; }
 
-#map-hint { position: absolute; top: 15px; left: 15px; background: rgba(3,43,57,0.85); backdrop-filter: blur(4px); color: #ffffff; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; z-index: 200; pointer-events: none; border: 1px solid var(--brand-mid); transition: opacity 0.2s; }
+#map-hint { position: absolute; top: 15px; left: 15px; background: rgba(15,41,30,0.85); backdrop-filter: blur(4px); color: #ffffff; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; z-index: 200; pointer-events: none; border: 1px solid var(--brand-mid); transition: opacity 0.2s; }
 
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
 #map-wrapper.shift-down .marker, #map-wrapper.shift-down .marker .pin-visual { cursor: pointer !important; }
@@ -258,7 +257,7 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 
 /* DARK WORKSPACE ROWS - Flipped Background Colors */
 .stop-item { display: flex; align-items: stretch; border-bottom: 1px solid var(--brand-dark); background: var(--brand-mid); min-height: 60px; cursor: pointer; position: relative; }
-.stop-item.completed { opacity: 0.5; background: rgba(3,43,57,0.5); }
+.stop-item.completed { opacity: 0.5; background: rgba(15,41,30,0.5); }
 .stop-item.selected { background: var(--brand-dark) !important; border-left: 4px solid var(--accent); }
 
 .sortable-chosen { transform: scale(1.02); box-shadow: 0 12px 28px rgba(0,0,0,0.4) !important; border: 2px solid var(--accent) !important; transition: transform 0.2s ease, box-shadow 0.2s ease; z-index: 1000; background-color: var(--brand-mid) !important; }
