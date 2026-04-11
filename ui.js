@@ -1,8 +1,8 @@
-/* Dashboard - V18.15 */
+/* Dashboard - V18.16 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Appended `margin: auto;` to all modal injection HTML wrappers to guarantee exact centering inside absolute overlays. */
-/* 2. Modified `updateSummary` to hide #global-summary-stats ONLY when there are absolutely 0 orders loaded in the system, leaving the right-aligned [+ Add] button visible naturally. */
+/* 1. Added explicit checks to empty-state handling to ensure hlZone dynamically reverts to flex-basis 'auto' to keep header buttons fully visible. */
+/* 2. updateSummary function completely ignores global order count visibility hiding during 0-stop state, allowing users to see they have "0 Orders". */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -537,7 +537,11 @@ export function render() {
         const hlZone = document.getElementById('header-list-zone');
         const sidebar = document.getElementById('sidebar');
         if (hlZone && sidebar) {
-            hlZone.style.width = sidebar.offsetWidth + 'px';
+            if (document.body.classList.contains('empty-state-active') || sidebar.offsetWidth === 0) {
+                hlZone.style.width = 'auto';
+            } else {
+                hlZone.style.width = sidebar.offsetWidth + 'px';
+            }
         }
     }, 20); 
 }
