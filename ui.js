@@ -1,8 +1,10 @@
-/* Dashboard - V18.11 */
+/* Dashboard - V18.12 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Replaced hardcoded font-weights (500, 600, bold, <b>) with normal 400-weight inline styles and classes to strip heavy text. */
-/* 2. Replaced massive inline style declarations on modal submit buttons with the unified .modal-primary-btn class. */
+/* 1. Appends list header to the new segregated #list-header-container to isolate scrollbars correctly to #stop-list. */
+/* 2. Routing controls vertical line removed (borderLeft = 'none'). */
+/* 3. Endpoint fields explicitly match the address search bar structure precisely to fix layout blockiness. */
+/* 4. Capturing overlay clones the global-header stats onto the map container to ensure emails include the data. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -247,7 +249,7 @@ export function updateRoutingUI() {
         if (routingControls) routingControls.style.display = 'flex';
         if (currentState === 'Pending') {
             if (paramContainer) paramContainer.style.display = 'flex';
-            if (actionBtns) { actionBtns.style.width = '140px'; actionBtns.style.borderLeft = '1px solid var(--border-color)'; }
+            if (actionBtns) { actionBtns.style.width = '140px'; actionBtns.style.borderLeft = 'none'; }
             if (btnPending) btnPending.style.display = 'flex';
         } else if (currentState === 'Staging') {
             if (actionBtns) actionBtns.style.width = '100%';
@@ -311,7 +313,6 @@ export function render() {
     if (Config.isManagerView) {
         const header = document.createElement('div');
         header.className = 'glide-table-header';
-        header.style.position = 'sticky'; header.style.top = '0'; header.style.zIndex = '20'; header.style.marginTop = '-1px';
         
         const sortIcon = (col) => isAllInspectors ? getSortIcon(col) : '';
         const sortClass = isAllInspectors ? 'sortable' : '';
@@ -336,7 +337,14 @@ export function render() {
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'block'};">Inspector ${sortIcon('driverName')}</div>
         `;
-        listContainer.appendChild(header);
+        
+        const headerContainer = document.getElementById('list-header-container');
+        if (headerContainer) {
+            headerContainer.innerHTML = '';
+            headerContainer.appendChild(header);
+        } else {
+            listContainer.appendChild(header);
+        }
 
         const searchInput = document.getElementById('address-search-input');
         if (searchInput && window.lastAddressSearchValue) {
@@ -591,7 +599,7 @@ export function updateSummary() {
     if (document.getElementById('stat-due')) document.getElementById('stat-due').innerText = `${dueToday} Due Today`;
     if (document.getElementById('stat-past')) document.getElementById('stat-past').innerText = `${pastDue} Past Due`;
 
-    const summaryMetrics = document.getElementById('summary-metrics');
+    const summaryMetrics = document.getElementById('global-summary-stats');
     if (summaryMetrics) {
         summaryMetrics.style.visibility = (AppState.currentRoutingState === 'Pending' || AppState.currentRoutingState === 'Staging') ? 'hidden' : 'visible';
     }
@@ -645,19 +653,19 @@ export function createEndpointRow(type, endpointData) {
     el.className = 'stop-item static-endpoint';
     
     el.innerHTML = `
-        <div class="col-num" style="display:flex; justify-content:center; align-items:center; color:var(--text-muted); font-size:16px;">
+        <div class="col-num" style="display:flex; justify-content:center; align-items:center; color:var(--row-text-muted); font-size:16px;">
             ${icon}
         </div>
-        <div class="col-eta" style="color:var(--text-muted); font-weight:400; display:${isAllInspectors ? 'none' : 'flex'}; justify-content:center; align-items:center; text-align:center;">
+        <div class="col-eta" style="color:var(--row-text-muted); font-weight:400; display:${isAllInspectors ? 'none' : 'flex'}; justify-content:center; align-items:center; text-align:center;">
             ${labelText}
         </div>
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; width:100%; display:flex; align-items:center; height:30px;">
-                <input type="text" id="input-endpoint-${type}" class="address-header-input endpoint-input" data-nodrag="true" style="font-size: 14px; text-transform:none;" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="endpoint-input" data-nodrag="true" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
             </div>
-            <div style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; visibility: hidden;">${dummySort}</div>
+            <div style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; visibility: hidden; width: 20px;"></div>
         </div>
         <div class="col-app"></div>
         <div class="col-client"></div>
@@ -1066,6 +1074,24 @@ export function handleOpenEmailModal() {
         const overlaysToHide = mapContainer.querySelectorAll('.map-overlay-btns, #map-hint');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
 
+        // Temporarily move the global summary stats onto the map container to ensure they are captured in the screenshot.
+        const statsSource = document.getElementById('global-summary-stats');
+        let statsClone = null;
+        if (statsSource) {
+            statsClone = statsSource.cloneNode(true);
+            statsClone.style.position = 'absolute';
+            statsClone.style.top = '15px';
+            statsClone.style.left = '50%';
+            statsClone.style.transform = 'translateX(-50%)';
+            statsClone.style.zIndex = '10';
+            statsClone.style.background = 'rgba(23, 23, 23, 0.85)';
+            statsClone.style.padding = '8px 16px';
+            statsClone.style.borderRadius = '6px';
+            statsClone.style.border = '1px solid var(--border-color)';
+            statsClone.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+            mapContainer.appendChild(statsClone);
+        }
+
         const bounds = new mapboxgl.LngLatBounds();
         let lats = [], lngs = [];
         AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && String(s.driverId) === String(AppState.currentInspectorFilter) && isRouteAssigned(s.status)).forEach(s => { if(s.lng && s.lat) { bounds.extend([s.lng, s.lat]); lngs.push(s.lng); lats.push(s.lat); } });
@@ -1091,6 +1117,7 @@ export function handleOpenEmailModal() {
         mapWrapper.style.cssText = originalWrapperStyle;
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
         overlaysToHide.forEach((el, index) => el.style.display = originalDisplays[index]);
+        if (statsClone) statsClone.remove();
 
         try {
             const res = await apiFetch({
