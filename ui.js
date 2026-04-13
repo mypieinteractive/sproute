@@ -1,4 +1,4 @@
-/* Dashboard - V18.17 */
+/* Dashboard - V18.16 */
 /* FILE: ui.js */
 /* Changes: */
 /* 1. Added explicit checks to empty-state handling to ensure hlZone dynamically reverts to flex-basis 'auto' to keep header buttons fully visible. */
@@ -1378,8 +1378,12 @@ document.addEventListener('mousemove', performResize); document.addEventListener
 function stopResize() { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizerEl.classList.remove('active'); mapWrapEl.style.pointerEvents = 'auto'; resizeMap(); } }
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
 
-function syncBodyHeight() {
-    document.body.style.height = window.innerHeight + 'px';
+window.syncBodyHeight = function() {
+    let offset = 0;
+    const offsetSelect = document.getElementById('dev-offset-select');
+    if (offsetSelect) offset = parseInt(offsetSelect.value) || 0;
+    
+    document.body.style.height = (window.innerHeight + offset) + 'px';
     const mapWrapper = document.getElementById('map-wrapper');
     const sidebar = document.getElementById('sidebar');
     if (mapWrapper) mapWrapper.style.minHeight = '0';
@@ -1387,6 +1391,7 @@ function syncBodyHeight() {
     const map = getMapInstance();
     if (map) map.resize();
 }
-window.addEventListener('resize', syncBodyHeight);
-document.addEventListener('DOMContentLoaded', syncBodyHeight);
-syncBodyHeight();
+
+window.addEventListener('resize', window.syncBodyHeight);
+document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
+window.syncBodyHeight();
