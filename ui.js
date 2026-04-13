@@ -1,4 +1,4 @@
-/* Dashboard - V18.16 */
+/* Dashboard - V18.17 */
 /* FILE: ui.js */
 /* Changes: */
 /* 1. Added explicit checks to empty-state handling to ensure hlZone dynamically reverts to flex-basis 'auto' to keep header buttons fully visible. */
@@ -1379,11 +1379,7 @@ function stopResize() { if (isResizing) { isResizing = false; document.body.styl
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
 
 window.syncBodyHeight = function() {
-    let offset = 0;
-    const offsetSelect = document.getElementById('dev-offset-select');
-    if (offsetSelect) offset = parseInt(offsetSelect.value) || 0;
-    
-    document.body.style.height = (window.innerHeight + offset) + 'px';
+    document.body.style.height = (window.innerHeight - 200) + 'px';
     const mapWrapper = document.getElementById('map-wrapper');
     const sidebar = document.getElementById('sidebar');
     if (mapWrapper) mapWrapper.style.minHeight = '0';
