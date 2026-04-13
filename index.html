@@ -3,10 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.14
+            VERSION: V19.15
             CHANGES:
-            1. Added explicit Temporary Offset testing dropdown in the global header.
-            2. Linked bottom script to process body offset via height calc().
+            1. Removed Temp Offset tester from the global header.
+            2. Hardcoded script to force window height minus exactly 200px.
         */
         
         .custom-tooltip {
@@ -49,26 +49,7 @@
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left" style="color: var(--global-hdr-icon);"></i> <span style="color: var(--global-hdr-text);">Undo</span>
             </button>
-
-            <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-panel); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-                <i class="fa-solid fa-arrows-up-down" style="color: var(--text-muted); font-size: 14px;"></i>
-                <select id="dev-offset-select" style="background: transparent; border: none; color: var(--text-main); font-size: 13px; font-weight: 400; outline: none; cursor: pointer;">
-                    <option value="0">0px</option>
-                    <option value="-50">-50px</option>
-                    <option value="-100">-100px</option>
-                    <option value="-150">-150px</option>
-                    <option value="-200">-200px</option>
-                    <option value="-250">-250px</option>
-                    <option value="-300">-300px</option>
-                    <option value="-350">-350px</option>
-                    <option value="-400">-400px</option>
-                    <option value="-450">-450px</option>
-                    <option value="-500">-500px</option>
-                    <option value="-550">-550px</option>
-                    <option value="-600">-600px</option>
-                </select>
-            </div>
-            </div>
+        </div>
         
         <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 400;">
             <div id="summary-metrics" style="color: var(--row-text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
@@ -281,14 +262,18 @@
 <script type="module" src="app.js"></script>
 
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const offsetSelect = document.getElementById('dev-offset-select');
-        if(offsetSelect) {
-            offsetSelect.addEventListener('change', (e) => {
-                if (window.syncBodyHeight) window.syncBodyHeight();
-            });
-        }
-    });
+    window.syncBodyHeight = function() {
+        document.body.style.height = (window.innerHeight - 200) + 'px';
+        const mapWrapper = document.getElementById('map-wrapper');
+        const sidebar = document.getElementById('sidebar');
+        if (mapWrapper) mapWrapper.style.minHeight = '0';
+        if (sidebar) sidebar.style.minHeight = '0';
+        const map = getMapInstance();
+        if (map) map.resize();
+    }
+    window.addEventListener('resize', window.syncBodyHeight);
+    document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
+    window.syncBodyHeight();
 </script>
 </body>
 </html>
