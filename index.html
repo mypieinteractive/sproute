@@ -3,10 +3,10 @@
 <head>
     <style>
         /* FILE: index.html
-            VERSION: V19.13
+            VERSION: V19.14
             CHANGES:
-            1. Simplified #empty-state-container structure and removed nested flex block to natively center dropzone.
-            2. Added inline margin: auto to #unmatched-modal inner block to lock centering.
+            1. Added explicit Temporary Offset testing dropdown in the global header.
+            2. Linked bottom script to process body offset via height calc().
         */
         
         .custom-tooltip {
@@ -45,11 +45,30 @@
 <div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
     
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 0 15px;">
-        <div id="header-action-container">
+        <div id="header-action-container" style="display: flex; gap: 8px;">
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left" style="color: var(--global-hdr-icon);"></i> <span style="color: var(--global-hdr-text);">Undo</span>
             </button>
-        </div>
+
+            <div style="display: flex; align-items: center; gap: 8px; background: var(--bg-panel); padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-color); box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
+                <i class="fa-solid fa-arrows-up-down" style="color: var(--text-muted); font-size: 14px;"></i>
+                <select id="dev-offset-select" style="background: transparent; border: none; color: var(--text-main); font-size: 13px; font-weight: 400; outline: none; cursor: pointer;">
+                    <option value="0">0px</option>
+                    <option value="-50">-50px</option>
+                    <option value="-100">-100px</option>
+                    <option value="-150">-150px</option>
+                    <option value="-200">-200px</option>
+                    <option value="-250">-250px</option>
+                    <option value="-300">-300px</option>
+                    <option value="-350">-350px</option>
+                    <option value="-400">-400px</option>
+                    <option value="-450">-450px</option>
+                    <option value="-500">-500px</option>
+                    <option value="-550">-550px</option>
+                    <option value="-600">-600px</option>
+                </select>
+            </div>
+            </div>
         
         <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 400;">
             <div id="summary-metrics" style="color: var(--row-text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
@@ -260,5 +279,16 @@
 </div>
 
 <script type="module" src="app.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const offsetSelect = document.getElementById('dev-offset-select');
+        if(offsetSelect) {
+            offsetSelect.addEventListener('change', (e) => {
+                if (window.syncBodyHeight) window.syncBodyHeight();
+            });
+        }
+    });
+</script>
 </body>
 </html>
