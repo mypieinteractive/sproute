@@ -1,8 +1,7 @@
-/* Dashboard - V18.21 */
+/* Dashboard - V18.22 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Corrected compact mode CSS bug that was hiding addresses, which inadvertently collapsed the column width for endpoint inputs. */
-/* 2. Updated --list-search-bg to transparent so it matches the header default, relying on hover/focus states for the green highlight. */
+/* 1. Hardcoded height to calc(100vh - 200px) on html/body to lock in the exact offset discovered via the dev tool. */
 
 :root { 
     /* Base / Accent */
@@ -66,7 +65,8 @@
 
 html, body { 
     margin: 0; padding: 0; 
-    height: 100%;
+    height: calc(100vh - 200px);
+    height: calc(100dvh - 200px);
     width: 100vw; 
     position: fixed; 
     display: flex; flex-direction: column; 
