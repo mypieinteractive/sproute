@@ -1,11 +1,8 @@
-/* Dashboard - V18.20 */
+/* Dashboard - V18.21 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added body.empty-state-active logic to hide inspector dropdown and rocker switch during the 0-order state. */
-/* 2. Added position: fixed to html, body to completely lock the dashboard bounds and prevent bottom bleed/cutoff. */
-/* 3. Adjusted #map-hint to top/left 10px and z-index 1000 to sit firmly over markers. */
-/* 4. Removed brightness filters from address search bar and replaced with rgba 50% opacity backgrounds. */
-/* 5. Added placeholder opacity target for .modal-box inputs. */
+/* 1. Corrected compact mode CSS bug that was hiding addresses, which inadvertently collapsed the column width for endpoint inputs. */
+/* 2. Updated --list-search-bg to transparent so it matches the header default, relying on hover/focus states for the green highlight. */
 
 :root { 
     /* Base / Accent */
@@ -34,6 +31,8 @@
     --sidebar-bg: #171717;
 
     /* Summary Bar */
+    --summary-bg: #344E41;
+    --summary-border: #242424;
     --summary-text-main: #FAFAFA;
 
     /* Routing Controls */
@@ -47,7 +46,7 @@
     --list-hdr-text: #FAFAFA;
 
     /* Address Search */
-    --list-search-bg: #2F473B; 
+    --list-search-bg: transparent; 
     --list-search-text: #FAFAFA;
 
     /* List Subheading */
@@ -69,7 +68,7 @@ html, body {
     margin: 0; padding: 0; 
     height: 100%;
     width: 100vw; 
-    position: fixed; /* Locks app to strictly the iframe bounds, prevents bottom cutoff */
+    position: fixed; 
     display: flex; flex-direction: column; 
     background: var(--bg-base); color: var(--text-main); overflow: hidden; 
 }
@@ -376,8 +375,9 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 .meta-text { font-size: 11px; font-weight: 400; color: var(--row-text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 .compact .meta-text { display: none !important; }
 
-.type-text { font-size: 11px; font-weight: 400 !important; color: var(--row-text-muted) !important; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-.glide-row.compact .type-text, .stop-item.compact .type-text, .compact .type-text, .compact .stop-content b, .compact .stop-addr-title, .glide-row.compact .addr-text { font-weight: 400 !important; display: none !important; }
+/* RE-ADDED FONT WEIGHTS & BLOCK DISPLAY FOR COMPACT MODE ADDRESSES */
+.glide-row.compact .type-text, .stop-item.compact .type-text, .compact .type-text { display: none !important; }
+.compact .stop-content b, .compact .stop-addr-title, .glide-row.compact .addr-text { font-weight: 400 !important; display: block !important; }
 
 .col-app { width: 55px; color: var(--row-text-muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
 .col-client { width: 80px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-start; color: var(--row-text-muted); box-sizing: border-box; }
