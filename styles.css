@@ -1,7 +1,11 @@
-/* Dashboard - V18.19 */
+/* Dashboard - V18.20 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Corrected #empty-state-container to use top: 0. Because its parent is already offset by the header, this perfectly centers the dropzone vertically. */
+/* 1. Added body.empty-state-active logic to hide inspector dropdown and rocker switch during the 0-order state. */
+/* 2. Added position: fixed to html, body to completely lock the dashboard bounds and prevent bottom bleed/cutoff. */
+/* 3. Adjusted #map-hint to top/left 10px and z-index 1000 to sit firmly over markers. */
+/* 4. Removed brightness filters from address search bar and replaced with rgba 50% opacity backgrounds. */
+/* 5. Added placeholder opacity target for .modal-box inputs. */
 
 :root { 
     /* Base / Accent */
@@ -61,11 +65,11 @@
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
 
-body { 
+html, body { 
     margin: 0; padding: 0; 
-    height: 100vh;
-    height: 100dvh;
+    height: 100%;
     width: 100vw; 
+    position: fixed; /* Locks app to strictly the iframe bounds, prevents bottom cutoff */
     display: flex; flex-direction: column; 
     background: var(--bg-base); color: var(--text-main); overflow: hidden; 
 }
@@ -81,6 +85,13 @@ body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
     display: flex; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
 }
+
+/* Hide unneeded header controls during empty state */
+body.empty-state-active #inspector-dropdown-wrapper,
+body.empty-state-active .rocker-switch {
+    display: none !important;
+}
+
 body.empty-state-active #map-wrapper, body.drag-override-empty #map-wrapper,
 body.empty-state-active #sidebar, body.drag-override-empty #sidebar,
 body.empty-state-active #resizer, body.drag-override-empty #resizer,
@@ -207,6 +218,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 
 /* MODAL ACTION BUTTONS */
 .modal-box { max-height: 90%; overflow-y: auto; margin: auto; }
+.modal-box input::placeholder { color: rgba(160, 160, 160, 0.3) !important; font-weight: 400; }
 .modal-primary-btn {
     background: var(--accent) !important; color: white !important; border: none; border-radius: 6px; 
     padding: 10px 24px; font-size: 14px; font-weight: 500; letter-spacing: 0.3px; cursor: pointer; transition: 0.2s;
@@ -270,7 +282,7 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 #map-wrapper { display: flex; flex-direction: column; position: relative; background-color: #191A1A; }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; background: #191A1A !important; }
 
-#map-hint { position: absolute; top: 15px; left: 15px; background: rgba(23, 23, 23, 0.85); backdrop-filter: blur(4px); color: #ffffff; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 400; z-index: 200; pointer-events: none; border: 1px solid var(--summary-border); transition: opacity 0.2s; }
+#map-hint { position: absolute; top: 10px; left: 10px; background: rgba(23, 23, 23, 0.85); backdrop-filter: blur(4px); color: #ffffff; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 400; z-index: 1000; pointer-events: none; border: 1px solid var(--summary-border); transition: opacity 0.2s; }
 
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
 #map-wrapper.shift-down .marker, #map-wrapper.shift-down .marker .pin-visual { cursor: pointer !important; }
@@ -379,8 +391,8 @@ body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; c
 }
 .glide-table-header .address-header-input { height: 30px; }
 .address-header-input::placeholder { color: var(--row-text-muted) !important; font-weight: 400; }
-.address-header-input:hover { filter: brightness(1.2); }
-.address-header-input:focus, .address-header-input:active { filter: brightness(1.4); border-color: var(--accent) !important; }
+.address-header-input:hover { background-color: rgba(47, 71, 59, 0.5) !important; filter: none !important; }
+.address-header-input:focus, .address-header-input:active { background-color: rgba(47, 71, 59, 0.8) !important; border-color: var(--accent) !important; filter: none !important; }
 
 .clear-search-icon, .search-icon { position: absolute; right: 8px; cursor: pointer; color: var(--row-text-muted); font-size: 12px; transition: 0.2s color; }
 .clear-search-icon:hover { color: var(--row-text-main); }
