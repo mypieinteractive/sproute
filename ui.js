@@ -1,8 +1,9 @@
-/* Dashboard - V18.16 */
+/* Dashboard - V18.17 */
 /* FILE: ui.js */
 /* Changes: */
 /* 1. Added explicit checks to empty-state handling to ensure hlZone dynamically reverts to flex-basis 'auto' to keep header buttons fully visible. */
 /* 2. updateSummary function completely ignores global order count visibility hiding during 0-stop state, allowing users to see they have "0 Orders". */
+/* 3. Re-injected (Required) labels inside showAddOrderModal() explicitly marked with a soft red style. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -959,22 +960,22 @@ export function showAddOrderModal() {
             let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
             return `<div class="pill-btn add-insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
         }).join('');
-        inspectorHtml = `<div class="form-group"><label>Inspector</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">${inspBtns}</div></div>`;
+        inspectorHtml = `<div class="form-group"><label>Inspector <span style="color: var(--red); font-size: 11px; margin-left: 6px; opacity: 0.8; font-weight: normal;">(Required)</span></label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-insp-container">${inspBtns}</div></div>`;
     }
 
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn add-app-pill" data-val="${app}">${app}</div>`).join('');
     let appHtml = `<div class="form-group"><label>App</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
 
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto; margin: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 400;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="add-close-icon"></i></div>
             ${inspectorHtml} ${appHtml}
-            <div class="form-group"><label>Address</label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
+            <div class="form-group"><label>Address <span style="color: var(--red); font-size: 11px; margin-left: 6px; opacity: 0.8; font-weight: normal;">(Required)</span></label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
             <div class="grid-2-col">
                 <div class="form-group"><label>Latitude</label><input type="number" step="any" id="add-lat" class="form-control" placeholder="e.g. 32.776"></div>
                 <div class="form-group"><label>Longitude</label><input type="number" step="any" id="add-lng" class="form-control" placeholder="e.g. -96.797"></div>
             </div>
-            <div class="form-group"><label>Due Date</label><input type="date" id="add-due" class="form-control" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div class="form-group"><label>Due Date <span style="color: var(--red); font-size: 11px; margin-left: 6px; opacity: 0.8; font-weight: normal;">(Required)</span></label><input type="date" id="add-due" class="form-control" value="${new Date().toISOString().split('T')[0]}"></div>
             <div class="grid-2-col">
                 <div class="form-group"><label>Client</label><input type="text" id="add-client" class="form-control" placeholder="Client Name"></div>
                 <div class="form-group"><label>Order Type</label><input type="text" id="add-type" class="form-control" placeholder="e.g. Install"></div>
