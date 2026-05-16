@@ -1,26 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <style>
-        /* FILE: index.html
-            VERSION: V19.16
-            CHANGES:
-            1. Restructured header layout and removed the header gap for managersmall.
-            2. Moved the mobile-fab-toggle inside the app-body-wrapper to prevent bottom clipping.
-            3. Added the mobile-lasso-toggle button to the map overlay.
-        */
-        
-        .custom-tooltip {
-            position: absolute; top: -28px; right: 0; background: #333; color: #fff;
-            padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
-            opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
-            font-weight: 400; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        .address-search-wrapper:hover .custom-tooltip { opacity: 1; }
-        
-        .rocker-switch input:checked + label { background: var(--accent) !important; color: white !important; }
-    </style>
-    
     <meta charset="utf-8">
     <title>Sproute Dashboard</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -64,7 +44,7 @@
 
     <div id="header-resizer-gap" style="width: 6px; flex: none; background: transparent;"></div>
 
-    <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
+    <div id="header-list-zone" style="width: 50%; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
         <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
                 <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 400; height: 30px;"></select>
@@ -97,7 +77,7 @@
 <div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
     
     <div id="empty-state-container">
-        <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 800px; height: 400px; max-height: 50vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
+        <div id="main-dropzone" class="upload-dropzone" style="width: 80%; max-width: 800px; height: 400px; max-height: 50vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
             <input type="file" id="main-file-input" accept=".csv" style="display: none;">
             <div style="background: var(--fade-accent); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
                 <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--accent);"></i>
@@ -221,7 +201,7 @@
 <div id="modal-overlay"><div class="modal-box" id="modal-content"></div></div>
 
 <div id="unmatched-modal">
-    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; overflow: hidden; margin: auto;">
+    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; overflow: hidden; margin: auto;">
         <div id="unmatched-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-panel); opacity: 0.9; z-index: 50; flex-direction: column; align-items: center; justify-content: center;">
             <div class="loader" style="width: 36px; height: 36px; margin-bottom: 12px; border-width: 3px;"></div>
             <div style="color: var(--text-main); font-weight: 400; font-size: 14px;">Validating...</div>
