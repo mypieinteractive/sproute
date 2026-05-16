@@ -1,8 +1,8 @@
-/* Dashboard - V18.19 */
+/* Dashboard - V18.20 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added document.body.classList.toggle('has-orders') in render() to communicate order availability to the CSS. */
-/* 2. Added logic to dynamically construct and handle the #mobile-fab-toggle button for the managersmall layout. */
+/* 1. Removed dynamic element creation for #mobile-fab-toggle since it is now natively embedded inside index.html's #app-body-wrapper. */
+/* 2. Streamlined the FAB view-toggling logic to directly hook into the pre-existing DOM element. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -547,10 +547,7 @@ export function render() {
 
         if (Config.viewMode === 'managersmall') {
             let fab = document.getElementById('mobile-fab-toggle');
-            if (!fab) {
-                fab = document.createElement('button');
-                fab.id = 'mobile-fab-toggle';
-                document.body.appendChild(fab);
+            if (fab) {
                 fab.onclick = () => {
                     const isMap = document.body.classList.contains('split-show-map');
                     if (isMap) {
@@ -564,9 +561,9 @@ export function render() {
                         setTimeout(() => { const m = getMapInstance(); if(m) m.resize(); }, 50);
                     }
                 };
+                const isMapMode = document.body.classList.contains('split-show-map');
+                fab.innerHTML = isMapMode ? '<i class="fa-solid fa-list"></i>' : '<i class="fa-solid fa-map"></i>';
             }
-            const isMapMode = document.body.classList.contains('split-show-map');
-            fab.innerHTML = isMapMode ? '<i class="fa-solid fa-list"></i>' : '<i class="fa-solid fa-map"></i>';
         }
     }, 20); 
 }
