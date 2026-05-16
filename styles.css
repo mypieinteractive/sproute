@@ -65,8 +65,8 @@
 
 html, body { 
     margin: 0; padding: 0; 
-    height: calc(95vh - 250px);
-    height: calc(95dvh - 250px);
+    height: calc(95vh - 280px);
+    height: calc(95dvh - 280px);
     width: 100%; 
     position: fixed; 
     display: flex; flex-direction: column; 
