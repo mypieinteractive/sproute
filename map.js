@@ -1,373 +1,297 @@
-/* Dashboard - V15.8 */
+/* Dashboard - V15.6 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Added touchstart, touchmove, and touchend listeners for mobile map selection (lasso). */
-/* 2. Respects window.toggleMobileLasso state set by the new Pan/Select rocker switch. */
+/* 1. Added data-search attribute to markers for real-time address filtering. */
+/* 2. Added filterMarkersMap to hide/show markers based on the input query. */
 
-import { getVisualStyle } from './logic.js';
+import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 
-let map;
-let markers = {};
-let lassoBox = null;
-let startPoint = null;
-let currentLassoPolygon = null;
-let currentHoverId = null;
-let isDrawing = false;
-let mapboxToken = '';
-let onSelectionChange = null;
+let map = null;
+let markers = [];
+let initialBounds = null;
+let isFirstMapRender = true;
 
-// Track the active state of the mobile lasso
-window.mobileLassoActive = false;
-window.toggleMobileLasso = function(isActive) {
-    window.mobileLassoActive = isActive;
-    if (map) {
-        const canvasContainer = map.getCanvasContainer();
-        if (isActive) {
-            canvasContainer.classList.add('interactive-select');
-            map.dragPan.disable();
-        } else {
-            canvasContainer.classList.remove('interactive-select');
-            map.dragPan.enable();
-        }
-    }
-};
+let start_pos = null;
+let box_el = null;
+let canvas = null;
+let onSelectionCallback = null; 
 
 export function initMap(token, config, selectionCallback) {
-    mapboxToken = token;
     mapboxgl.accessToken = token;
-    onSelectionChange = selectionCallback;
     map = new mapboxgl.Map(config);
-    
-    map.on('load', () => {
-        lassoBox = document.createElement('div');
-        lassoBox.classList.add('boxdraw');
-        document.getElementById('map-wrapper').appendChild(lassoBox);
+    onSelectionCallback = selectionCallback;
 
-        const canvasContainer = map.getCanvasContainer();
-
-        // Mouse Events (Desktop)
-        canvasContainer.addEventListener('mousedown', mouseDown);
-        
-        // Touch Events (Mobile)
-        canvasContainer.addEventListener('touchstart', touchStart, { passive: false });
-        
-        // Prevent default touch actions while selecting to avoid zooming/scrolling glitches
-        canvasContainer.addEventListener('touchmove', (e) => {
-            if (window.mobileLassoActive) { e.preventDefault(); }
-        }, { passive: false });
-    });
-
-    map.on('click', (e) => {
-        if (onSelectionChange && !e.originalEvent.shiftKey && !window.mobileLassoActive) {
-            if (!e.originalEvent.defaultPrevented) onSelectionChange({ action: 'clear' });
+    map.getContainer().addEventListener('touchend', () => {
+        const blocker = document.querySelector('.mapboxgl-touch-pan-blocker');
+        if (blocker) {
+            blocker.style.transition = 'none';
+            blocker.style.opacity = '0';
         }
+    }, { passive: true });
+
+    map.on('click', (e) => { 
+        if (e.originalEvent.target.classList.contains('mapboxgl-canvas')) { 
+            if (onSelectionCallback) onSelectionCallback({ action: 'clear' });
+        } 
     });
+
+    canvas = map.getCanvasContainer();
+    canvas.addEventListener('mousedown', onCanvasMouseDown, true);
+
+    const mapContainer = document.getElementById(config.container);
+    if (mapContainer && window.ResizeObserver) {
+        const ro = new ResizeObserver(() => {
+            if (map) map.resize();
+        });
+        ro.observe(mapContainer);
+    }
+
+    return map;
 }
 
 export function getMapInstance() { return map; }
+export function resizeMap() { if (map) map.resize(); }
+export function focusMapPin(lng, lat) { if (map && lng && lat) map.flyTo({ center: [lng, lat] }); }
+export function resetMapBounds() { if (map && initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 
-function getMousePos(e) {
-    const rect = map.getCanvasContainer().getBoundingClientRect();
-    return new mapboxgl.Point(
-        e.clientX - rect.left - map.getCanvasContainer().clientLeft,
-        e.clientY - rect.top - map.getCanvasContainer().clientTop
-    );
-}
+export function renderMapMarkers(params) {
+    const {
+        activeStops, endpointsToDraw, isManagerView, currentInspectorFilter,
+        currentRouteCount, allStops, inspectors, onMarkerClick
+    } = params;
 
-function getTouchPos(e) {
-    const rect = map.getCanvasContainer().getBoundingClientRect();
-    const touch = e.touches[0];
-    return new mapboxgl.Point(
-        touch.clientX - rect.left - map.getCanvasContainer().clientLeft,
-        touch.clientY - rect.top - map.getCanvasContainer().clientTop
-    );
-}
+    markers.forEach(m => m.remove());
+    markers = [];
+    const bounds = new mapboxgl.LngLatBounds();
 
-/* --- MOUSE HANDLERS (Desktop Shift+Drag) --- */
-function mouseDown(e) {
-    if (!e.shiftKey || e.button !== 0) return;
-    map.dragPan.disable();
-    isDrawing = true;
-    startPoint = getMousePos(e);
-    document.addEventListener('mousemove', mouseMove);
-    document.addEventListener('mouseup', mouseUp);
-}
-
-function mouseMove(e) {
-    if (!isDrawing) return;
-    const currentPoint = getMousePos(e);
-    drawBox(startPoint, currentPoint);
-}
-
-function mouseUp(e) {
-    if (!isDrawing) return;
-    isDrawing = false;
-    lassoBox.style.width = '0';
-    lassoBox.style.height = '0';
-    document.removeEventListener('mousemove', mouseMove);
-    document.removeEventListener('mouseup', mouseUp);
-    map.dragPan.enable();
-
-    if (currentLassoPolygon) {
-        let selectedIds = [];
-        Object.keys(markers).forEach(id => {
-            if (markers[id].style.display !== 'none') {
-                const lngLat = markers[id].getLngLat();
-                const pt = [lngLat.lng, lngLat.lat];
-                if (pointInPolygon(pt, currentLassoPolygon)) selectedIds.push(id);
-            }
-        });
-        if (selectedIds.length > 0 && onSelectionChange) onSelectionChange({ action: 'lasso', ids: selectedIds });
-        currentLassoPolygon = null;
-    }
-}
-
-/* --- TOUCH HANDLERS (Mobile Select Mode) --- */
-function touchStart(e) {
-    if (!window.mobileLassoActive || e.touches.length > 1) return;
-    isDrawing = true;
-    startPoint = getTouchPos(e);
-    
-    // Attach move and end listeners directly to the document to catch escapes
-    document.addEventListener('touchmove', touchMove, { passive: false });
-    document.addEventListener('touchend', touchEnd);
-}
-
-function touchMove(e) {
-    if (!isDrawing) return;
-    const currentPoint = getTouchPos(e);
-    drawBox(startPoint, currentPoint);
-}
-
-function touchEnd(e) {
-    if (!isDrawing) return;
-    isDrawing = false;
-    lassoBox.style.width = '0';
-    lassoBox.style.height = '0';
-    
-    document.removeEventListener('touchmove', touchMove);
-    document.removeEventListener('touchend', touchEnd);
-
-    if (currentLassoPolygon) {
-        let selectedIds = [];
-        Object.keys(markers).forEach(id => {
-            if (markers[id].style.display !== 'none') {
-                const lngLat = markers[id].getLngLat();
-                const pt = [lngLat.lng, lngLat.lat];
-                if (pointInPolygon(pt, currentLassoPolygon)) selectedIds.push(id);
-            }
-        });
-        if (selectedIds.length > 0 && onSelectionChange) onSelectionChange({ action: 'lasso', ids: selectedIds });
-        currentLassoPolygon = null;
-    }
-}
-
-function drawBox(p1, p2) {
-    const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
-    const minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y, p2.y);
-    lassoBox.style.transform = `translate(${minX}px, ${minY}px)`;
-    lassoBox.style.width = `${maxX - minX}px`;
-    lassoBox.style.height = `${maxY - minY}px`;
-
-    const pt1 = map.unproject([minX, minY]), pt2 = map.unproject([maxX, minY]);
-    const pt3 = map.unproject([maxX, maxY]), pt4 = map.unproject([minX, maxY]);
-    currentLassoPolygon = [ [pt1.lng, pt1.lat], [pt2.lng, pt2.lat], [pt3.lng, pt3.lat], [pt4.lng, pt4.lat], [pt1.lng, pt1.lat] ];
-}
-
-function pointInPolygon(point, vs) {
-    let x = point[0], y = point[1];
-    let inside = false;
-    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-        let xi = vs[i][0], yi = vs[i][1];
-        let xj = vs[j][0], yj = vs[j][1];
-        let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
-    }
-    return inside;
-}
-
-export function renderMapMarkers({ activeStops, endpointsToDraw, isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors, onMarkerClick }) {
-    if (!map) return;
-    Object.values(markers).forEach(m => m.remove()); markers = {};
-
-    activeStops.forEach((s, idx) => {
-        if (!s.lng || !s.lat) return;
-        
-        const el = document.createElement('div');
-        el.className = 'marker';
-        if (s.status.toLowerCase() === 'completed') el.classList.add('completed');
-        
-        const style = getVisualStyle(s, isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
-        
-        const visual = document.createElement('div');
-        visual.className = 'pin-visual';
-        visual.style.backgroundColor = style.bg;
-        visual.style.border = `3px solid ${style.border}`;
-        visual.style.color = style.text;
-        visual.innerText = idx + 1;
-        el.appendChild(visual);
-
-        if (s.dueDate) {
-            const dueTime = new Date(s.dueDate); dueTime.setHours(0,0,0,0);
-            const today = new Date(); today.setHours(0,0,0,0);
-            if (dueTime < today || dueTime.getTime() === today.getTime()) {
-                const warn = document.createElement('i');
-                warn.className = 'fa-solid fa-circle-exclamation marker-warning';
-                warn.style.color = dueTime < today ? 'var(--red)' : 'var(--orange)';
-                el.appendChild(warn);
-            }
-        }
-
-        const marker = new mapboxgl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(map);
-        markers[s.id] = marker;
-
-        el.addEventListener('click', (e) => {
-            e.stopPropagation(); e.preventDefault();
+    activeStops.forEach((s, index) => {
+        if (s.lng && s.lat) {
+            const el = document.createElement('div');
+            el.className = `marker ${s.status.toLowerCase().replace(' ', '-')}`; 
             
-            // Allow clicking markers to select them in mobile Select mode just like shift-click
-            const isShiftOrSelect = e.shiftKey || window.mobileLassoActive;
-            if (onMarkerClick) onMarkerClick(s.id, isShiftOrSelect);
-        });
+            // NEW: Add search string for address filtering
+            const searchStr = `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`;
+            el.setAttribute('data-search', searchStr);
+            
+            const style = getVisualStyle(s, isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
+            el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};"><span>${index + 1}</span></div>`;
+
+            const today = new Date(); today.setHours(0,0,0,0);
+            let urgencyClass = '';
+            if (s.dueDate) {
+                const dueTime = new Date(s.dueDate); dueTime.setHours(0,0,0,0);
+                if (dueTime < today) urgencyClass = 'past-due';
+                else if (dueTime.getTime() === today.getTime()) urgencyClass = 'due-today';
+            }
+
+            if (urgencyClass && s.status.toLowerCase() !== 'completed') {
+                const w = document.createElement('div'); w.className = 'marker-warning'; 
+                w.innerText = (urgencyClass === 'past-due') ? '⚠️' : '❕';
+                el.appendChild(w);
+            }
+            
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (onMarkerClick) onMarkerClick(s.id, e.shiftKey);
+            });
+            
+            const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([s.lng, s.lat]).addTo(map);
+            m._stopId = s.id; 
+            markers.push(m); 
+            bounds.extend([s.lng, s.lat]);
+        }
     });
 
     endpointsToDraw.forEach(ep => {
+        let inspColor = '#ffffff';
+        if (ep.driverId) {
+            const dIdx = inspectors.findIndex(i => String(i.id) === String(ep.driverId));
+            if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
+        } else if (currentInspectorFilter !== 'all') {
+            const dIdx = inspectors.findIndex(i => String(i.id) === String(currentInspectorFilter));
+            if (dIdx > -1) inspColor = MASTER_PALETTE[dIdx % MASTER_PALETTE.length];
+        }
+        
+        let emojisHtml = '';
+        if (ep.isStart) emojisHtml += `<div style="position: absolute; top: -14px; left: -5px; font-size: 16px;">🏠</div>`;
+        if (ep.isEnd) emojisHtml += `<div style="position: absolute; top: -14px; right: -5px; font-size: 16px;">🏁</div>`;
+        
         const el = document.createElement('div');
-        el.className = 'marker endpoint-marker';
-        const visual = document.createElement('div');
-        visual.className = 'pin-visual';
-        visual.style.backgroundColor = '#151515';
-        visual.style.border = '2px solid #555';
-        visual.style.color = '#fff';
+        el.className = 'marker start-end-marker';
         
-        let iconHtml = '';
-        if (ep.isStart && ep.isEnd) iconHtml = '<i class="fa-solid fa-arrows-left-right-to-line"></i>';
-        else if (ep.isStart) iconHtml = '<i class="fa-solid fa-location-dot"></i>';
-        else if (ep.isEnd) iconHtml = '<i class="fa-solid fa-flag-checkered"></i>';
+        el.innerHTML = `
+            <div class="pin-visual" style="background-color: ${inspColor}; border: none; border-radius: 50%; width: 14px; height: 14px; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>
+            ${emojisHtml}
+        `;
         
-        visual.innerHTML = iconHtml;
-        el.appendChild(visual);
+        const m = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat([ep.lng, ep.lat]).addTo(map);
+        markers.push(m);
+        bounds.extend([ep.lng, ep.lat]);
+    });
 
-        new mapboxgl.Marker({ element: el }).setLngLat([ep.lng, ep.lat]).addTo(map);
+    if (activeStops.filter(s => s.lng && s.lat).length > 0 || endpointsToDraw.length > 0) { 
+        initialBounds = bounds; 
+        map.fitBounds(bounds, { padding: 50, maxZoom: 15, animate: !isFirstMapRender }); 
+        if (isFirstMapRender) isFirstMapRender = false;
+    }
+}
+
+export function updateMarkerColorsMap(allStops, isManagerView, currentInspectorFilter, currentRouteCount, inspectors) {
+    markers.forEach(m => {
+        if (!m._stopId) return; 
+        const stopData = allStops.find(st => String(st.id) === String(m._stopId));
+        if (stopData) {
+            const visualStyle = getVisualStyle(stopData, isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
+            const pin = m.getElement().querySelector('.pin-visual');
+            if (pin) {
+                pin.style.backgroundColor = visualStyle.bg;
+                pin.style.border = `3px solid ${visualStyle.border}`;
+                pin.style.color = visualStyle.text;
+            }
+        }
     });
 }
 
-export function drawRouteMap({ routedStops, dirtyRoutes, activeEndpoints, isManagerView, currentInspectorFilter, inspectors, allStops, currentRouteCount }) {
-    if (!map || !map.isStyleLoaded()) return;
+export function updateMapSelectionStyles(selectedIdsSet) {
+    markers.forEach(m => { 
+        if(m._stopId) m.getElement().classList.toggle('bulk-selected', selectedIdsSet.has(m._stopId)); 
+    }); 
+}
 
-    const sourceId = 'routes-source';
-    if (map.getSource(sourceId)) {
-        map.removeLayer('routes-layer');
-        map.removeSource(sourceId);
-    }
+// NEW: Instantly hide/show map pins when the user types in the address search bar
+export function filterMarkersMap(query) {
+    markers.forEach(m => {
+        if (m._stopId) {
+            const el = m.getElement();
+            const searchStr = el.getAttribute('data-search') || '';
+            el.style.display = searchStr.includes(query) ? 'flex' : 'none';
+        }
+    });
+}
 
-    const uniqueClusters = [...new Set(routedStops.map(s => s.cluster === 'X' ? 0 : (s.cluster || 0)))].sort();
-    let features = [];
+// --- Route Drawing ---
 
-    uniqueClusters.forEach(clusterId => {
-        let cStops = routedStops.filter(s => (s.cluster === 'X' ? 0 : (s.cluster || 0)) === clusterId);
-        cStops.sort((a,b) => {
-            const timeA = a.eta ? parseFloat(a.eta.split(':')[0]) * 60 + parseFloat(a.eta.split(':')[1]) : 0;
-            const timeB = b.eta ? parseFloat(b.eta.split(':')[0]) * 60 + parseFloat(b.eta.split(':')[1]) : 0;
-            return timeA - timeB;
-        });
-        
+export function drawRouteMap(params) {
+    const { routedStops, dirtyRoutes, activeEndpoints, isManagerView, currentInspectorFilter, inspectors, allStops, currentRouteCount } = params;
+    
+    const layerIds = [
+        'route-line-0-clean', 'route-line-0-dirty',
+        'route-line-1-out-clean', 'route-line-1-in-clean', 'route-line-1-out-dirty', 'route-line-1-in-dirty',
+        'route-line-2-out-clean', 'route-line-2-in-clean', 'route-line-2-out-dirty', 'route-line-2-in-dirty'
+    ];
+    layerIds.forEach(l => { if (map.getLayer(l)) map.removeLayer(l); });
+    if (map.getSource('route')) map.removeSource('route');
+
+    if (!routedStops || routedStops.length === 0) return; 
+
+    const features = [];
+    const routesMap = new Map();
+
+    routedStops.forEach(s => {
+        const key = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 0 : (s.cluster || 0)}`;
+        if (!routesMap.has(key)) routesMap.set(key, []);
+        routesMap.get(key).push(s);
+    });
+
+    routesMap.forEach((cStops, key) => {
         if (cStops.length > 0) {
-            let coords = [];
-            const driverIdForRoute = cStops[0].driverId;
-            const epStart = getEndpointForDriver(activeEndpoints, driverIdForRoute, inspectors, isManagerView, 'start');
-            if (epStart && epStart.lng && epStart.lat) coords.push([parseFloat(epStart.lng), parseFloat(epStart.lat)]);
+            const style = getVisualStyle(cStops[0], isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
+            let coords = cStops.map(s => [parseFloat(s.lng), parseFloat(s.lat)]);
             
-            cStops.forEach(s => { if (s.lng && s.lat) coords.push([parseFloat(s.lng), parseFloat(s.lat)]); });
-            
-            const epEnd = getEndpointForDriver(activeEndpoints, driverIdForRoute, inspectors, isManagerView, 'end');
-            if (epEnd && epEnd.lng && epEnd.lat) coords.push([parseFloat(epEnd.lng), parseFloat(epEnd.lat)]);
+            let dId = key.split('_')[0];
+            let clusterIndex = parseInt(key.split('_')[1]);
+            let rStart = activeEndpoints.start;
+            let rEnd = activeEndpoints.end;
 
-            let inspIdx = 0;
-            if (isManagerView && currentInspectorFilter === 'all') {
-                const insp = inspectors.find(i => String(i.id) === String(driverIdForRoute));
-                if (insp) inspIdx = inspectors.indexOf(insp);
-            }
-
-            let baseColor = MASTER_PALETTE[inspIdx % MASTER_PALETTE.length];
-            if ((isManagerView && currentInspectorFilter !== 'all') || (!isManagerView)) {
-                if (currentRouteCount > 1) {
-                    if (clusterId === 0) baseColor = MASTER_PALETTE[0];
-                    if (clusterId === 1) baseColor = '#000000';
-                    if (clusterId === 2) baseColor = '#ffffff';
+            if (isManagerView && currentInspectorFilter === 'all' && dId !== 'unassigned') {
+                const insp = inspectors.find(i => String(i.id) === String(dId));
+                if (insp) {
+                    rStart = { lng: insp.startLng, lat: insp.startLat };
+                    rEnd = { lng: insp.endLng || insp.startLng, lat: insp.endLat || insp.startLat };
                 }
             }
 
-            const driverKey = driverIdForRoute || 'unassigned';
-            const rKey = `${driverKey}_${clusterId}`;
-            const isDirty = dirtyRoutes.has(rKey) || dirtyRoutes.has('all');
+            if (rStart && rStart.lng && rStart.lat) coords.unshift([parseFloat(rStart.lng), parseFloat(rStart.lat)]);
+            if (rEnd && rEnd.lng && rEnd.lat) coords.push([parseFloat(rEnd.lng), parseFloat(rEnd.lat)]);
 
-            if (coords.length > 1 && !isDirty) {
+            let isDirty = dirtyRoutes.has(key) || dirtyRoutes.has('all') || dirtyRoutes.has('endpoints_0');
+
+            if (coords.length > 1) {
                 features.push({
-                    type: 'Feature',
-                    properties: { color: baseColor },
-                    geometry: { type: 'LineString', coordinates: coords }
+                    "type": "Feature",
+                    "properties": { "color": style.line, "clusterIdx": clusterIndex, "isDirty": isDirty }, 
+                    "geometry": { "type": "LineString", "coordinates": coords }
                 });
             }
         }
     });
 
-    if (features.length > 0) {
-        map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: features } });
-        map.addLayer({
-            id: 'routes-layer', type: 'line', source: sourceId,
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
-            paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.8 }
-        }, Object.keys(markers).length > 0 ? Object.keys(markers)[0] : undefined);
-    }
-}
-
-function getEndpointForDriver(activeEndpoints, driverId, inspectors, isManagerView, type) {
-    if (isManagerView && AppState.currentInspectorFilter === 'all') {
-        const insp = inspectors.find(i => String(i.id) === String(driverId));
-        if (insp) {
-            if (type === 'start') return { lng: insp.startLng, lat: insp.startLat };
-            if (type === 'end') return { lng: insp.endLng || insp.startLng, lat: insp.endLat || insp.startLat };
-        }
-    } else {
-        if (type === 'start') return activeEndpoints.start;
-        if (type === 'end') return activeEndpoints.end;
-    }
-    return null;
-}
-
-export function filterMarkersMap(q) {
-    Object.keys(markers).forEach(id => {
-        const s = AppState.stops.find(st => String(st.id) === String(id));
-        if (!s) return;
-        const searchStr = `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`;
-        if (searchStr.includes(q)) markers[id].getElement().style.display = 'flex';
-        else markers[id].getElement().style.display = 'none';
-    });
-}
-
-export function updateMapSelectionStyles(selectedIds) {
-    Object.keys(markers).forEach(id => {
-        if (selectedIds.has(id)) markers[id].getElement().classList.add('bulk-selected');
-        else markers[id].getElement().classList.remove('bulk-selected');
-    });
-}
-
-export function focusMapPin(lat, lng) {
-    if (map && lat && lng) map.flyTo({ center: [lng, lat], zoom: 15, essential: true });
-}
-
-export function resizeMap() { if (map) setTimeout(() => map.resize(), 50); }
-
-export function resetMapBounds() {
-    if (!map) return;
-    const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
-    const bounds = new mapboxgl.LngLatBounds();
-    let hasPoints = false;
+    map.addSource('route', { "type": "geojson", "data": { "type": "FeatureCollection", "features": features } }); 
     
-    activeStops.forEach(s => { if (s.lng && s.lat) { bounds.extend([parseFloat(s.lng), parseFloat(s.lat)]); hasPoints = true; } });
-    let eps = getActiveEndpoints();
-    if (eps.start && eps.start.lng && eps.start.lat) { bounds.extend([parseFloat(eps.start.lng), parseFloat(eps.start.lat)]); hasPoints = true; }
-    if (eps.end && eps.end.lng && eps.end.lat) { bounds.extend([parseFloat(eps.end.lng), parseFloat(eps.end.lat)]); hasPoints = true; }
+    map.addLayer({ "id": "route-line-0-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8 } }); 
+    map.addLayer({ "id": "route-line-0-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 0], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
 
-    if (hasPoints) map.fitBounds(bounds, { padding: 50, maxZoom: 15 });
+    map.addLayer({ "id": "route-line-1-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
+    map.addLayer({ "id": "route-line-1-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1 } }); 
+    map.addLayer({ "id": "route-line-1-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
+    map.addLayer({ "id": "route-line-1-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 1], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#000000", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
+
+    map.addLayer({ "id": "route-line-2-out-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8 } }); 
+    map.addLayer({ "id": "route-line-2-in-clean", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", false]], "layout": { "line-join": "round", "line-cap": "round" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1 } }); 
+    map.addLayer({ "id": "route-line-2-out-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": ["get", "color"], "line-width": 6, "line-opacity": 0.8, "line-dasharray": [2, 2] } }); 
+    map.addLayer({ "id": "route-line-2-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
+}
+
+// --- Lasso Tool Logic ---
+
+function onCanvasMouseDown(e) { 
+    if (e.target.closest('.mapboxgl-marker')) return; 
+    if(e.shiftKey) { 
+        map.dragPan.disable(); 
+        start_pos = mousePos(e); 
+        document.addEventListener('mousemove', onMouseMove); 
+        document.addEventListener('mouseup', onMouseUp); 
+    } 
+}
+
+function mousePos(e) { 
+    const r = canvas.getBoundingClientRect(); 
+    return new mapboxgl.Point(e.clientX - r.left, e.clientY - r.top); 
+}
+
+function onMouseMove(e) { 
+    const curr = mousePos(e); 
+    if(!box_el) { 
+        box_el = document.createElement('div'); 
+        box_el.className = 'boxdraw'; 
+        canvas.appendChild(box_el); 
+    } 
+    const minX = Math.min(start_pos.x, curr.x), maxX = Math.max(start_pos.x, curr.x);
+    const minY = Math.min(start_pos.y, curr.y), maxY = Math.max(start_pos.y, curr.y); 
+    box_el.style.left = minX + 'px'; 
+    box_el.style.top = minY + 'px'; 
+    box_el.style.width = (maxX - minX) + 'px'; 
+    box_el.style.height = (maxY - minY) + 'px'; 
+}
+
+function onMouseUp(e) { 
+    document.removeEventListener('mousemove', onMouseMove); 
+    document.removeEventListener('mouseup', onMouseUp); 
+    
+    if(box_el) { 
+        const b = [start_pos, mousePos(e)]; 
+        let caughtIds = [];
+        markers.filter(m => { 
+            const pt = map.project(m.getLngLat()); 
+            return pt.x >= Math.min(b[0].x, b[1].x) && pt.x <= Math.max(b[0].x, b[1].x) && 
+                   pt.y >= Math.min(b[0].y, b[1].y) && pt.y <= Math.max(b[0].y, b[1].y); 
+        }).forEach(m => caughtIds.push(m._stopId)); 
+        
+        box_el.remove(); 
+        box_el = null; 
+        
+        if (onSelectionCallback) onSelectionCallback({ action: 'lasso', ids: caughtIds });
+    } 
+    map.dragPan.enable(); 
+    start_pos = null; 
 }
