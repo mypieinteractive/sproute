@@ -1397,7 +1397,7 @@ function stopResize() { if (isResizing) { isResizing = false; document.body.styl
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
 
 window.syncBodyHeight = function() {
-    document.body.style.height = (window.innerHeight - 210) + 'px';
+    document.body.style.height = (window.innerHeight - 190) + 'px';
     const mapWrapper = document.getElementById('map-wrapper');
     const sidebar = document.getElementById('sidebar');
     if (mapWrapper) mapWrapper.style.minHeight = '0';
