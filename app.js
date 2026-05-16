@@ -1,7 +1,7 @@
-/* Dashboard - V18.4 */
+/* Dashboard - V18.5 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Reverted the Mapbox style from streets-v12 to dark-v11 for the high-contrast map viewport. */
+/* 1. Deprecated managermobile and managermobilesplit URL parameters in favor of a single managersmall view in the Config object. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -23,7 +23,7 @@ export const Config = {
     companyParam: new URLSearchParams(window.location.search).get('company'),
     adminParam: new URLSearchParams(window.location.search).get('admin'),
     viewMode: (new URLSearchParams(window.location.search).get('view') || 'inspector').toLowerCase(),
-    get isManagerView() { return ['manager', 'managermobile', 'managermobilesplit'].includes(this.viewMode); }
+    get isManagerView() { return ['manager', 'managersmall'].includes(this.viewMode); }
 };
 
 export const AppState = {
@@ -62,7 +62,7 @@ export const AppState = {
 };
 
 document.body.className = `view-${Config.viewMode} manager-all-inspectors empty-state-active`;
-if (Config.viewMode === 'managermobilesplit') document.body.classList.add('split-show-map');
+if (Config.viewMode === 'managersmall') document.body.classList.add('split-show-map');
 
 const currentQuery = window.location.search;
 const lastQuery = sessionStorage.getItem('sproute_last_query');
@@ -75,7 +75,7 @@ const MAX_RETRIES = 5;
 const mapConfig = { 
     container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
     attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
-    cooperativeGestures: (Config.viewMode === 'inspector' || Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit')
+    cooperativeGestures: (Config.viewMode === 'inspector' || Config.viewMode === 'managersmall')
 };
 
 initMap(Config.MAPBOX_TOKEN, mapConfig, (event) => {
