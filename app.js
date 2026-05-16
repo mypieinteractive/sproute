@@ -1,7 +1,8 @@
-/* Dashboard - V18.5 */
+/* Dashboard - V18.6 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Deprecated managermobile and managermobilesplit URL parameters in favor of a single managersmall view in the Config object. */
+/* 1. Removed managersmall from cooperativeGestures condition so 1-finger panning works on mobile views. */
+/* 2. Imported and attached toggleMobileLasso to the global window object. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -10,7 +11,7 @@ import {
 
 import { 
     initMap, renderMapMarkers, drawRouteMap, updateMarkerColorsMap, 
-    updateMapSelectionStyles, resetMapBounds, resizeMap 
+    updateMapSelectionStyles, resetMapBounds, resizeMap, toggleMobileLasso
 } from './map.js';
 
 import * as UI from './ui.js'; 
@@ -75,7 +76,7 @@ const MAX_RETRIES = 5;
 const mapConfig = { 
     container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
     attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
-    cooperativeGestures: (Config.viewMode === 'inspector' || Config.viewMode === 'managersmall')
+    cooperativeGestures: (Config.viewMode === 'inspector')
 };
 
 initMap(Config.MAPBOX_TOKEN, mapConfig, (event) => {
@@ -274,7 +275,6 @@ export function silentSaveRouteState() {
     let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
     let macroState = 'Ready';
     
-    // Explicitly reset the backend state to Pending if all routed stops have been removed (e.g. Start Over)
     if (routedStops.length === 0) macroState = 'Pending';
     else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
@@ -607,7 +607,7 @@ export function liveClusterUpdate() {
     }
 }
 
-window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.handleStartOver = handleStartOver; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute; window.sortTable = sortTable; window.liveClusterUpdate = liveClusterUpdate;
+window.AppState = AppState; window.Config = Config; window.handleCalculate = handleCalculate; window.handleGenerateRoute = handleGenerateRoute; window.handleRestoreOriginal = handleRestoreOriginal; window.triggerBulkDelete = triggerBulkDelete; window.triggerBulkUnroute = triggerBulkUnroute; window.handleStartOver = handleStartOver; window.toggleComplete = toggleComplete; window.undoLastAction = undoLastAction; window.setRoutes = setRoutes; window.moveSelectedToRoute = moveSelectedToRoute; window.sortTable = sortTable; window.liveClusterUpdate = liveClusterUpdate; window.toggleMobileLasso = toggleMobileLasso;
 
 export function updateShiftCursor(isShiftDown) {
     const wrap = document.getElementById('map-wrapper');
