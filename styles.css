@@ -1,9 +1,9 @@
-/* Dashboard - V18.25 */
+/* Dashboard - V18.26 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Implemented CSS Grid for #global-header in the managersmall view to format it into 3 distinct rows. */
-/* 2. Added styles to unhide #mobile-lasso-toggle button for mobile selection. */
-/* 3. Updated #mobile-fab-toggle to use absolute positioning with high z-index inside the relatively positioned #app-body-wrapper. */
+/* 1. Changed root html, body width from 100vw to 100% to respect iframe boundaries. */
+/* 2. Changed position: absolute to position: fixed for #empty-state-container, #modal-overlay, #processing-overlay, and #unmatched-modal to lock to the viewport. */
+/* 3. Changed #sidebar sizing from vw to % to scale properly in split views. */
 
 :root { 
     /* Base / Accent */
@@ -69,7 +69,7 @@ html, body {
     margin: 0; padding: 0; 
     height: calc(100vh - 200px);
     height: calc(100dvh - 200px);
-    width: 100vw; 
+    width: 100%; 
     position: fixed; 
     display: flex; flex-direction: column; 
     background: var(--bg-base); color: var(--text-main); overflow: hidden; 
@@ -84,7 +84,7 @@ html, body {
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
-    display: flex; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
+    display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
 }
 
 #main-dropzone { padding: 32px 20px; box-sizing: border-box; text-align: center; }
@@ -115,7 +115,7 @@ body.view-managersmall .map-overlay-btns {
 }
 
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
-body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
+body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
 
 /* --- Managersmall 3-Row Header Grid --- */
 body.view-managersmall #global-header {
@@ -460,7 +460,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 .boxdraw { background: rgba(96, 132, 95, 0.3); border: 1px solid var(--accent); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
 
 #modal-overlay { 
-    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
     background: rgba(0,0,0,0.6); z-index: 100000; align-items: center; justify-content: center; 
 }
 .modal-box { max-height: 90%; overflow-y: auto; margin: auto; }
@@ -486,7 +486,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 .form-control:focus { outline: none; border-color: var(--accent); }
 .grid-2-col { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 
-#processing-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(23, 23, 23, 0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; }
+#processing-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(23, 23, 23, 0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; }
 .spinner-container { display: flex; flex-direction: column; align-items: center; background: var(--bg-panel); padding: 40px 60px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color); }
 .loader { width: 48px; height: 48px; border-radius: 50%; border: 4px solid rgba(78, 118, 77, 0.2); border-top-color: var(--accent); border-bottom-color: var(--accent); animation: spin 1.2s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite; margin-bottom: 24px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -495,7 +495,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 @keyframes pulse-text { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
 #unmatched-modal {
-    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
     background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;
 }
 .mapboxgl-touch-pan-blocker { color: transparent !important; }
