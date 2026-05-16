@@ -1,9 +1,9 @@
-/* Dashboard - V18.26 */
+/* Dashboard - V18.24 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Implemented the 3-row CSS Grid layout for body.view-managersmall #global-header. */
-/* 2. Added logic to dynamically hide/show the [Detailed|Compact] and [Pan|Select] rockers based on split-show-list/map states. */
-/* 3. Removed #mobile-fab-toggle completely. */
+/* 1. Added #main-dropzone padding to prevent text from touching the dashed boundaries. */
+/* 2. Changed #processing-overlay, #modal-overlay, and #unmatched-modal from position: fixed to position: absolute so they center correctly within the constrained body frame. */
+/* 3. Added styles for #mobile-fab-toggle to allow quick switching between map and list views in managersmall view. */
 
 :root { 
     /* Base / Accent */
@@ -97,18 +97,10 @@ body.empty-state-active .rocker-switch {
 
 body.empty-state-active #map-wrapper, body.drag-override-empty #map-wrapper,
 body.empty-state-active #sidebar, body.drag-override-empty #sidebar,
-body.empty-state-active #resizer, body.drag-override-empty #resizer { display: none !important; }
+body.empty-state-active #resizer, body.drag-override-empty #resizer,
+body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab-toggle { display: none !important; }
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
-
-/* --- GLOBAL HEADER (DEFAULT) --- */
-#global-header {
-    display: flex; padding: 10px 15px; background: var(--global-hdr-bg); border-bottom: 2px solid var(--border-color);
-    align-items: center; justify-content: space-between; z-index: 200; gap: 15px; flex-shrink: 0; flex-wrap: wrap;
-}
-#header-map-zone, #header-center-zone, #header-list-zone { display: flex; align-items: center; gap: 10px; }
-#header-list-zone { justify-content: flex-end; }
-#header-map-zone { flex: 1; }
 
 body.view-inspector { flex-direction: column; }
 body.view-inspector #map-wrapper { height: 35%; min-height: 35%; width: 100%; border-bottom: 2px solid var(--row-border); }
@@ -125,10 +117,11 @@ body.view-managersmall .map-overlay-btns {
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
 body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
 
-/* --- MANAGERSMALL VIEW --- */
 body.view-managersmall { overflow: hidden; height: 100%; }
 body.view-managersmall #app-body-wrapper { display: contents; }
 body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents; }
+body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
+body.view-managersmall #mobile-view-toggle { order: 4; display: flex !important; }
 body.view-managersmall #routing-controls { order: 5; }
 body.view-managersmall #route-view-toggles { order: 6; }
 body.view-managersmall #list-header-container { order: 7; }
@@ -136,55 +129,17 @@ body.view-managersmall #stop-list { order: 8; overflow-y: auto; flex: 1; min-hei
 body.view-managersmall #map-container { order: 9; flex: 1; min-height: 0; position: relative; }
 body.view-managersmall #resizer { display: none; }
 
-/* Managersmall Header 3-Row Grid */
-body.view-managersmall #global-header {
-    display: grid !important;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto auto auto;
-    gap: 12px 10px;
-    padding: 10px 15px;
-    align-items: center;
-}
-
-/* Strip the flex wrappers essentially */
-body.view-managersmall #header-map-zone,
-body.view-managersmall #header-center-zone,
-body.view-managersmall #header-list-zone {
-    display: contents !important;
-}
-
-/* Row 1 */
-body.view-managersmall #btn-undo-incremental { grid-column: 1; grid-row: 1; justify-self: start; }
-body.view-managersmall #view-mode-rocker { grid-column: 2; grid-row: 1; justify-self: center; }
-body.view-managersmall #btn-add-order { grid-column: 3; grid-row: 1; justify-self: end; }
-body.view-managersmall #add-menu-wrapper { display: none !important; } /* Hide the dropdown part for mobile */
-
-/* Row 2 */
-body.view-managersmall #inspector-dropdown-wrapper { grid-column: 1 / span 2; grid-row: 2; justify-self: start; width: 100%; }
-body.view-managersmall #inspector-filter { width: 100%; max-width: 200px; }
-body.view-managersmall #display-rocker, 
-body.view-managersmall #interact-rocker { grid-column: 3; grid-row: 2; justify-self: end; }
-
-/* Row 3 */
-body.view-managersmall #global-summary-stats { grid-column: 1 / -1; grid-row: 3; justify-self: center; text-align: center; width: 100%; justify-content: center; }
-
-/* Rocker Visibility Logic based on Map vs List */
-body.split-show-list #interact-rocker { display: none !important; }
-body.split-show-list #display-rocker { display: flex !important; }
-body.split-show-map #display-rocker { display: none !important; }
-body.split-show-map #interact-rocker { display: flex !important; }
-
-/* Split View Content Display Logic */
 body.view-managersmall.split-show-map #stop-list,
 body.view-managersmall.split-show-map #list-header-container,
 body.view-managersmall.split-show-map #routing-controls,
 body.view-managersmall.split-show-map #route-view-toggles { display: none !important; }
 body.view-managersmall.split-show-map #map-container { display: flex !important; flex-direction: column; }
-
 body.view-managersmall.split-show-list #map-container { display: none !important; }
 body.view-managersmall.split-show-list #stop-list { display: block !important; }
 
 body.view-managersmall #map-hint, body.view-inspector #map-hint { display: none !important; }
+body.view-managersmall #header-resizer-gap { display: none !important; }
+body.view-managersmall #header-list-zone { width: auto !important; flex: 1; }
 
 body.view-managersmall .col-eta { width: 55px; font-size: 12px; }
 body.view-managersmall .col-due { width: 45px; font-size: 12px; }
@@ -196,6 +151,19 @@ body.view-managersmall .col-num { margin-left: 2px; width: 26px; }
 body.view-managersmall .num-badge { width: 22px; height: 22px; font-size: 11px; }
 body.view-managersmall .endpoint-controls-wrapper { padding-left: 4px; }
 body.view-managersmall .endpoint-label-text { display: none !important; }
+
+#mobile-fab-toggle {
+    position: absolute; bottom: 20px; right: 20px;
+    width: 50px; height: 50px; border-radius: 50%;
+    background: var(--accent); color: white;
+    display: none; align-items: center; justify-content: center;
+    font-size: 20px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    z-index: 1000; border: none; transition: background 0.2s, transform 0.2s;
+}
+#mobile-fab-toggle:hover { background: var(--accent-hover); transform: scale(1.05); }
+#mobile-fab-toggle:active { transform: scale(0.95); }
+body.view-managersmall.has-orders #mobile-fab-toggle { display: flex; }
+body.view-managersmall:not(.has-orders) #mobile-fab-toggle { display: none !important; }
 
 @media (max-width: 450px) { .hide-mobile-text { display: none !important; } }
 body.view-managersmall .header-action-btn { padding: 6px 10px; font-size: 12px; height: 32px; gap: 6px; }
@@ -314,7 +282,6 @@ body.manager-all-inspectors .glide-row .insp-select { background-color: transpar
 .rocker-switch { display: flex; background: transparent; border: 1px solid var(--global-hdr-icon) !important; border-radius: 6px; overflow: hidden; height: 30px; }
 .rocker-switch input { display: none; }
 .rocker-switch label { padding: 0 16px; font-size: 13px; font-weight: 400; color: var(--global-hdr-text); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; }
-.rocker-switch input:checked + label { background: var(--global-hdr-icon); color: var(--global-hdr-text); }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; margin-top: -6px; }
@@ -332,10 +299,6 @@ body.view-manager #resizer { display: block; border-top: none; }
 #map-wrapper.shift-down .mapboxgl-canvas-container, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive, #map-wrapper.shift-down .mapboxgl-canvas-container.mapboxgl-interactive:active { cursor: crosshair !important; }
 #map-wrapper.shift-down .marker, #map-wrapper.shift-down .marker .pin-visual { cursor: pointer !important; }
 
-/* Map interaction states */
-.mapboxgl-canvas-container.interactive-select { cursor: crosshair !important; touch-action: none; }
-.mapboxgl-canvas-container.interactive-select .marker { cursor: pointer !important; }
-
 .header-action-btn { height: 38px; padding: 0 16px; width: auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 500; letter-spacing: 0.3px; border-radius: 6px; cursor: pointer; border: none; transition: opacity 0.2s; box-sizing: border-box; }
 .header-action-btn:active { opacity: 0.7; }
 .header-action-btn:hover:not(:disabled) { opacity: 0.9; }
@@ -343,7 +306,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 .header-action-btn.primary-btn { background: var(--accent) !important; color: white !important; }
 .header-action-btn.primary-btn:hover { background: var(--accent-hover) !important; }
 
-#btn-undo-incremental { border: 1px solid var(--global-hdr-icon) !important; color: var(--global-hdr-text) !important; background: transparent; }
+#btn-undo-incremental { border: 1px solid var(--global-hdr-icon) !important; color: var(--global-hdr-text) !important; }
 #btn-undo-incremental:disabled { color: var(--text-muted) !important; border-color: var(--border-color) !important; opacity: 0.5; cursor: not-allowed; }
 #btn-undo-incremental:hover:not(:disabled) { background: rgba(255,255,255,0.05) !important; }
 
