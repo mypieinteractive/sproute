@@ -1,8 +1,9 @@
-/* Dashboard - V18.20 */
+/* Dashboard - V18.21 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Removed dynamic element creation for #mobile-fab-toggle since it is now natively embedded inside index.html's #app-body-wrapper. */
-/* 2. Streamlined the FAB view-toggling logic to directly hook into the pre-existing DOM element. */
+/* 1. Removed #mobile-fab-toggle logic completely. */
+/* 2. Added event listeners and logic for the new Map/List and Pan/Select header rockers. */
+/* 3. Fixed the updateSummary() function to ensure #global-summary-stats remains visible in the managersmall view. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -303,6 +304,15 @@ export function render() {
     
     document.body.classList.toggle('empty-state-active', Config.isManagerView && activeStops.length === 0);
     document.body.classList.toggle('has-orders', activeStops.length > 0);
+
+    const mapListRocker = document.getElementById('view-mode-rocker');
+    if (mapListRocker) {
+        if (Config.viewMode === 'managersmall' && activeStops.length > 0) {
+            mapListRocker.style.display = 'flex';
+        } else {
+            mapListRocker.style.display = 'none';
+        }
+    }
     
     const addMenuWrapper = document.getElementById('add-menu-wrapper');
     if (addMenuWrapper) addMenuWrapper.style.display = Config.viewMode === 'inspector' ? 'none' : 'block';
@@ -545,26 +555,6 @@ export function render() {
             }
         }
 
-        if (Config.viewMode === 'managersmall') {
-            let fab = document.getElementById('mobile-fab-toggle');
-            if (fab) {
-                fab.onclick = () => {
-                    const isMap = document.body.classList.contains('split-show-map');
-                    if (isMap) {
-                        document.body.classList.remove('split-show-map');
-                        document.body.classList.add('split-show-list');
-                        fab.innerHTML = '<i class="fa-solid fa-map"></i>';
-                    } else {
-                        document.body.classList.remove('split-show-list');
-                        document.body.classList.add('split-show-map');
-                        fab.innerHTML = '<i class="fa-solid fa-list"></i>';
-                        setTimeout(() => { const m = getMapInstance(); if(m) m.resize(); }, 50);
-                    }
-                };
-                const isMapMode = document.body.classList.contains('split-show-map');
-                fab.innerHTML = isMapMode ? '<i class="fa-solid fa-list"></i>' : '<i class="fa-solid fa-map"></i>';
-            }
-        }
     }, 20); 
 }
 
@@ -626,9 +616,11 @@ export function updateSummary() {
     const globalSummary = document.getElementById('global-summary-stats');
     if (globalSummary) {
         if (AppState.stops.length === 0) {
-            globalSummary.style.visibility = 'hidden'; 
+            globalSummary.style.visibility = 'hidden';
+            globalSummary.style.display = 'none'; 
         } else {
-            globalSummary.style.visibility = 'visible'; 
+            globalSummary.style.visibility = 'visible';
+            globalSummary.style.display = 'flex'; 
         }
     }
 
@@ -1223,6 +1215,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('unmatched-loading-overlay').style.display = 'none'; nextUnmatchedAddress();
             }
         });
+    }
+
+    // Initialize Map/List Toggle Rocker listeners
+    const viewListInput = document.getElementById('view-list');
+    const viewMapInput = document.getElementById('view-map');
+    
+    if (viewListInput && viewMapInput) {
+        const toggleView = () => {
+            if (viewMapInput.checked) {
+                document.body.classList.remove('split-show-list');
+                document.body.classList.add('split-show-map');
+                setTimeout(() => { const m = getMapInstance(); if(m) m.resize(); }, 50);
+            } else {
+                document.body.classList.remove('split-show-map');
+                document.body.classList.add('split-show-list');
+            }
+        };
+        viewListInput.addEventListener('change', toggleView);
+        viewMapInput.addEventListener('change', toggleView);
+    }
+
+    // Initialize Pan/Select Toggle Rocker listeners
+    const interactPanInput = document.getElementById('interact-pan');
+    const interactSelectInput = document.getElementById('interact-select');
+    
+    if (interactPanInput && interactSelectInput) {
+        const toggleInteraction = () => {
+            if (window.toggleMobileLasso) {
+                window.toggleMobileLasso(interactSelectInput.checked);
+            }
+        };
+        interactPanInput.addEventListener('change', toggleInteraction);
+        interactSelectInput.addEventListener('change', toggleInteraction);
     }
 });
 
