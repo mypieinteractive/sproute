@@ -1,7 +1,8 @@
-/* Dashboard - V18.22 */
+/* Dashboard - V18.23 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Hardcoded height to calc(100vh - 200px) on html/body to lock in the exact offset discovered via the dev tool. */
+/* 1. Deprecated .view-managermobile completely. */
+/* 2. Renamed .view-managermobilesplit to .view-managersmall across the stylesheet to consolidate mobile layouts. */
 
 :root { 
     /* Base / Accent */
@@ -103,61 +104,55 @@ body.view-inspector #map-wrapper { height: 35%; min-height: 35%; width: 100%; bo
 body.view-inspector #sidebar { height: 65%; min-height: 65%; width: 100%; background: var(--sidebar-bg); }
 
 body.view-inspector .map-overlay-btns, 
-body.view-managermobile .map-overlay-btns,
-body.view-managermobilesplit .map-overlay-btns {
+body.view-managersmall .map-overlay-btns {
     top: auto !important; bottom: 20px !important; right: 20px !important; display: flex; flex-direction: column;
 }
 
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
 body.view-manager #sidebar { width: 50vw; min-width: 10vw; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
 
-body.view-managermobile { overflow: hidden; height: 100%; }
-body.view-managermobile #map-wrapper { height: 40%; width: 100vw; flex: none; position: relative; z-index: 10; }
-body.view-managermobile #sidebar { height: 60%; width: 100vw; min-width: auto; border-left: none; flex: none; border-top: 1px solid var(--row-border); overflow: hidden; background: var(--sidebar-bg); }
-body.view-managermobile #stop-list { overflow-y: auto; overflow-x: hidden; height: 100%; }
+body.view-managersmall { overflow: hidden; height: 100%; }
+body.view-managersmall #app-body-wrapper { display: contents; }
+body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents; }
+body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
+body.view-managersmall #mobile-view-toggle { order: 4; display: flex !important; }
+body.view-managersmall #routing-controls { order: 5; }
+body.view-managersmall #route-view-toggles { order: 6; }
+body.view-managersmall #list-header-container { order: 7; }
+body.view-managersmall #stop-list { order: 8; overflow-y: auto; flex: 1; min-height: 0; background: var(--sidebar-bg); }
+body.view-managersmall #map-container { order: 9; flex: 1; min-height: 0; position: relative; }
+body.view-managersmall #resizer { display: none; }
 
-body.view-managermobilesplit { overflow: hidden; height: 100%; }
-body.view-managermobilesplit #app-body-wrapper { display: contents; }
-body.view-managermobilesplit #map-wrapper, body.view-managermobilesplit #sidebar { display: contents; }
-body.view-managermobilesplit #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
-body.view-managermobilesplit #mobile-view-toggle { order: 4; display: flex !important; }
-body.view-managermobilesplit #routing-controls { order: 5; }
-body.view-managermobilesplit #route-view-toggles { order: 6; }
-body.view-managermobilesplit #list-header-container { order: 7; }
-body.view-managermobilesplit #stop-list { order: 8; overflow-y: auto; flex: 1; min-height: 0; background: var(--sidebar-bg); }
-body.view-managermobilesplit #map-container { order: 9; flex: 1; min-height: 0; position: relative; }
-body.view-managermobilesplit #resizer { display: none; }
+body.view-managersmall.split-show-map #stop-list,
+body.view-managersmall.split-show-map #list-header-container,
+body.view-managersmall.split-show-map #routing-controls,
+body.view-managersmall.split-show-map #route-view-toggles { display: none !important; }
+body.view-managersmall.split-show-map #map-container { display: flex !important; flex-direction: column; }
+body.view-managersmall.split-show-list #map-container { display: none !important; }
+body.view-managersmall.split-show-list #stop-list { display: block !important; }
 
-body.view-managermobilesplit.split-show-map #stop-list,
-body.view-managermobilesplit.split-show-map #list-header-container,
-body.view-managermobilesplit.split-show-map #routing-controls,
-body.view-managermobilesplit.split-show-map #route-view-toggles { display: none !important; }
-body.view-managermobilesplit.split-show-map #map-container { display: flex !important; flex-direction: column; }
-body.view-managermobilesplit.split-show-list #map-container { display: none !important; }
-body.view-managermobilesplit.split-show-list #stop-list { display: block !important; }
+body.view-managersmall #map-hint, body.view-inspector #map-hint { display: none !important; }
+body.view-managersmall #header-resizer-gap { display: none !important; }
+body.view-managersmall #header-list-zone { width: auto !important; flex: 1; }
 
-body.view-managermobile #map-hint, body.view-managermobilesplit #map-hint, body.view-inspector #map-hint { display: none !important; }
-body.view-managermobile #header-resizer-gap, body.view-managermobilesplit #header-resizer-gap { display: none !important; }
-body.view-managermobile #header-list-zone, body.view-managermobilesplit #header-list-zone { width: auto !important; flex: 1; }
-
-body.view-managermobile .col-eta, body.view-managermobilesplit .col-eta { width: 55px; font-size: 12px; }
-body.view-managermobile .col-due, body.view-managermobilesplit .col-due { width: 45px; font-size: 12px; }
-body.view-managermobile .col-insp, body.view-managermobilesplit .col-insp { width: 85px; font-size: 12px; padding-right: 2px; }
-body.view-managermobile .insp-select, body.view-managermobilesplit .insp-select { font-size: 12px; padding: 4px 14px 4px 4px; background-size: 8px auto; background-position: right 4px center; }
-body.view-managermobile .addr-text, body.view-managermobilesplit .addr-text { font-size: 13px; }
-body.view-managermobile .glide-row, body.view-managermobilesplit .glide-row { padding: 8px 2px; }
-body.view-managermobile .col-num, body.view-managermobilesplit .col-num { margin-left: 2px; width: 26px; }
-body.view-managermobile .num-badge, body.view-managermobilesplit .num-badge { width: 22px; height: 22px; font-size: 11px; }
-body.view-managermobile .endpoint-controls-wrapper, body.view-managermobilesplit .endpoint-controls-wrapper { padding-left: 4px; }
-body.view-managermobile .endpoint-label-text, body.view-managermobilesplit .endpoint-label-text { display: none !important; }
+body.view-managersmall .col-eta { width: 55px; font-size: 12px; }
+body.view-managersmall .col-due { width: 45px; font-size: 12px; }
+body.view-managersmall .col-insp { width: 85px; font-size: 12px; padding-right: 2px; }
+body.view-managersmall .insp-select { font-size: 12px; padding: 4px 14px 4px 4px; background-size: 8px auto; background-position: right 4px center; }
+body.view-managersmall .addr-text { font-size: 13px; }
+body.view-managersmall .glide-row { padding: 8px 2px; }
+body.view-managersmall .col-num { margin-left: 2px; width: 26px; }
+body.view-managersmall .num-badge { width: 22px; height: 22px; font-size: 11px; }
+body.view-managersmall .endpoint-controls-wrapper { padding-left: 4px; }
+body.view-managersmall .endpoint-label-text { display: none !important; }
 
 @media (max-width: 450px) { .hide-mobile-text { display: none !important; } }
-body.view-managermobile .header-action-btn, body.view-managermobilesplit .header-action-btn { padding: 6px 10px; font-size: 12px; height: 32px; gap: 6px; }
+body.view-managersmall .header-action-btn { padding: 6px 10px; font-size: 12px; height: 32px; gap: 6px; }
 @media (max-width: 380px) {
-    body.view-managermobile .header-action-btn span, body.view-managermobilesplit .header-action-btn span {
+    body.view-managersmall .header-action-btn span {
         display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55px; vertical-align: middle;
     }
-    body.view-managermobile .header-action-btn, body.view-managermobilesplit .header-action-btn { padding: 6px 8px; }
+    body.view-managersmall .header-action-btn { padding: 6px 8px; }
 }
 
 @container sidebar (max-width: 600px) { .col-client { display: none !important; } }
@@ -276,7 +271,6 @@ input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cur
 #resizer { width: 6px; background-color: var(--sidebar-bg); border-left: 1px solid var(--row-border); border-right: 1px solid var(--row-border); cursor: col-resize; display: none; flex: none; z-index: 100; transition: background-color 0.2s; background-clip: padding-box; }
 #resizer:hover, #resizer.active { background-color: var(--accent); }
 body.view-manager #resizer { display: block; border-top: none; }
-body.view-managermobile #resizer { display: block; width: 100vw; height: 16px; cursor: row-resize; flex: none; background-color: var(--sidebar-bg); margin: 0; padding: 0; position: relative; z-index: 100; border-top: 1px solid var(--row-border); border-bottom: 1px solid var(--row-border); }
 
 #map-wrapper { display: flex; flex-direction: column; position: relative; background-color: #191A1A; }
 #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; background: #191A1A !important; }
