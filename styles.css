@@ -1,9 +1,7 @@
-/* Dashboard - V18.26 */
+/* Dashboard - V18.27 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Changed root html, body width from 100vw to 100% to respect iframe boundaries. */
-/* 2. Changed position: absolute to position: fixed for #empty-state-container, #modal-overlay, #processing-overlay, and #unmatched-modal to lock to the viewport. */
-/* 3. Changed #sidebar sizing from vw to % to scale properly in split views. */
+/* 1. Restored the accidentally deleted .rocker-switch input:checked + label rule to fix the Detailed/Compact toggle active state highlight. */
 
 :root { 
     /* Base / Accent */
@@ -286,7 +284,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 .route-view-btn {
     flex: 1; border: 1px solid var(--route-mod-bg); background: var(--route-mod-bg);
     color: var(--route-mod-text); border-radius: 4px; padding: 6px 10px; cursor: pointer;
-    font-size: 13px; font-weight: 500; letter-spacing: 0.3px; transition: 0.2s; opacity: 0.7;
+    font-size: 13px; font-weight: 500; letter-spacing: 0.3px; transition: 0.2s opacity, 0.2s background, 0.2s border-color; opacity: 0.7;
 }
 .route-view-btn:hover { opacity: 1; background: var(--route-mod-border); }
 .route-view-btn.active { opacity: 1; border-color: var(--accent); background: rgba(78, 118, 77, 0.15); color: var(--accent); }
@@ -310,9 +308,12 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 .glide-row .insp-select option { background-color: var(--sidebar-bg); color: var(--row-text-main); }
 body.manager-all-inspectors .glide-row .insp-select { background-color: transparent !important; border: none !important; padding: 0 16px 0 0 !important; height: auto !important; }
 
+/* -- Detailed / Compact Rocker Switch -- */
 .rocker-switch { display: flex; background: transparent; border: 1px solid var(--global-hdr-icon) !important; border-radius: 6px; overflow: hidden; height: 30px; }
 .rocker-switch input { display: none; }
 .rocker-switch label { padding: 0 16px; font-size: 13px; font-weight: 400; color: var(--global-hdr-text); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; }
+/* This rule was missing: */
+.rocker-switch input:checked + label { background-color: var(--global-hdr-icon); color: var(--bg-header); }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; margin-top: -6px; }
