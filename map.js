@@ -1,8 +1,8 @@
-/* Dashboard - V15.6 */
+/* Dashboard - V15.7 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Added data-search attribute to markers for real-time address filtering. */
-/* 2. Added filterMarkersMap to hide/show markers based on the input query. */
+/* 1. Implemented toggleMobileLasso() functionality to allow single-finger touch box-selection on mobile devices when active. */
+/* 2. Added touchstart, touchmove, and touchend listeners directly to the map canvas to handle manual lasso drawing. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 
@@ -15,6 +15,7 @@ let start_pos = null;
 let box_el = null;
 let canvas = null;
 let onSelectionCallback = null; 
+export let isMobileLassoActive = false;
 
 export function initMap(token, config, selectionCallback) {
     mapboxgl.accessToken = token;
@@ -37,6 +38,9 @@ export function initMap(token, config, selectionCallback) {
 
     canvas = map.getCanvasContainer();
     canvas.addEventListener('mousedown', onCanvasMouseDown, true);
+    
+    // NEW: Touch event bindings for mobile lasso
+    canvas.addEventListener('touchstart', onCanvasTouchStart, { passive: false });
 
     const mapContainer = document.getElementById(config.container);
     if (mapContainer && window.ResizeObserver) {
@@ -54,6 +58,24 @@ export function resizeMap() { if (map) map.resize(); }
 export function focusMapPin(lng, lat) { if (map && lng && lat) map.flyTo({ center: [lng, lat] }); }
 export function resetMapBounds() { if (map && initialBounds) map.fitBounds(initialBounds, { padding: 50, maxZoom: 15 }); }
 
+export function toggleMobileLasso() {
+    isMobileLassoActive = !isMobileLassoActive;
+    const btn = document.getElementById('mobile-lasso-toggle');
+    if (btn) {
+        if (isMobileLassoActive) {
+            btn.classList.add('active');
+            btn.style.backgroundColor = 'var(--accent)';
+            btn.style.borderColor = 'var(--accent)';
+            map.dragPan.disable();
+        } else {
+            btn.classList.remove('active');
+            btn.style.backgroundColor = 'var(--summary-border)';
+            btn.style.borderColor = 'var(--sidebar-bg)';
+            map.dragPan.enable();
+        }
+    }
+}
+
 export function renderMapMarkers(params) {
     const {
         activeStops, endpointsToDraw, isManagerView, currentInspectorFilter,
@@ -69,7 +91,6 @@ export function renderMapMarkers(params) {
             const el = document.createElement('div');
             el.className = `marker ${s.status.toLowerCase().replace(' ', '-')}`; 
             
-            // NEW: Add search string for address filtering
             const searchStr = `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`;
             el.setAttribute('data-search', searchStr);
             
@@ -158,7 +179,6 @@ export function updateMapSelectionStyles(selectedIdsSet) {
     }); 
 }
 
-// NEW: Instantly hide/show map pins when the user types in the address search bar
 export function filterMarkersMap(query) {
     markers.forEach(m => {
         if (m._stopId) {
@@ -242,7 +262,7 @@ export function drawRouteMap(params) {
     map.addLayer({ "id": "route-line-2-in-dirty", "type": "line", "source": "route", "filter": ["all", ["==", "clusterIdx", 2], ["==", "isDirty", true]], "layout": { "line-join": "round", "line-cap": "butt" }, "paint": { "line-color": "#ffffff", "line-width": 2, "line-opacity": 1, "line-dasharray": [6, 6] } }); 
 }
 
-// --- Lasso Tool Logic ---
+// --- Lasso Tool Logic (Mouse & Touch) ---
 
 function onCanvasMouseDown(e) { 
     if (e.target.closest('.mapboxgl-marker')) return; 
@@ -259,8 +279,33 @@ function mousePos(e) {
     return new mapboxgl.Point(e.clientX - r.left, e.clientY - r.top); 
 }
 
+function getTouchPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return new mapboxgl.Point(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+}
+
+function onCanvasTouchStart(e) {
+    if (!isMobileLassoActive) return;
+    if (e.target.closest('.mapboxgl-marker')) return;
+    e.preventDefault(); 
+    start_pos = getTouchPos(e);
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+}
+
 function onMouseMove(e) { 
     const curr = mousePos(e); 
+    handleLassoDraw(curr);
+}
+
+function onTouchMove(e) {
+    if (!isMobileLassoActive || !start_pos) return;
+    e.preventDefault(); 
+    const curr = getTouchPos(e);
+    handleLassoDraw(curr);
+}
+
+function handleLassoDraw(curr) {
     if(!box_el) { 
         box_el = document.createElement('div'); 
         box_el.className = 'boxdraw'; 
@@ -279,19 +324,38 @@ function onMouseUp(e) {
     document.removeEventListener('mouseup', onMouseUp); 
     
     if(box_el) { 
-        const b = [start_pos, mousePos(e)]; 
-        let caughtIds = [];
-        markers.filter(m => { 
-            const pt = map.project(m.getLngLat()); 
-            return pt.x >= Math.min(b[0].x, b[1].x) && pt.x <= Math.max(b[0].x, b[1].x) && 
-                   pt.y >= Math.min(b[0].y, b[1].y) && pt.y <= Math.max(b[0].y, b[1].y); 
-        }).forEach(m => caughtIds.push(m._stopId)); 
-        
-        box_el.remove(); 
-        box_el = null; 
-        
-        if (onSelectionCallback) onSelectionCallback({ action: 'lasso', ids: caughtIds });
+        const end_pos = mousePos(e);
+        finalizeLassoSelection(end_pos);
     } 
     map.dragPan.enable(); 
     start_pos = null; 
+}
+
+function onTouchEnd(e) {
+    if (!isMobileLassoActive) return;
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend', onTouchEnd);
+    
+    if(box_el) {
+        const r = canvas.getBoundingClientRect();
+        const end_pos = new mapboxgl.Point(e.changedTouches[0].clientX - r.left, e.changedTouches[0].clientY - r.top);
+        finalizeLassoSelection(end_pos);
+    }
+    start_pos = null;
+}
+
+function finalizeLassoSelection(end_pos) {
+    const b = [start_pos, end_pos]; 
+    let caughtIds = [];
+    markers.filter(m => { 
+        if (!m._stopId) return false;
+        const pt = map.project(m.getLngLat()); 
+        return pt.x >= Math.min(b[0].x, b[1].x) && pt.x <= Math.max(b[0].x, b[1].x) && 
+               pt.y >= Math.min(b[0].y, b[1].y) && pt.y <= Math.max(b[0].y, b[1].y); 
+    }).forEach(m => caughtIds.push(m._stopId)); 
+    
+    box_el.remove(); 
+    box_el = null; 
+    
+    if (onSelectionCallback) onSelectionCallback({ action: 'lasso', ids: caughtIds });
 }
