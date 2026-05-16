@@ -1,8 +1,8 @@
-/* Dashboard - V18.18 */
+/* Dashboard - V18.19 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated metaHtml condition to explicitly target the new consolidated 'managersmall' view mode. */
-/* 2. Simplified map resizing logic by completely removing the mobile touch/drag handle events, as the new managersmall split view is fixed/static layout. */
+/* 1. Added document.body.classList.toggle('has-orders') in render() to communicate order availability to the CSS. */
+/* 2. Added logic to dynamically construct and handle the #mobile-fab-toggle button for the managersmall layout. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -302,6 +302,7 @@ export function render() {
     const hasRouted = activeStops.some(s => isRouteAssigned(s.status));
     
     document.body.classList.toggle('empty-state-active', Config.isManagerView && activeStops.length === 0);
+    document.body.classList.toggle('has-orders', activeStops.length > 0);
     
     const addMenuWrapper = document.getElementById('add-menu-wrapper');
     if (addMenuWrapper) addMenuWrapper.style.display = Config.viewMode === 'inspector' ? 'none' : 'block';
@@ -542,6 +543,30 @@ export function render() {
             } else {
                 hlZone.style.width = sidebar.offsetWidth + 'px';
             }
+        }
+
+        if (Config.viewMode === 'managersmall') {
+            let fab = document.getElementById('mobile-fab-toggle');
+            if (!fab) {
+                fab = document.createElement('button');
+                fab.id = 'mobile-fab-toggle';
+                document.body.appendChild(fab);
+                fab.onclick = () => {
+                    const isMap = document.body.classList.contains('split-show-map');
+                    if (isMap) {
+                        document.body.classList.remove('split-show-map');
+                        document.body.classList.add('split-show-list');
+                        fab.innerHTML = '<i class="fa-solid fa-map"></i>';
+                    } else {
+                        document.body.classList.remove('split-show-list');
+                        document.body.classList.add('split-show-map');
+                        fab.innerHTML = '<i class="fa-solid fa-list"></i>';
+                        setTimeout(() => { const m = getMapInstance(); if(m) m.resize(); }, 50);
+                    }
+                };
+            }
+            const isMapMode = document.body.classList.contains('split-show-map');
+            fab.innerHTML = isMapMode ? '<i class="fa-solid fa-list"></i>' : '<i class="fa-solid fa-map"></i>';
         }
     }, 20); 
 }
