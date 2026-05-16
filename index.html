@@ -1,17 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dashboard</title>
+    <style>
+        /* FILE: index.html
+            VERSION: V19.16
+            CHANGES:
+            1. Restructured header layout and removed the header gap for managersmall.
+            2. Moved the mobile-fab-toggle inside the app-body-wrapper to prevent bottom clipping.
+            3. Added the mobile-lasso-toggle button to the map overlay.
+        */
+        
+        .custom-tooltip {
+            position: absolute; top: -28px; right: 0; background: #333; color: #fff;
+            padding: 4px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap;
+            opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 1000;
+            font-weight: 400; text-transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .address-search-wrapper:hover .custom-tooltip { opacity: 1; }
+        
+        .rocker-switch input:checked + label { background: var(--accent) !important; color: white !important; }
+    </style>
     
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+    <meta charset="utf-8">
+    <title>Sproute Dashboard</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+    
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
 </head>
-<body>
 
-<div id="processing-overlay">
+<body class="view-manager manager-all-inspectors empty-state-active">
+
+<div id="processing-overlay" style="display: flex;">
     <div class="spinner-container">
         <div class="loader"></div>
         <div class="loading-text">Processing...</div>
@@ -19,59 +43,50 @@
     </div>
 </div>
 
-<div id="global-header">
-    <div id="header-map-zone">
-        <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo last action">
-            <i class="fa-solid fa-rotate-left"></i><span class="hide-mobile-text">Undo</span>
-        </button>
-        <div id="inspector-dropdown-wrapper">
-            <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)">
-                <option value="all">All Inspectors</option>
-            </select>
-        </div>
-    </div>
+<div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
     
-    <div id="header-center-zone">
-        <div class="rocker-switch" id="view-mode-rocker" style="display: none;">
-            <input type="radio" id="view-list" name="view-mode" value="list" checked>
-            <label for="view-list"><i class="fa-solid fa-list"></i>&nbsp; List</label>
-            <input type="radio" id="view-map" name="view-mode" value="map">
-            <label for="view-map"><i class="fa-solid fa-map"></i>&nbsp; Map</label>
+    <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 0 15px;">
+        <div id="header-action-container" style="display: flex; gap: 8px;">
+            <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
+                <i class="fa-solid fa-arrow-rotate-left" style="color: var(--global-hdr-icon);"></i> <span style="color: var(--global-hdr-text);">Undo</span>
+            </button>
+        </div>
+        
+        <div id="global-summary-stats" style="display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 400;">
+            <div id="summary-metrics" style="color: var(--row-text-muted);"><span id="sum-dist">-- mi</span> | <span id="sum-time">-- hrs</span></div>
+            <div id="order-stats" class="hide-mobile-text">
+                <span id="stat-total" style="color: var(--row-text-main);">0 Orders</span> | 
+                <span id="stat-due" style="color: var(--orange);">0 Due Today</span> | 
+                <span id="stat-past" style="color: var(--red);">0 Past Due</span>
+            </div>
         </div>
     </div>
 
-    <div id="header-list-zone">
-        <div id="display-rocker" class="rocker-switch">
-            <input type="radio" id="disp-detailed" name="display-mode" value="detailed" onchange="setDisplayMode('detailed')" checked>
-            <label for="disp-detailed">Detailed</label>
-            <input type="radio" id="disp-compact" name="display-mode" value="compact" onchange="setDisplayMode('compact')">
-            <label for="disp-compact">Compact</label>
-        </div>
-        
-        <div id="interact-rocker" class="rocker-switch" style="display: none;">
-            <input type="radio" id="interact-pan" name="interact-mode" value="pan" checked>
-            <label for="interact-pan"><i class="fa-solid fa-hand"></i>&nbsp; Pan</label>
-            <input type="radio" id="interact-select" name="interact-mode" value="select">
-            <label for="interact-select"><i class="fa-solid fa-crop-simple"></i>&nbsp; Select</label>
-        </div>
-        
-        <div id="global-summary-stats" style="color: var(--global-hdr-text); font-size: 13px; font-weight: 400; display: flex; gap: 10px; align-items: center;">
-            <span id="stat-total">0 Orders</span>|
-            <span id="stat-due" style="color: var(--orange);">0 Due Today</span>|
-            <span id="stat-past" style="color: var(--red);">0 Past Due</span>
-        </div>
+    <div id="header-resizer-gap" style="width: 6px; flex: none; background: transparent;"></div>
 
-        <div style="display: flex; gap: 8px;">
-            <button id="btn-add-order" class="header-action-btn primary-btn" onclick="showAddOrderModal()">
-                <i class="fa-solid fa-plus"></i><span class="hide-mobile-text">Add</span>
-            </button>
+    <div id="header-list-zone" style="width: 50vw; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
+        <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
+            <div id="inspector-dropdown-wrapper" style="display: none;">
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 400; height: 30px;"></select>
+            </div>
+            <div class="rocker-switch">
+                <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
+                <label for="view-detailed">Detailed</label>
+                <input type="radio" id="view-compact" name="view-mode" value="compact" onchange="setDisplayMode('compact')">
+                <label for="view-compact">Compact</label>
+            </div>
+        </div>
+        <div id="header-right-controls">
             <div id="add-menu-wrapper" style="position: relative;">
-                <button class="header-action-btn primary-btn" onclick="document.getElementById('hidden-global-file-input').click()" style="padding: 0 10px;">
-                    <i class="fa-solid fa-caret-down"></i>
-                </button>
-                <div class="add-dropdown-menu">
+                <div class="header-action-btn primary-btn" style="padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
+                    <i class="fa-solid fa-plus" style="color: white;"></i> <span style="margin-left: 6px; color: white;">Add</span>
+                </div>
+                <div class="add-dropdown-menu" style="right: 0;">
                     <div class="add-dropdown-item" onclick="document.getElementById('hidden-global-file-input').click()">
-                        <i class="fa-solid fa-file-csv" style="width: 20px; text-align: center; color: var(--accent);"></i> Upload CSV
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload CSV
+                    </div>
+                    <div class="add-dropdown-item" onclick="showAddOrderModal()">
+                        <i class="fa-solid fa-pen-to-square"></i> Manual Entry
                     </div>
                 </div>
             </div>
@@ -79,165 +94,188 @@
         </div>
     </div>
 </div>
-
-<div id="app-body-wrapper" style="display: flex; flex: 1; overflow: hidden; width: 100%;">
-    <div id="map-wrapper">
-        <div id="map-container" style="flex: 1; position: relative;">
-            <div id="map"></div>
-            <div id="map-hint"><i class="fa-solid fa-arrow-pointer"></i> Shift+Click to Box Select</div>
-            
-            <div class="map-overlay-btns">
-                <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()"><i class="fa-solid fa-calendar-xmark"></i> Unroute</button>
-                <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()"><i class="fa-solid fa-trash-can"></i> Delete</button>
-                <button id="move-r1-btn" class="floating-btn" onclick="moveSelectedToRoute(0)">Move to Route 1</button>
-                <button id="move-r2-btn" class="floating-btn" onclick="moveSelectedToRoute(1)">Move to Route 2</button>
-                <button id="move-r3-btn" class="floating-btn" onclick="moveSelectedToRoute(2)">Move to Route 3</button>
+<div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
+    
+    <div id="empty-state-container">
+        <div id="main-dropzone" class="upload-dropzone" style="width: 80vw; max-width: 800px; height: 400px; max-height: 50vh; border: 2px dashed var(--border-color); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s;">
+            <input type="file" id="main-file-input" accept=".csv" style="display: none;">
+            <div style="background: var(--fade-accent); padding: 30px; border-radius: 50%; margin-bottom: 20px; pointer-events: none;">
+                <i class="fa-solid fa-cloud-arrow-up" style="font-size: 54px; color: var(--accent);"></i>
             </div>
+            <div class="dropzone-sub" style="font-size: 16px; color: var(--text-muted); pointer-events: none;">Drag and drop a CSV here, or click to select a file.</div>
+        </div>
+    </div>
+
+    <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0;">
+
+        <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
+            
+            <div id="routing-module-core" class="routing-module-core" style="display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; width: 100%;">
+                
+                <div id="parameters-container" style="display:flex; flex:1; gap:20px; height:100%; padding: 8px 0; box-sizing: border-box;">
+                    <div id="route-divider-group" style="display:flex; gap:8px; flex: 1; height: 100%;">
+                        <div class="route-btn active" onclick="setRoutes(1)" id="rbtn-1">
+                            <div class="rbtn-indicator" id="rbtn-ind-1"></div>
+                            <div class="rbtn-content">
+                                <div class="rbtn-title">1 Route</div>
+                                <div class="rbtn-time" id="rtime-1">-- hrs</div>
+                            </div>
+                        </div>
+                        <div class="route-btn" onclick="setRoutes(2)" id="rbtn-2">
+                            <div class="rbtn-indicator" id="rbtn-ind-2"></div>
+                            <div class="rbtn-content">
+                                <div class="rbtn-title">2 Routes</div>
+                                <div class="rbtn-time" id="rtime-2">-- hrs</div>
+                            </div>
+                        </div>
+                        <div class="route-btn" onclick="setRoutes(3)" id="rbtn-3">
+                            <div class="rbtn-indicator" id="rbtn-ind-3"></div>
+                            <div class="rbtn-content">
+                                <div class="rbtn-title">3 Routes</div>
+                                <div class="rbtn-time" id="rtime-3">-- hrs</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="priority-container" style="flex:1; display:flex; flex-direction:column; justify-content: center; height: 100%;">
+                        <label style="font-size:13px; font-weight:400; margin-bottom:4px; white-space: nowrap;">Priority Weighting</label>
+                        <input type="range" id="slider-priority" min="0" max="100" value="0" oninput="liveClusterUpdate()" style="width: 100%; margin-bottom: 4px;">
+                        <div style="display:flex; justify-content:space-between; width: 100%;">
+                            <span style="font-size:12px; color:var(--row-text-muted); white-space: nowrap;">Efficiency</span>
+                            <span style="font-size:12px; color:var(--row-text-muted); white-space: nowrap;">Due Dates</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="routing-action-buttons" style="display:flex; height: 100%; box-sizing: border-box; transition: width 0.2s;">
+                    
+                    <div id="action-group-pending" style="display:none; width:100%; height:100%; align-items: center; justify-content: center; padding: 10px 0;">
+                        <button id="btn-header-generate" class="module-action-btn filled-green" onclick="handleGenerateRoute()" style="border-radius: 6px; padding: 8px 24px; width: auto; height: auto;">
+                            <i class="fa-solid fa-route"></i> <span id="btn-header-generate-text">Optimize</span>
+                        </button>
+                    </div>
+
+                    <div id="action-group-staging" style="display:none; width:100%; height:100%; align-items: center; gap: 10px; padding: 10px 0;">
+                        <button class="module-action-btn danger-btn" onclick="handleStartOver()" style="border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-rotate-left"></i> Start Over
+                        </button>
+                        <button class="module-action-btn outline-btn" onclick="handleCalculate()" style="border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-calculator"></i> Re-Calculate
+                        </button>
+                        <button class="module-action-btn filled-green" onclick="handleGenerateRoute()" style="border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-route"></i> Re-Optimize
+                        </button>
+                    </div>
+
+                    <div id="action-group-ready" style="display:none; width:100%; height:100%; align-items: center; gap: 10px; padding: 10px 0;">
+                        <button class="module-action-btn danger-btn" onclick="handleStartOver()" style="border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-rotate-left"></i> Start Over
+                        </button>
+                        <button id="btn-header-restore" class="module-action-btn outline-btn" onclick="handleRestoreOriginal()" style="display:none; border-radius: 6px; flex:1;">
+                            <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
+                        </button>
+                        <button id="btn-header-send-route" class="module-action-btn filled-green" onclick="handleOpenEmailModal()" style="border-radius: 6px; flex:2;">
+                            <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
+                        </button>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+
+        <div id="map-container" style="flex: 1; position: relative; min-height: 0;">
+            <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
+            <div class="map-overlay-btns">
+                <button id="mobile-lasso-toggle" class="floating-btn" onclick="toggleMobileLasso()" style="display:none;"><i class="fa-solid fa-hand-pointer"></i> Select Mode</button>
+                <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()"><i class="fa-solid fa-expand"></i> Reset View</button>
+                <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()"><i class="fa-solid fa-route"></i> Remove selected from route</button>
+                <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()"><i class="fa-solid fa-trash-can"></i> Delete selected</button>
+                <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)">Move to Route 1</button>
+                <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)">Move to Route 2</button>
+                <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)">Move to Route 3</button>
+            </div>
+            <div id="map"></div>
         </div>
     </div>
 
     <div id="resizer"></div>
 
-    <div id="sidebar">
+    <div id="sidebar" style="display: flex; flex-direction: column; min-height: 0;">
         <div id="route-view-toggles" style="display: none;">
-            <button id="view-rall-btn" class="route-view-btn active" onclick="setRouteViewFilter('all')">All Routes</button>
-            <button id="view-r1-btn" class="route-view-btn" onclick="setRouteViewFilter(0)">Route 1</button>
-            <button id="view-r2-btn" class="route-view-btn" onclick="setRouteViewFilter(1)">Route 2</button>
-            <button id="view-r3-btn" class="route-view-btn" onclick="setRouteViewFilter(2)" style="display: none;">Route 3</button>
+            <button class="route-view-btn active" id="view-rall-btn" onclick="setRouteViewFilter('all')">All Routes</button>
+            <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
+            <button class="route-view-btn" id="view-r1-btn" onclick="setRouteViewFilter(1)">Route 2</button>
+            <button class="route-view-btn" id="view-r2-btn" onclick="setRouteViewFilter(2)">Route 3</button>
         </div>
-
-        <div id="routing-controls" style="display: none; height: 110px; padding: 15px; border-bottom: 2px solid var(--summary-border);">
-            <div class="routing-module-wrapper">
-                <div class="start-over-overlay">
-                    <button class="module-action-btn danger-btn" onclick="handleStartOver()" style="width: auto; padding: 10px 24px; border-radius: 6px;">
-                        <i class="fa-solid fa-rotate-left"></i> Start Over
-                    </button>
-                </div>
-                
-                <div class="routing-module-core" id="routing-core-container">
-                    <div id="action-group-pending" style="display: none; height: 100%; width: 100%;">
-                        <button class="module-action-btn filled-green" onclick="handleGenerateRoute()" style="border-radius: 6px; font-weight: 500;">
-                            <i class="fa-solid fa-bolt"></i> Generate Routes
-                        </button>
-                    </div>
-
-                    <div id="action-group-staging" style="display: none; gap: 15px; height: 100%; width: 100%;">
-                        <button class="module-action-btn filled-green" onclick="handleCalculate()" style="border-radius: 6px;">
-                            <i class="fa-solid fa-calculator"></i> Calculate
-                        </button>
-                    </div>
-
-                    <div id="action-group-ready" style="display: none; gap: 15px; height: 100%; width: 100%;">
-                        <button id="btn-header-restore" class="module-action-btn outline-btn" onclick="handleRestoreOriginal()" style="border-radius: 6px; display: none;">
-                            <i class="fa-solid fa-clock-rotate-left"></i> Restore Original
-                        </button>
-                        <button class="module-action-btn filled-green" onclick="handleOpenEmailModal()" style="border-radius: 6px;">
-                            <i class="fa-solid fa-paper-plane"></i> <span id="btn-header-send-route-text">Send Route</span>
-                        </button>
-                    </div>
-                    
-                    <div id="parameters-container" style="display: flex; gap: 15px; height: 100%; flex: 1;">
-                        <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 11px; text-transform: uppercase;">Number of Routes</label>
-                            <div style="display: flex; gap: 6px; height: 100%;">
-                                <button id="rbtn-1" class="route-btn active" onclick="setRoutes(1)">
-                                    <div class="rbtn-indicator" id="rbtn-ind-1"></div>
-                                    <div class="rbtn-content"><div class="rbtn-title">1 Route</div><div class="rbtn-time" id="rtime-1">-- hrs</div></div>
-                                </button>
-                                <button id="rbtn-2" class="route-btn" onclick="setRoutes(2)">
-                                    <div class="rbtn-indicator" id="rbtn-ind-2"></div>
-                                    <div class="rbtn-content"><div class="rbtn-title">2 Routes</div><div class="rbtn-time" id="rtime-2">-- hrs</div></div>
-                                </button>
-                                <button id="rbtn-3" class="route-btn" onclick="setRoutes(3)" style="display: none;">
-                                    <div class="rbtn-indicator" id="rbtn-ind-3"></div>
-                                    <div class="rbtn-content"><div class="rbtn-title">3 Routes</div><div class="rbtn-time" id="rtime-3">-- hrs</div></div>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div id="priority-container" style="flex: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center; padding: 0 15px;">
-                            <div style="display: flex; justify-content: space-between; font-size: 11px; text-transform: uppercase;">
-                                <span>Distribute Evenly</span>
-                                <span>Minimize Drive Time</span>
-                            </div>
-                            <input type="range" id="slider-priority" min="0" max="10" value="3" onchange="liveClusterUpdate()">
-                        </div>
-                    </div>
-                    
-                    <div id="routing-action-buttons" style="display: flex; height: 100%; width: 140px; padding-left: 20px; border-left: 1px solid var(--route-mod-border);">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="list-header-container"></div>
-        <div id="stop-list"></div>
         
-        <div id="summary-metrics" style="padding: 12px 15px; background: var(--summary-bg); border-top: 1px solid var(--summary-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; min-height: 45px;">
-            <div style="font-weight: 500; font-size: 14px; color: var(--summary-text-main); letter-spacing: 0.5px;">EST. ROUTE TOTALS</div>
-            <div style="display: flex; gap: 20px; font-weight: 500; font-size: 16px; color: var(--summary-text-main);">
-                <span id="sum-dist">0.0 mi</span>
-                <span id="sum-time">-- hrs</span>
-            </div>
-        </div>
+        <div id="list-header-container" style="flex: none; z-index: 20; background: var(--list-hdr-bg);"></div>
+        <div id="stop-list" style="flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;"></div>
     </div>
+    
+    <button id="mobile-fab-toggle" class="floating-fab" style="display:none;">
+        <i class="fa-solid fa-map"></i>
+    </button>
 </div>
 
-<div id="empty-state-container">
-    <div id="main-dropzone" style="border: 2px dashed var(--border-color); border-radius: 12px; cursor: pointer; transition: 0.2s; background: var(--bg-panel); display: flex; flex-direction: column; align-items: center; justify-content: center; width: 400px; max-width: 90vw; height: 300px;">
-        <i class="fa-solid fa-cloud-arrow-up" style="font-size: 48px; color: var(--accent); margin-bottom: 20px;"></i>
-        <h3 style="margin: 0 0 10px 0; color: var(--text-main); font-weight: 400;">No Orders Found</h3>
-        <p style="color: var(--text-muted); font-size: 14px; margin: 0; font-weight: 400; line-height: 1.5;">Click or drag and drop a CSV file here to upload your orders and begin routing.</p>
-        <button class="modal-primary-btn" style="margin-top: 24px;" onclick="event.stopPropagation(); document.getElementById('main-file-input').click()">Browse Files</button>
-        <input type="file" id="main-file-input" accept=".csv" style="display: none;">
-    </div>
-</div>
-
-<div id="modal-overlay"><div id="modal-content" class="modal-box"></div></div>
+<div id="modal-overlay"><div class="modal-box" id="modal-content"></div></div>
 
 <div id="unmatched-modal">
-    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-        <h3 id="unmatched-modal-title" style="margin-top: 0; font-weight: 400; margin-bottom: 20px; font-size: 18px;">Match Address</h3>
-        <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">The following address could not be automatically located on the map. Please provide the exact coordinates or a corrected address.</p>
-        
-        <div style="background: var(--bg-base); padding: 12px 16px; border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 20px;">
-            <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;">Original Address</div>
-            <div id="unmatched-original-address" style="font-weight: 500; font-size: 15px;"></div>
+    <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; overflow: hidden; margin: auto;">
+        <div id="unmatched-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-panel); opacity: 0.9; z-index: 50; flex-direction: column; align-items: center; justify-content: center;">
+            <div class="loader" style="width: 36px; height: 36px; margin-bottom: 12px; border-width: 3px;"></div>
+            <div style="color: var(--text-main); font-weight: 400; font-size: 14px;">Validating...</div>
         </div>
-
-        <div style="margin-bottom: 20px;">
-            <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">Corrected Address (Optional)</label>
-            <input type="text" id="unmatched-corrected" class="form-control" placeholder="Enter a valid street address">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 id="unmatched-modal-title" style="margin: 0; font-size: 18px; font-weight: 400;">Match Addresses</h3>
         </div>
-
-        <div class="grid-2-col" style="margin-bottom: 24px;">
-            <div>
-                <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">Latitude</label>
-                <input type="number" step="any" id="unmatched-lat" class="form-control" placeholder="e.g. 32.776">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">The following address could not be automatically matched. Please provide coordinates or a corrected address.</p>
+        <div class="form-group">
+            <label>Order Address</label>
+            <div id="unmatched-original-address" style="padding: 10px 12px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; color: var(--text-main); word-break: break-word;"></div>
+        </div>
+        <div class="grid-2-col" style="margin-bottom: 15px;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label>Latitude</label>
+                <input type="number" id="unmatched-lat" class="form-control" placeholder="e.g. 32.776" step="any">
             </div>
-            <div>
-                <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">Longitude</label>
-                <input type="number" step="any" id="unmatched-lng" class="form-control" placeholder="e.g. -96.797">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label>Longitude</label>
+                <input type="number" id="unmatched-lng" class="form-control" placeholder="e.g. -96.797" step="any">
             </div>
         </div>
-
-        <div id="unmatched-error" style="color: var(--red); font-size: 13px; margin-bottom: 16px; display: none;"></div>
-
+        <div style="display: flex; align-items: center; margin: 15px 0;">
+            <div style="flex-grow: 1; height: 1px; background: var(--border-color);"></div>
+            <span style="padding: 0 10px; color: var(--text-muted); font-size: 11px; font-weight: 400; text-transform: uppercase;">Or</span>
+            <div style="flex-grow: 1; height: 1px; background: var(--border-color);"></div>
+        </div>
+        <div class="form-group" style="margin-bottom: 24px;">
+            <label>Corrected Address</label>
+            <input type="text" id="unmatched-corrected" class="form-control" placeholder="Enter a valid address to search...">
+            <div id="unmatched-error" style="color: var(--red); font-size: 12px; font-weight: 400; margin-top: 6px; display: none;">Address not found. Please try again or enter coordinates.</div>
+        </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <button id="btn-unmatched-skip" style="padding: 10px 16px; background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s;">Skip Order</button>
+            <button id="btn-unmatched-skip" style="padding: 10px 16px; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 6px; font-size: 14px; font-weight: 400; cursor: pointer; transition: 0.2s;">Skip</button>
             <button id="btn-unmatched-submit" class="modal-primary-btn">Match Coordinates</button>
         </div>
     </div>
 </div>
-<div id="unmatched-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 10001; align-items: center; justify-content: center; flex-direction: column;">
-    <div class="loader"></div>
-    <div style="color: white; font-size: 16px;">Resolving Address...</div>
-</div>
 
-<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script type="module" src="app.js"></script>
 
+<script>
+    window.syncBodyHeight = function() {
+        document.body.style.height = (window.innerHeight - 200) + 'px';
+        const mapWrapper = document.getElementById('map-wrapper');
+        const sidebar = document.getElementById('sidebar');
+        if (mapWrapper) mapWrapper.style.minHeight = '0';
+        if (sidebar) sidebar.style.minHeight = '0';
+        const map = getMapInstance();
+        if (map) map.resize();
+    }
+    window.addEventListener('resize', window.syncBodyHeight);
+    document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
+    window.syncBodyHeight();
+</script>
 </body>
 </html>
