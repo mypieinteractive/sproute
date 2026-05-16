@@ -1,9 +1,8 @@
-/* Dashboard - V18.17 */
+/* Dashboard - V18.18 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added explicit checks to empty-state handling to ensure hlZone dynamically reverts to flex-basis 'auto' to keep header buttons fully visible. */
-/* 2. updateSummary function completely ignores global order count visibility hiding during 0-stop state, allowing users to see they have "0 Orders". */
-/* 3. Re-injected (Required) labels inside showAddOrderModal() explicitly marked with a soft red style. */
+/* 1. Updated metaHtml condition to explicitly target the new consolidated 'managersmall' view mode. */
+/* 2. Simplified map resizing logic by completely removing the mobile touch/drag handle events, as the new managersmall split view is fixed/static layout. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -400,7 +399,7 @@ export function render() {
             }
 
             const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
-            let metaHtml = (Config.viewMode === 'managermobile' || Config.viewMode === 'managermobilesplit') ? `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>` : '';
+            let metaHtml = (Config.viewMode === 'managersmall') ? `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>` : '';
 
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
@@ -1346,32 +1345,29 @@ document.addEventListener('drop', (e) => {
 
 const resizerEl = document.getElementById('resizer'); const sidebarEl = document.getElementById('sidebar'); const mapWrapEl = document.getElementById('map-wrapper');
 let isResizing = false;
-function startResize(e) { if(!Config.isManagerView) return; isResizing = true; resizerEl.classList.add('active'); document.body.style.cursor = Config.viewMode === 'managermobile' ? 'row-resize' : 'col-resize'; mapWrapEl.style.pointerEvents = 'none'; }
+function startResize(e) { 
+    if(!Config.isManagerView || Config.viewMode === 'managersmall') return; 
+    isResizing = true; 
+    resizerEl.classList.add('active'); 
+    document.body.style.cursor = 'col-resize'; 
+    mapWrapEl.style.pointerEvents = 'none'; 
+}
 resizerEl.addEventListener('mousedown', startResize); resizerEl.addEventListener('touchstart', (e) => { startResize(e.touches[0]); }, {passive: false});
 
 function performResize(e) {
     if (!isResizing) return;
-    let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); let clientY = e.clientY ?? (e.touches ? e.touches[0].clientY : 0);
+    let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); 
     
-    let containerHeight = document.body.clientHeight;
+    let newWidth = window.innerWidth - clientX; 
     
-    if (Config.viewMode === 'managermobile') {
-        let newHeight = containerHeight - clientY; 
-        if (newHeight < 200) newHeight = 200; 
-        if (newHeight > containerHeight - 200) newHeight = containerHeight - 200;
-        sidebarEl.style.height = newHeight + 'px'; sidebarEl.style.flex = 'none'; mapWrapEl.style.height = (containerHeight - newHeight - resizerEl.offsetHeight) + 'px'; mapWrapEl.style.flex = 'none';
-    } else {
-        let newWidth = window.innerWidth - clientX; 
-        
-        let maxListWidth = Math.max(450, window.innerWidth - 620);
-        if (newWidth > maxListWidth) newWidth = maxListWidth;
-        if (newWidth < 450) newWidth = 450;
-        
-        sidebarEl.style.width = newWidth + 'px';
-        
-        const hlZone = document.getElementById('header-list-zone');
-        if (hlZone) hlZone.style.width = newWidth + 'px';
-    }
+    let maxListWidth = Math.max(450, window.innerWidth - 620);
+    if (newWidth > maxListWidth) newWidth = maxListWidth;
+    if (newWidth < 450) newWidth = 450;
+    
+    sidebarEl.style.width = newWidth + 'px';
+    
+    const hlZone = document.getElementById('header-list-zone');
+    if (hlZone) hlZone.style.width = newWidth + 'px';
 }
 
 document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
