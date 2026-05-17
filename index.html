@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 
-<body class="view-manager manager-all-inspectors empty-state-active">
+<body class="view-manager manager-all-inspectors empty-state-active split-show-list">
 
 <div id="processing-overlay" style="display: flex;">
     <div class="spinner-container">
@@ -49,11 +49,19 @@
             <div id="inspector-dropdown-wrapper" style="display: none;">
                 <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 400; height: 30px;"></select>
             </div>
-            <div class="rocker-switch">
-                <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
-                <label for="view-detailed">Detailed</label>
-                <input type="radio" id="view-compact" name="view-mode" value="compact" onchange="setDisplayMode('compact')">
-                <label for="view-compact">Compact</label>
+            <div id="contextual-rocker-wrapper" style="width: 160px; display: flex; flex: none;">
+                <div class="rocker-switch" id="list-mode-rocker">
+                    <input type="radio" id="view-detailed" name="view-mode" value="detailed" checked onchange="setDisplayMode('detailed')">
+                    <label for="view-detailed">Detailed</label>
+                    <input type="radio" id="view-compact" name="view-mode" value="compact" onchange="setDisplayMode('compact')">
+                    <label for="view-compact">Compact</label>
+                </div>
+                <div class="rocker-switch" id="map-mode-rocker">
+                    <input type="radio" id="map-pan" name="map-mode" value="pan" checked onchange="handleMapModeChange('pan')">
+                    <label for="map-pan">Pan</label>
+                    <input type="radio" id="map-select" name="map-mode" value="select" onchange="handleMapModeChange('select')">
+                    <label for="map-select">Select</label>
+                </div>
             </div>
         </div>
         <div id="header-right-controls">
@@ -167,7 +175,6 @@
         <div id="map-container" style="flex: 1; position: relative; min-height: 0;">
             <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
             <div class="map-overlay-btns">
-                <button id="mobile-lasso-toggle" class="floating-btn" onclick="toggleMobileLasso()" style="display:none;"><i class="fa-solid fa-hand-pointer"></i> Select Mode</button>
                 <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()"><i class="fa-solid fa-expand"></i> Reset View</button>
                 <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()"><i class="fa-solid fa-route"></i> Remove selected from route</button>
                 <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()"><i class="fa-solid fa-trash-can"></i> Delete selected</button>
