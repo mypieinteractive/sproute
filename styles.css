@@ -1,10 +1,7 @@
-/* Dashboard - V18.30 */
+/* Dashboard - V18.31 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added flex: 1 to rocker-switch labels and width: 100% to the switches to ensure they fill the new fixed-width wrapper evenly. */
-/* 2. Added contextual display rules for #map-mode-rocker and #list-mode-rocker to swap them cleanly in managersmall. */
-/* 3. Replaced basic display block overrides for split-show-list #stop-list with explicit flex-grow instructions to fix the blank screen bug. */
-/* 4. Removed old #mobile-lasso-toggle CSS. */
+/* 1. Added !important to body.view-managersmall display: contents rules for #app-body-wrapper, #map-wrapper, and #sidebar to properly flatten flexbox structure and fix the blank list screen bug. */
 
 :root { 
     /* Base / Accent */
@@ -149,8 +146,8 @@ body.view-managersmall #header-resizer-gap { display: none !important; }
 
 /* Managersmall Shell Layout */
 body.view-managersmall { overflow: hidden; height: 100%; }
-body.view-managersmall #app-body-wrapper { display: contents; } /* Break flex constraint so items sequence globally */
-body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents; }
+body.view-managersmall #app-body-wrapper { display: contents !important; } /* Break flex constraint so items sequence globally */
+body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents !important; }
 body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
 body.view-managersmall #mobile-view-toggle { order: 4; display: flex !important; }
 body.view-managersmall #routing-controls { order: 5; }
