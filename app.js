@@ -1,8 +1,7 @@
-/* Dashboard - V18.6 */
+/* Dashboard - V18.7 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Removed managersmall from cooperativeGestures condition so 1-finger panning works on mobile views. */
-/* 2. Imported and attached toggleMobileLasso to the global window object. */
+/* 1. Changed initial body class injection for managersmall from split-show-map to split-show-list to ensure it defaults to List view on load. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -63,7 +62,7 @@ export const AppState = {
 };
 
 document.body.className = `view-${Config.viewMode} manager-all-inspectors empty-state-active`;
-if (Config.viewMode === 'managersmall') document.body.classList.add('split-show-map');
+if (Config.viewMode === 'managersmall') document.body.classList.add('split-show-list');
 
 const currentQuery = window.location.search;
 const lastQuery = sessionStorage.getItem('sproute_last_query');
