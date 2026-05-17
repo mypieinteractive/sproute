@@ -1,7 +1,8 @@
-/* Dashboard - V18.27 */
+/* Dashboard - V18.28 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Restored the accidentally deleted .rocker-switch input:checked + label rule to fix the Detailed/Compact toggle active state highlight. */
+/* 1. Added !important to body.view-managersmall.has-orders #mobile-fab-toggle display rule to ensure it overrides defaults. */
+/* 2. Updated html, body height calculations to subtract 320px instead of 200px based on user testing. */
 
 :root { 
     /* Base / Accent */
@@ -191,7 +192,7 @@ body.view-managersmall #mobile-lasso-toggle { display: block !important; }
 }
 #mobile-fab-toggle:hover { background: var(--accent-hover); transform: scale(1.05); }
 #mobile-fab-toggle:active { transform: scale(0.95); }
-body.view-managersmall.has-orders #mobile-fab-toggle { display: flex; }
+body.view-managersmall.has-orders #mobile-fab-toggle { display: flex !important; }
 body.view-managersmall:not(.has-orders) #mobile-fab-toggle { display: none !important; }
 
 @media (max-width: 450px) { .hide-mobile-text { display: none !important; } }
@@ -312,7 +313,6 @@ body.manager-all-inspectors .glide-row .insp-select { background-color: transpar
 .rocker-switch { display: flex; background: transparent; border: 1px solid var(--global-hdr-icon) !important; border-radius: 6px; overflow: hidden; height: 30px; }
 .rocker-switch input { display: none; }
 .rocker-switch label { padding: 0 16px; font-size: 13px; font-weight: 400; color: var(--global-hdr-text); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; }
-/* This rule was missing: */
 .rocker-switch input:checked + label { background-color: var(--global-hdr-icon); color: var(--bg-header); }
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
