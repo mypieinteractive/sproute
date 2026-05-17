@@ -1,11 +1,11 @@
-/* Dashboard - V18.34 */
+/* Dashboard - V18.35 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Un-hid #routing-controls from the split-show-map rules so it displays in both views. */
-/* 2. Added 30% opacity accent background to managersmall #routing-controls and tightened padding/gaps. */
-/* 3. Updated #global-summary-stats to justify-self: stretch and justify-content: space-between to push text to the edges. */
-/* 4. Added flex rules for #inspector-dropdown-wrapper and .insp-select to force it to stretch horizontally. */
-/* 5. Reduced vertical padding inside #global-header for managersmall. */
+/* 1. Changed routing module background opacity to 15% (0.15) for managersmall. */
+/* 2. Re-aligned managersmall summary text to flex-start and adjusted clamp math to prevent right-side clipping. */
+/* 3. Tightened .routing-module-core grid gap to 2px and adjusted #routing-controls padding to perfectly balance top/bottom spacing. */
+/* 4. Overrode inline padding on #routing-action-buttons > div using !important to prevent unequal vertical spacing. */
+/* 5. Set active rocker switch text color explicitly to #FFFFFF !important for better contrast. */
 
 :root { 
     /* Base / Accent */
@@ -125,8 +125,8 @@ body.view-managersmall #global-header {
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-rows: auto auto;
     height: auto !important;
-    padding: 10px 15px !important; /* Tighter vertical padding */
-    gap: 10px 8px; /* Tighter gap */
+    padding: 10px 15px !important; 
+    gap: 10px 8px; 
 }
 body.view-managersmall #header-map-zone,
 body.view-managersmall #header-list-zone {
@@ -136,8 +136,8 @@ body.view-managersmall #header-list-zone {
 body.view-managersmall #global-summary-stats {
     grid-column: 1; 
     grid-row: 1; 
-    justify-self: stretch; 
-    justify-content: space-between; /* Pushes halves to the edges */
+    justify-self: start; 
+    justify-content: flex-start; /* Left-justify items */
     width: 100%;
     container-type: inline-size; 
     min-width: 0;
@@ -147,7 +147,7 @@ body.view-managersmall #global-summary-stats {
 }
 body.view-managersmall #global-summary-stats > div,
 body.view-managersmall #global-summary-stats span {
-    font-size: clamp(9px, 4.5cqi, 14px) !important;
+    font-size: clamp(9px, 4cqi, 14px) !important; /* Slightly more aggressive shrink math to prevent clipping */
     white-space: nowrap;
 }
 
@@ -280,21 +280,26 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 /* Managersmall 2-Row Routing Controls Grid */
 body.view-managersmall #routing-controls { 
     height: auto !important; 
-    padding: 8px 15px !important; /* Tighter padding */
-    background-color: rgba(78, 118, 77, 0.3) !important; /* 30% Accent Green */
+    padding: 8px 15px 4px 15px !important; /* Top 8px, Bottom 4px for visual balance */
+    background-color: rgba(78, 118, 77, 0.15) !important; /* 15% Accent Green */
 }
 body.view-managersmall .routing-module-core {
     display: grid !important;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    gap: 8px 15px; /* Tighter gap */
+    gap: 2px 15px; /* Extremely tight vertical gap */
     width: 100%;
 }
 body.view-managersmall #parameters-container { display: contents !important; }
 body.view-managersmall #route-divider-group { grid-column: 1 / span 2; grid-row: 1; }
 body.view-managersmall #priority-container { grid-column: 1; grid-row: 2; justify-content: center; }
 body.view-managersmall #routing-action-buttons { grid-column: 2; grid-row: 2; width: 100% !important; border-left: none !important; }
-body.view-managersmall #routing-action-buttons > div { justify-content: flex-end !important; }
+
+/* Override inline paddings from action buttons */
+body.view-managersmall #routing-action-buttons > div { 
+    justify-content: flex-end !important; 
+    padding: 0 !important; 
+}
 
 
 .start-over-overlay {
@@ -371,7 +376,7 @@ body.manager-all-inspectors .glide-row .insp-select { background-color: transpar
 .rocker-switch { display: flex; background: transparent; border: 1px solid var(--global-hdr-icon) !important; border-radius: 6px; overflow: hidden; height: 30px; width: 100%; }
 .rocker-switch input { display: none; }
 .rocker-switch label { flex: 1; padding: 0 10px; font-size: 13px; font-weight: 400; color: var(--global-hdr-text); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; text-align: center; white-space: nowrap; }
-.rocker-switch input:checked + label { background-color: var(--global-hdr-icon); color: var(--bg-header); }
+.rocker-switch input:checked + label { background-color: var(--global-hdr-icon); color: #FFFFFF !important; }
 
 #map-mode-rocker { display: none; }
 
