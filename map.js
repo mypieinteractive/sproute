@@ -1,8 +1,7 @@
-/* Dashboard - V15.7 */
+/* Dashboard - V15.8 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Implemented toggleMobileLasso() functionality to allow single-finger touch box-selection on mobile devices when active. */
-/* 2. Added touchstart, touchmove, and touchend listeners directly to the map canvas to handle manual lasso drawing. */
+/* 1. Decoupled toggleMobileLasso() from the old button element to ensure map.dragPan.disable() correctly locks panning when Select mode is active via the rocker switch. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 
@@ -60,17 +59,10 @@ export function resetMapBounds() { if (map && initialBounds) map.fitBounds(initi
 
 export function toggleMobileLasso() {
     isMobileLassoActive = !isMobileLassoActive;
-    const btn = document.getElementById('mobile-lasso-toggle');
-    if (btn) {
+    if (map) {
         if (isMobileLassoActive) {
-            btn.classList.add('active');
-            btn.style.backgroundColor = 'var(--accent)';
-            btn.style.borderColor = 'var(--accent)';
             map.dragPan.disable();
         } else {
-            btn.classList.remove('active');
-            btn.style.backgroundColor = 'var(--summary-border)';
-            btn.style.borderColor = 'var(--sidebar-bg)';
             map.dragPan.enable();
         }
     }
