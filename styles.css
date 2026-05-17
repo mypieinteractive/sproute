@@ -1,7 +1,11 @@
-/* Dashboard - V18.32 */
+/* Dashboard - V18.33 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added explicit styling for .type-text to match the subtext font size, weight, and muted color. */
+/* 1. Restructured managersmall #global-header grid to 2 rows. Placed Summary, Undo, and Add buttons in top row. */
+/* 2. Used container queries (inline-size) on the Summary Text so it scales between Undo button and screen edge perfectly. */
+/* 3. Converted managersmall routing module into a 2-row grid to avoid horizontal scroll. */
+/* 4. Added padding-bottom to #stop-list in managersmall to prevent FAB obstruction. */
+/* 5. Maintained the .type-text styling added in previous version. */
 
 :root { 
     /* Base / Accent */
@@ -115,32 +119,60 @@ body.view-managersmall .map-overlay-btns {
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
 body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
 
-/* --- Managersmall 3-Row Header Grid --- */
+/* --- Managersmall Header Grid --- */
 body.view-managersmall #global-header {
     display: grid !important;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto;
     height: auto !important;
     padding: 16px 15px !important;
-    gap: 14px 0;
+    gap: 14px 8px;
 }
 body.view-managersmall #header-map-zone,
 body.view-managersmall #header-list-zone {
     display: contents !important;
 }
+
+body.view-managersmall #global-summary-stats {
+    grid-column: 1; 
+    grid-row: 1; 
+    justify-self: start; 
+    justify-content: flex-start;
+    width: 100%;
+    container-type: inline-size; /* For responsive auto-scaling */
+    min-width: 0;
+    gap: 6px !important;
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+body.view-managersmall #global-summary-stats > div,
+body.view-managersmall #global-summary-stats span {
+    font-size: clamp(9px, 4.5cqi, 14px) !important;
+    white-space: nowrap;
+}
+
+body.view-managersmall .hide-mobile-text { display: block !important; } /* Auto scale instead of hiding */
+@media (max-width: 450px) { body:not(.view-managersmall) .hide-mobile-text { display: none !important; } }
+
 body.view-managersmall #header-action-container {
-    grid-column: 1; grid-row: 1; justify-self: start;
+    grid-column: 2; 
+    grid-row: 1; 
+    justify-self: end;
 }
 body.view-managersmall #header-right-controls {
-    grid-column: 2; grid-row: 1; justify-self: end; display: flex; align-items: center;
+    grid-column: 3; 
+    grid-row: 1; 
+    justify-self: end; 
+    display: flex; 
+    align-items: center;
 }
 body.view-managersmall #header-list-zone > div:first-child {
-    grid-column: 1 / span 2; grid-row: 2; 
-    display: flex !important; justify-content: space-between !important; width: 100%; height: auto !important;
-}
-body.view-managersmall #global-summary-stats {
-    grid-column: 1 / span 2; grid-row: 3; 
-    justify-self: center; justify-content: center; width: 100%;
+    grid-column: 1 / span 3; 
+    grid-row: 2; 
+    display: flex !important; 
+    justify-content: space-between !important; 
+    width: 100%; 
+    height: auto !important;
 }
 body.view-managersmall #header-resizer-gap { display: none !important; }
 
@@ -153,7 +185,7 @@ body.view-managersmall #mobile-view-toggle { order: 4; display: flex !important;
 body.view-managersmall #routing-controls { order: 5; }
 body.view-managersmall #route-view-toggles { order: 6; }
 body.view-managersmall #list-header-container { order: 7; }
-body.view-managersmall #stop-list { order: 8; overflow-y: auto; flex: 1; min-height: 0; background: var(--sidebar-bg); }
+body.view-managersmall #stop-list { order: 8; overflow-y: auto; flex: 1; min-height: 0; background: var(--sidebar-bg); padding-bottom: 85px !important; }
 body.view-managersmall #map-container { order: 9; flex: 1; min-height: 0; position: relative; }
 body.view-managersmall #resizer { display: none; }
 
@@ -194,7 +226,6 @@ body.view-managersmall .endpoint-label-text { display: none !important; }
 body.view-managersmall.has-orders #mobile-fab-toggle { display: flex !important; }
 body.view-managersmall:not(.has-orders) #mobile-fab-toggle { display: none !important; }
 
-@media (max-width: 450px) { .hide-mobile-text { display: none !important; } }
 body.view-managersmall .header-action-btn { padding: 6px 10px; font-size: 12px; height: 32px; gap: 6px; }
 @media (max-width: 380px) {
     body.view-managersmall .header-action-btn span {
@@ -237,6 +268,22 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 .routing-module-wrapper { position: relative; display: flex; flex: 1; gap: 20px; height: 100%; align-items: center; }
 .routing-module-core { display: flex; flex: 1; gap: 20px; width: 100%; align-items: center; transition: opacity 0.2s, filter 0.2s; height: 100%; }
 .routing-module-core.staging-locked { opacity: 0.5; pointer-events: none; filter: grayscale(80%); }
+
+/* Managersmall 2-Row Routing Controls Grid */
+body.view-managersmall #routing-controls { height: auto !important; padding: 12px 15px !important; }
+body.view-managersmall .routing-module-core {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 12px 15px;
+    width: 100%;
+}
+body.view-managersmall #parameters-container { display: contents !important; }
+body.view-managersmall #route-divider-group { grid-column: 1 / span 2; grid-row: 1; }
+body.view-managersmall #priority-container { grid-column: 1; grid-row: 2; justify-content: center; }
+body.view-managersmall #routing-action-buttons { grid-column: 2; grid-row: 2; width: 100% !important; border-left: none !important; }
+body.view-managersmall #routing-action-buttons > div { justify-content: flex-end !important; }
+
 
 .start-over-overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
