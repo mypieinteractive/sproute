@@ -1,7 +1,7 @@
-/* Dashboard - V18.31 */
+/* Dashboard - V18.32 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added !important to body.view-managersmall display: contents rules for #app-body-wrapper, #map-wrapper, and #sidebar to properly flatten flexbox structure and fix the blank list screen bug. */
+/* 1. Added explicit styling for .type-text to match the subtext font size, weight, and muted color. */
 
 :root { 
     /* Base / Accent */
@@ -388,6 +388,8 @@ body.view-manager #resizer { display: block; border-top: none; }
 .compact .row-meta, .compact .row-details { display: none; }
 .row-meta { font-size: 12px; color: var(--row-text-muted); }
 .row-details { font-size: 11px; color: var(--row-text-muted); }
+
+.type-text { font-size: 11px; font-weight: 400; color: var(--row-text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
 
 .due-date-container { display: flex; align-items: center; padding: 0 10px; font-weight: 400; font-size: 18px; color: var(--row-text-main); margin-left: auto; }
 .due-date-container.due-today { color: var(--orange) !important; }
