@@ -45,9 +45,9 @@
     <div id="header-resizer-gap" style="width: 6px; flex: none; background: transparent;"></div>
 
     <div id="header-list-zone" style="width: 50%; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
-        <div style="display: flex; align-items: flex-end; gap: 15px; height: 38px;">
+        <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
-                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; width: auto; max-width: 100%; font-weight: 400; height: 30px;"></select>
+                <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; font-weight: 400; height: 30px;"></select>
             </div>
             <div id="contextual-rocker-wrapper" style="width: 160px; display: flex; flex: none;">
                 <div class="rocker-switch" id="list-mode-rocker">
@@ -66,7 +66,7 @@
         </div>
         <div id="header-right-controls">
             <div id="add-menu-wrapper" style="position: relative;">
-                <div class="header-action-btn primary-btn" style="padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center; height: 38px;">
+                <div class="header-action-btn primary-btn" style="padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center;">
                     <i class="fa-solid fa-plus" style="color: white;"></i> <span style="margin-left: 6px; color: white;">Add</span>
                 </div>
                 <div class="add-dropdown-menu" style="right: 0;">
