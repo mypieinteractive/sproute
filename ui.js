@@ -1,9 +1,7 @@
-/* Dashboard - V18.29 */
+/* Dashboard - V18.30 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added logic in render() to force managersmall into 'split-show-list' mode on initial load. */
-/* 2. Added window.handleMapModeChange() wrapper to support the upcoming Pan/Select rocker switch. */
-/* 3. Updated window.syncBodyHeight calculation to subtract 320px for the new height layout. */
+/* 1. Removed the injected {app} | {client} metaHtml subtext from the managersmall list rows to clean up the UI. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -401,7 +399,6 @@ export function render() {
             }
 
             const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
-            let metaHtml = (Config.viewMode === 'managersmall') ? `<div class="meta-text">${s.app || '--'} | ${s.client || '--'}</div>` : '';
 
             item.innerHTML = `
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
@@ -409,7 +406,6 @@ export function render() {
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
                 <div class="col-addr">
                     <div class="addr-text">${(s.address||'').split(',')[0]}</div>
-                    ${metaHtml}
                     <div class="type-text">${s.type || ''}</div>
                 </div>
                 <div class="col-app">${s.app || '--'}</div>
