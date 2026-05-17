@@ -1,8 +1,10 @@
-/* Dashboard - V18.28 */
+/* Dashboard - V18.30 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added !important to body.view-managersmall.has-orders #mobile-fab-toggle display rule to ensure it overrides defaults. */
-/* 2. Updated html, body height calculations to subtract 320px instead of 200px based on user testing. */
+/* 1. Added flex: 1 to rocker-switch labels and width: 100% to the switches to ensure they fill the new fixed-width wrapper evenly. */
+/* 2. Added contextual display rules for #map-mode-rocker and #list-mode-rocker to swap them cleanly in managersmall. */
+/* 3. Replaced basic display block overrides for split-show-list #stop-list with explicit flex-grow instructions to fix the blank screen bug. */
+/* 4. Removed old #mobile-lasso-toggle CSS. */
 
 :root { 
     /* Base / Accent */
@@ -90,7 +92,7 @@ body.drag-override-empty #empty-state-container {
 
 /* Hide unneeded header controls during empty state */
 body.empty-state-active #inspector-dropdown-wrapper,
-body.empty-state-active .rocker-switch {
+body.empty-state-active #contextual-rocker-wrapper {
     display: none !important;
 }
 
@@ -158,13 +160,15 @@ body.view-managersmall #stop-list { order: 8; overflow-y: auto; flex: 1; min-hei
 body.view-managersmall #map-container { order: 9; flex: 1; min-height: 0; position: relative; }
 body.view-managersmall #resizer { display: none; }
 
+/* Managersmall Split View Display Logic */
 body.view-managersmall.split-show-map #stop-list,
 body.view-managersmall.split-show-map #list-header-container,
 body.view-managersmall.split-show-map #routing-controls,
 body.view-managersmall.split-show-map #route-view-toggles { display: none !important; }
 body.view-managersmall.split-show-map #map-container { display: flex !important; flex-direction: column; }
+
 body.view-managersmall.split-show-list #map-container { display: none !important; }
-body.view-managersmall.split-show-list #stop-list { display: block !important; }
+body.view-managersmall.split-show-list #stop-list { display: block !important; flex: 1 1 auto !important; min-height: 0 !important; width: 100%; }
 
 body.view-managersmall #map-hint, body.view-inspector #map-hint { display: none !important; }
 body.view-managersmall #header-list-zone { width: auto !important; flex: 1; }
@@ -179,8 +183,6 @@ body.view-managersmall .col-num { margin-left: 2px; width: 26px; }
 body.view-managersmall .num-badge { width: 22px; height: 22px; font-size: 11px; }
 body.view-managersmall .endpoint-controls-wrapper { padding-left: 4px; }
 body.view-managersmall .endpoint-label-text { display: none !important; }
-
-body.view-managersmall #mobile-lasso-toggle { display: block !important; }
 
 #mobile-fab-toggle {
     position: absolute; bottom: 20px; right: 20px;
@@ -309,11 +311,18 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 .glide-row .insp-select option { background-color: var(--sidebar-bg); color: var(--row-text-main); }
 body.manager-all-inspectors .glide-row .insp-select { background-color: transparent !important; border: none !important; padding: 0 16px 0 0 !important; height: auto !important; }
 
-/* -- Detailed / Compact Rocker Switch -- */
-.rocker-switch { display: flex; background: transparent; border: 1px solid var(--global-hdr-icon) !important; border-radius: 6px; overflow: hidden; height: 30px; }
+/* -- Contextual Rocker Switches -- */
+.rocker-switch { display: flex; background: transparent; border: 1px solid var(--global-hdr-icon) !important; border-radius: 6px; overflow: hidden; height: 30px; width: 100%; }
 .rocker-switch input { display: none; }
-.rocker-switch label { padding: 0 16px; font-size: 13px; font-weight: 400; color: var(--global-hdr-text); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; }
+.rocker-switch label { flex: 1; padding: 0 10px; font-size: 13px; font-weight: 400; color: var(--global-hdr-text); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s background, 0.2s color; text-align: center; white-space: nowrap; }
 .rocker-switch input:checked + label { background-color: var(--global-hdr-icon); color: var(--bg-header); }
+
+#map-mode-rocker { display: none; }
+
+/* In managersmall, swap the rockers when switching views */
+body.view-managersmall.split-show-map #list-mode-rocker { display: none !important; }
+body.view-managersmall.split-show-map #map-mode-rocker { display: flex !important; }
+
 
 input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--accent); cursor: pointer; margin-top: -6px; }
