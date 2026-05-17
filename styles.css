@@ -1,11 +1,11 @@
-/* Dashboard - V18.33 */
+/* Dashboard - V18.34 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Restructured managersmall #global-header grid to 2 rows. Placed Summary, Undo, and Add buttons in top row. */
-/* 2. Used container queries (inline-size) on the Summary Text so it scales between Undo button and screen edge perfectly. */
-/* 3. Converted managersmall routing module into a 2-row grid to avoid horizontal scroll. */
-/* 4. Added padding-bottom to #stop-list in managersmall to prevent FAB obstruction. */
-/* 5. Maintained the .type-text styling added in previous version. */
+/* 1. Un-hid #routing-controls from the split-show-map rules so it displays in both views. */
+/* 2. Added 30% opacity accent background to managersmall #routing-controls and tightened padding/gaps. */
+/* 3. Updated #global-summary-stats to justify-self: stretch and justify-content: space-between to push text to the edges. */
+/* 4. Added flex rules for #inspector-dropdown-wrapper and .insp-select to force it to stretch horizontally. */
+/* 5. Reduced vertical padding inside #global-header for managersmall. */
 
 :root { 
     /* Base / Accent */
@@ -125,8 +125,8 @@ body.view-managersmall #global-header {
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-rows: auto auto;
     height: auto !important;
-    padding: 16px 15px !important;
-    gap: 14px 8px;
+    padding: 10px 15px !important; /* Tighter vertical padding */
+    gap: 10px 8px; /* Tighter gap */
 }
 body.view-managersmall #header-map-zone,
 body.view-managersmall #header-list-zone {
@@ -136,10 +136,10 @@ body.view-managersmall #header-list-zone {
 body.view-managersmall #global-summary-stats {
     grid-column: 1; 
     grid-row: 1; 
-    justify-self: start; 
-    justify-content: flex-start;
+    justify-self: stretch; 
+    justify-content: space-between; /* Pushes halves to the edges */
     width: 100%;
-    container-type: inline-size; /* For responsive auto-scaling */
+    container-type: inline-size; 
     min-width: 0;
     gap: 6px !important;
     flex-wrap: nowrap;
@@ -151,7 +151,7 @@ body.view-managersmall #global-summary-stats span {
     white-space: nowrap;
 }
 
-body.view-managersmall .hide-mobile-text { display: block !important; } /* Auto scale instead of hiding */
+body.view-managersmall .hide-mobile-text { display: block !important; }
 @media (max-width: 450px) { body:not(.view-managersmall) .hide-mobile-text { display: none !important; } }
 
 body.view-managersmall #header-action-container {
@@ -176,9 +176,18 @@ body.view-managersmall #header-list-zone > div:first-child {
 }
 body.view-managersmall #header-resizer-gap { display: none !important; }
 
+/* Flex rules for dropdown in managersmall */
+body.view-managersmall #inspector-dropdown-wrapper {
+    flex: 1;
+    min-width: 0;
+}
+body.view-managersmall .insp-select {
+    width: 100% !important;
+}
+
 /* Managersmall Shell Layout */
 body.view-managersmall { overflow: hidden; height: 100%; }
-body.view-managersmall #app-body-wrapper { display: contents !important; } /* Break flex constraint so items sequence globally */
+body.view-managersmall #app-body-wrapper { display: contents !important; }
 body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents !important; }
 body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
 body.view-managersmall #mobile-view-toggle { order: 4; display: flex !important; }
@@ -192,7 +201,6 @@ body.view-managersmall #resizer { display: none; }
 /* Managersmall Split View Display Logic */
 body.view-managersmall.split-show-map #stop-list,
 body.view-managersmall.split-show-map #list-header-container,
-body.view-managersmall.split-show-map #routing-controls,
 body.view-managersmall.split-show-map #route-view-toggles { display: none !important; }
 body.view-managersmall.split-show-map #map-container { display: flex !important; flex-direction: column; }
 
@@ -270,12 +278,16 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 .routing-module-core.staging-locked { opacity: 0.5; pointer-events: none; filter: grayscale(80%); }
 
 /* Managersmall 2-Row Routing Controls Grid */
-body.view-managersmall #routing-controls { height: auto !important; padding: 12px 15px !important; }
+body.view-managersmall #routing-controls { 
+    height: auto !important; 
+    padding: 8px 15px !important; /* Tighter padding */
+    background-color: rgba(78, 118, 77, 0.3) !important; /* 30% Accent Green */
+}
 body.view-managersmall .routing-module-core {
     display: grid !important;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    gap: 12px 15px;
+    gap: 8px 15px; /* Tighter gap */
     width: 100%;
 }
 body.view-managersmall #parameters-container { display: contents !important; }
