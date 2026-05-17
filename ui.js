@@ -1,8 +1,9 @@
-/* Dashboard - V18.20 */
+/* Dashboard - V18.29 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Removed dynamic element creation for #mobile-fab-toggle since it is now natively embedded inside index.html's #app-body-wrapper. */
-/* 2. Streamlined the FAB view-toggling logic to directly hook into the pre-existing DOM element. */
+/* 1. Added logic in render() to force managersmall into 'split-show-list' mode on initial load. */
+/* 2. Added window.handleMapModeChange() wrapper to support the upcoming Pan/Select rocker switch. */
+/* 3. Updated window.syncBodyHeight calculation to subtract 320px for the new height layout. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -33,7 +34,7 @@ export function customAlert(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
+            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
                 <h3 style="margin-top:0; font-weight: 400;">Alert</h3>
                 <p style="font-size: 15px; margin-bottom: 20px; font-weight: 400;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
@@ -51,7 +52,7 @@ export function customConfirm(msg) {
         mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
         m.style.display = 'flex';
         mc.innerHTML = `
-            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
+            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
                 <h3 style="margin-top:0; font-weight: 400;">Confirm</h3>
                 <p style="font-size: 15px; margin-bottom: 20px; font-weight: 400;">${msg}</p>
                 <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -546,6 +547,9 @@ export function render() {
         }
 
         if (Config.viewMode === 'managersmall') {
+            if (!document.body.classList.contains('split-show-map') && !document.body.classList.contains('split-show-list')) {
+                document.body.classList.add('split-show-list');
+            }
             let fab = document.getElementById('mobile-fab-toggle');
             if (fab) {
                 fab.onclick = () => {
@@ -988,7 +992,7 @@ export function showAddOrderModal() {
     let appHtml = `<div class="form-group"><label>App</label><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="add-app-container">${appBtns}</div></div>`;
 
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto; margin: auto;">
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto; margin: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;"><h3 style="margin: 0; font-size: 18px; font-weight: 400;">Add Order</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="add-close-icon"></i></div>
             ${inspectorHtml} ${appHtml}
             <div class="form-group"><label>Address <span style="color: var(--red); font-size: 11px; margin-left: 6px; opacity: 0.8; font-weight: normal;">(Required)</span></label><input type="text" id="add-address" class="form-control" placeholder="123 Main St, City, ST 12345"></div>
@@ -1052,7 +1056,7 @@ export function showUploadModal(file) {
     let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
 
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 400;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="upload-close-icon"></i></div>
             ${inspectorHtml}
             <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 400;">App</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
@@ -1092,7 +1096,7 @@ export function handleOpenEmailModal() {
     mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
     
     mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 400;">Customize Email Message</h3>
             <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
@@ -1285,7 +1289,7 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     finally { hideOverlay(); }
 };
 
-window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90vw; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;"><h3 style="margin-top:0; font-weight:400;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button class="modal-primary-btn" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:10px 24px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight:400;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
+window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;"><h3 style="margin-top:0; font-weight:400;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button class="modal-primary-btn" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:10px 24px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight:400;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
 window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; window.launchMaps(p, la, ln, addr); };
 window.launchMaps = function(p, la, ln, addr) { let safeAddr = encodeURIComponent(addr || "Destination"); if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; };
 
@@ -1395,6 +1399,14 @@ function performResize(e) {
 document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
 function stopResize() { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizerEl.classList.remove('active'); mapWrapEl.style.pointerEvents = 'auto'; resizeMap(); } }
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
+
+window.currentMobileMapMode = 'pan';
+window.handleMapModeChange = function(mode) {
+    if (mode !== window.currentMobileMapMode) {
+        if (typeof window.toggleMobileLasso === 'function') window.toggleMobileLasso();
+        window.currentMobileMapMode = mode;
+    }
+};
 
 window.syncBodyHeight = function() {
     document.body.style.height = (window.innerHeight - 320) + 'px';
