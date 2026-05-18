@@ -1,7 +1,7 @@
-/* Dashboard - V18.45 */
+/* Dashboard - V18.46 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated window.syncBodyHeight() to multiply window.innerHeight by 0.9. This ensures the JavaScript fallback exactly matches the new 90vh/90dvh CSS limits and prevents JS from forcing the container back to 100%. */
+/* 1. Reverted the 0.9 math subtraction from syncBodyHeight() that was conflicting with the iframe scaling. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1190,7 +1190,7 @@ export function handleOpenEmailModal() {
                 m.style.display = 'none';
                 AppState.stops.forEach(s => { if (String(s.driverId) === String(AppState.currentInspectorFilter) && isRouteAssigned(s.status)) { s.routeState = 'Dispatched'; s.status = 'Dispatched'; } });
                 if (Config.isManagerView) { const filterEl = document.getElementById('inspector-filter'); if (filterEl) filterEl.value = 'all'; window.handleInspectorFilterChange('all'); } else { triggerFullRender(); }
-                const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+                const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
                 setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
             } else throw new Error("Dispatch failed");
         } catch (e) {
@@ -1217,7 +1217,7 @@ async function nextUnmatchedAddress() {
     if (AppState.currentUnmatchedIndex < AppState.unmatchedAddressesQueue.length) openUnmatchedModal();
     else {
         document.getElementById('unmatched-modal').style.display = 'none';
-        const toast = document.createElement('div'); toast.innerText = 'Address matching complete.'; toast.style.cssText = 'position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+        const toast = document.createElement('div'); toast.innerText = 'Address matching complete.'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2000);
         await loadData(); 
     }
@@ -1435,7 +1435,7 @@ window.syncBodyHeight = function() {
         // CSS absolute positioning (top/bottom) will handle framing!
         document.body.style.height = ''; 
     } else {
-        document.body.style.height = ((window.innerHeight * 0.9) - 320) + 'px';
+        document.body.style.height = (window.innerHeight - 320) + 'px';
     }
     
     const mapWrapper = document.getElementById('map-wrapper');
