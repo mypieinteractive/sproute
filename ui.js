@@ -1,7 +1,7 @@
-/* Dashboard - V18.33 */
+/* Dashboard - V18.41 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated window.syncBodyHeight to abandon JS height math for mobile and hand control over to CSS absolute positioning (top/bottom) to bypass iframe reporting bugs. */
+/* 1. Added routingControls.setAttribute('data-state', currentState) to updateRoutingUI to allow styles.css to target the routing state directly. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -220,6 +220,7 @@ export function updateRoutingUI() {
     }
     
     AppState.currentRoutingState = currentState;
+    if (routingControls) routingControls.setAttribute('data-state', currentState);
 
     let maxCluster = -1;
     targetStops.forEach(s => {
