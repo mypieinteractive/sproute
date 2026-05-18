@@ -1,9 +1,9 @@
-/* Dashboard - V18.42 */
+/* Dashboard - V18.43 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added body.view-managersmall .module-action-btn { min-height: 38px; } to restore button heights. */
-/* 2. Removed #route-view-toggles from the split-show-map hiding rule so it remains visible on both views. */
-/* 3. Styled body.view-managersmall #route-view-toggles to share the same background color as #routing-controls and removed the border between them to create a seamless container. */
+/* 1. Added a flex-basis width calculation to the first routing action button (Start Over) in managersmall to exactly match a 3-button toggle layout. Forced the gap to 8px to ensure perfect alignment. */
+/* 2. Updated managersmall #route-view-toggles padding to 4px on the top. */
+/* 3. Moved body.view-managersmall .map-overlay-btns to top: 15px instead of bottom: 85px. */
 
 :root { 
     /* Base / Accent */
@@ -117,7 +117,7 @@ body.view-inspector .map-overlay-btns {
 }
 
 body.view-managersmall .map-overlay-btns {
-    top: auto !important; bottom: 85px !important; right: 20px !important; display: flex; flex-direction: column;
+    top: 15px !important; bottom: auto !important; right: 20px !important; display: flex; flex-direction: column;
 }
 
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
@@ -301,7 +301,7 @@ body.view-managersmall #routing-controls {
 
 body.view-managersmall #route-view-toggles {
     background-color: rgba(78, 118, 77, 0.15) !important;
-    padding: 0 8px 8px 8px !important; 
+    padding: 4px 8px 8px 8px !important; 
     border-top: none !important;
     border-bottom: 1px solid var(--route-mod-border) !important;
 }
@@ -329,9 +329,14 @@ body.view-managersmall #routing-controls:not([data-state="Pending"]) #parameters
 body.view-managersmall #routing-controls:not([data-state="Pending"]) #routing-action-buttons { width: 100% !important; border-left: none !important; }
 
 /* Override inline paddings and margins for extreme vertical compression */
-body.view-managersmall #routing-action-buttons > div { padding: 0 !important; }
+body.view-managersmall #routing-action-buttons > div { padding: 0 !important; gap: 8px !important; }
 body.view-managersmall #routing-controls[data-state="Pending"] #routing-action-buttons > div { justify-content: flex-end !important; }
 body.view-managersmall #routing-controls:not([data-state="Pending"]) #routing-action-buttons > div { justify-content: center !important; }
+
+/* Lock the left action button (Start Over) to exactly match the width of a toggle button in a 3-button layout */
+body.view-managersmall #routing-action-buttons > div > .module-action-btn:first-child:not(:last-child) {
+    flex: 0 0 calc((100% - 16px) / 3) !important;
+}
 
 body.view-managersmall #priority-container label { margin-bottom: 0px !important; line-height: 1 !important; }
 body.view-managersmall #priority-container input[type=range] { margin-bottom: 0px !important; margin-top: 2px !important; }
