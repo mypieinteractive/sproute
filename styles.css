@@ -1,7 +1,7 @@
-/* Dashboard - V18.44 */
+/* Dashboard - V18.45 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Changed position: fixed to position: absolute for #empty-state-container, #modal-overlay, #processing-overlay, and #unmatched-modal so they safely vertically center within the restricted height boundaries of the body rather than the overflow boundary of the iframe window. */
+/* 1. Added an offset rule for the empty state container in managersmall view (bottom: -400px !important) to counteract the shortened body height and ensure the dropzone stays perfectly vertically centered on the device screen. */
 
 :root { 
     /* Base / Accent */
@@ -71,8 +71,8 @@ html {
 
 body { 
     margin: 0; padding: 0; 
-    height: calc(90vh - 320px);
-    height: calc(90dvh - 320px);
+    height: calc(100vh - 320px);
+    height: calc(100dvh - 320px);
     width: 100%; 
     position: fixed; 
     display: flex; flex-direction: column; 
@@ -89,6 +89,11 @@ body {
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
     display: flex; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
+}
+
+body.view-managersmall.empty-state-active #empty-state-container,
+body.view-managersmall.drag-override-empty #empty-state-container { 
+    bottom: -400px !important; 
 }
 
 #main-dropzone { padding: 32px 20px; box-sizing: border-box; text-align: center; }
@@ -195,7 +200,7 @@ body.view-managersmall {
     top: 0 !important; 
     
     /* ---> ADJUST THE 60px BELOW TO FIND THE PERFECT MOBILE FIT <--- */
-    bottom: 0px !important; 
+    bottom: 400px !important; 
     
     height: auto !important; 
     width: 100% !important;
