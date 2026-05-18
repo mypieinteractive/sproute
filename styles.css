@@ -1,4 +1,4 @@
-/* Dashboard - V18.37 */
+/* Dashboard - V18.38 */
 /* FILE: styles.css */
 /* Changes: */
 /* 1. Split html and body rules to untangle the height logic. HTML now gets native 100% height, while body retains the desktop offsets. */
@@ -189,7 +189,7 @@ body.view-managersmall .insp-select {
 }
 
 /* Managersmall Shell Layout */
-body.view-managersmall { overflow: hidden; height: calc(100% - 320px) !important; }
+body.view-managersmall { overflow: hidden; height: 100% !important; }
 body.view-managersmall #app-body-wrapper { display: contents !important; }
 body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents !important; }
 body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
