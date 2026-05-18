@@ -1,8 +1,8 @@
-/* Dashboard - V18.39 */
+/* Dashboard - V18.40 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Split html and body rules. html is set to 100%. */
-/* 2. Updated body.view-managersmall to use absolute positioning (top/bottom) instead of heights to bypass iOS/iframe scaling bugs. */
+/* 1. Adjusted body.view-managersmall #routing-controls padding to 8px on all sides. */
+/* 2. Added display: none !important to .static-endpoint .col-app, .col-client, and .col-insp to allow the endpoint address fields to stretch to the right edge of the screen. */
 
 :root { 
     /* Base / Accent */
@@ -294,7 +294,7 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 /* Managersmall 2-Row Routing Controls Grid */
 body.view-managersmall #routing-controls { 
     height: auto !important; 
-    padding: 8px 0 4px 0 !important; 
+    padding: 8px !important; 
     background-color: rgba(78, 118, 77, 0.15) !important; 
 }
 body.view-managersmall .routing-module-core {
@@ -557,6 +557,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 .grey-checkbox:checked::after { content: '✔'; color: white; font-size: 10px; }
 
 .static-endpoint { background-color: var(--row-bg); border-bottom: 1px solid var(--row-border); font-weight: 400; height: 38px !important; min-height: 38px !important; box-sizing: border-box; }
+.static-endpoint .col-app, .static-endpoint .col-client, .static-endpoint .col-insp { display: none !important; }
 .endpoint-input { width: 100%; padding: 0 24px 0 6px; border: 1px solid transparent !important; border-radius: 4px; font-weight: 400; font-size: 12px; color: var(--row-text-main) !important; background-color: #151515 !important; transition: all 0.2s ease; height: 30px; box-sizing: border-box; outline: none; text-align: left; min-width: 0; }
 .endpoint-input:focus { border-color: var(--accent) !important; }
 .endpoint-input::placeholder { color: var(--row-text-muted); font-weight: 400; }
