@@ -1422,4 +1422,21 @@ window.syncBodyHeight = function() {
 
 window.addEventListener('resize', window.syncBodyHeight);
 document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
-window.syncBodyHeight();
+window.syncBodyHeight = function() {
+    const isMobile = document.body.classList.contains('view-managersmall');
+    
+    if (isMobile) {
+        // Adjust the 60px here to test different heights on mobile!
+        document.body.style.height = 'calc(100% - 60px)';
+    } else {
+        // Keeps the desktop view perfectly constrained
+        document.body.style.height = (window.innerHeight - 320) + 'px';
+    }
+    
+    const mapWrapper = document.getElementById('map-wrapper');
+    const sidebar = document.getElementById('sidebar');
+    if (mapWrapper) mapWrapper.style.minHeight = '0';
+    if (sidebar) sidebar.style.minHeight = '0';
+    const map = getMapInstance();
+    if (map) map.resize();
+}
