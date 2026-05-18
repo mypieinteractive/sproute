@@ -1423,13 +1423,15 @@ window.syncBodyHeight = function() {
 window.addEventListener('resize', window.syncBodyHeight);
 document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
 window.syncBodyHeight = function() {
-    const isMobile = document.body.classList.contains('view-managersmall');
+    // 1. Check the URL directly to bypass the loading delay
+    const urlParams = new URLSearchParams(window.location.search);
+    const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
     
     if (isMobile) {
-        // Adjust the 60px here to test different heights on mobile!
-        document.body.style.height = 'calc(100% - 320px)';
+        // 2. Use strict pixel math instead of CSS percentages. 
+        // Adjust the 60 here up or down to find the perfect mobile fit!
+        document.body.style.height = (window.innerHeight - 60) + 'px';
     } else {
-        // Keeps the desktop view perfectly constrained
         document.body.style.height = (window.innerHeight - 320) + 'px';
     }
     
