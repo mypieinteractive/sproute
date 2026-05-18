@@ -1,7 +1,7 @@
 /* Dashboard - V18.37 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added height: 100% !important; to body.view-managersmall to override the desktop calc() offset so it fills the Glide mobile container perfectly. */
+/*  */
 
 :root { 
     /* Base / Accent */
@@ -183,7 +183,7 @@ body.view-managersmall .insp-select {
 }
 
 /* Managersmall Shell Layout */
-body.view-managersmall { overflow: hidden; height: calc(80vh - 150px) !important; }
+body.view-managersmall { overflow: hidden; height: calc(100vh - 150px) !important; }
 body.view-managersmall #app-body-wrapper { display: contents !important; }
 body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents !important; }
 body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
