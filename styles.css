@@ -196,7 +196,7 @@ body.view-managersmall {
     top: 0 !important; 
     
     /* ---> ADJUST THE 60px BELOW TO FIND THE PERFECT MOBILE FIT <--- */
-    bottom: 60px !important; 
+    bottom: 160px !important; 
     
     height: auto !important; 
     width: 100% !important;
