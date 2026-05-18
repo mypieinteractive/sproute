@@ -1,8 +1,7 @@
-/* Dashboard - V18.44 */
+/* Dashboard - V18.45 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Changed position: fixed to position: absolute for success toasts to match overlay alignment. */
-/* 2. Added adjustSummaryTextSize() and hooked it into updateSummary() and syncBodyHeight() to dynamically scale down the header summary text if it overflows its container in managersmall view. */
+/* 1. Updated window.syncBodyHeight() to multiply window.innerHeight by 0.9. This ensures the JavaScript fallback exactly matches the new 90vh/90dvh CSS limits and prevents JS from forcing the container back to 100%. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1436,7 +1435,7 @@ window.syncBodyHeight = function() {
         // CSS absolute positioning (top/bottom) will handle framing!
         document.body.style.height = ''; 
     } else {
-        document.body.style.height = (window.innerHeight - 320) + 'px';
+        document.body.style.height = ((window.innerHeight * 0.9) - 320) + 'px';
     }
     
     const mapWrapper = document.getElementById('map-wrapper');
