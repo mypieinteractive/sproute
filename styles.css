@@ -1,7 +1,7 @@
 /* Dashboard - V18.37 */
 /* FILE: styles.css */
 /* Changes: */
-/*  */
+/* 1. Split html and body rules to untangle the height logic. HTML now gets native 100% height, while body retains the desktop offsets. */
 
 :root { 
     /* Base / Accent */
@@ -63,7 +63,13 @@
 
 * { box-sizing: border-box; font-family: Calibri, 'Candara', 'Segoe UI', sans-serif; }
 
-html, body { 
+html { 
+    height: 100%; 
+    width: 100%;
+    margin: 0; padding: 0;
+}
+
+body { 
     margin: 0; padding: 0; 
     height: calc(100vh - 320px);
     height: calc(100dvh - 320px);
@@ -121,7 +127,7 @@ body.view-managersmall #global-header {
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-rows: auto auto;
     height: auto !important;
-    padding: 10px 0 !important; /* Removed Left/Right Padding */
+    padding: 10px 0 !important; 
     gap: 10px 8px; 
 }
 body.view-managersmall #header-map-zone,
@@ -133,17 +139,17 @@ body.view-managersmall #global-summary-stats {
     grid-column: 1; 
     grid-row: 1; 
     justify-self: start; 
-    justify-content: flex-start; /* Keeps text flowing from the left */
+    justify-content: flex-start;
     width: 100%;
     container-type: inline-size; 
     min-width: 0;
-    gap: 1.5cqi !important; /* Scalable gap */
+    gap: 1.5cqi !important; 
     flex-wrap: nowrap;
     overflow: hidden;
 }
 body.view-managersmall #global-summary-stats > div,
 body.view-managersmall #global-summary-stats span {
-    font-size: clamp(10px, 5.8cqi, 18px) !important; /* Aggressive growth math to fill space */
+    font-size: clamp(10px, 5.8cqi, 18px) !important; 
     white-space: nowrap;
     line-height: 1.2;
 }
@@ -183,7 +189,7 @@ body.view-managersmall .insp-select {
 }
 
 /* Managersmall Shell Layout */
-body.view-managersmall { overflow: hidden; height: calc(150vh - 500px) !important; }
+body.view-managersmall { overflow: hidden; height: 100% !important; }
 body.view-managersmall #app-body-wrapper { display: contents !important; }
 body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents !important; }
 body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
@@ -277,14 +283,14 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 /* Managersmall 2-Row Routing Controls Grid */
 body.view-managersmall #routing-controls { 
     height: auto !important; 
-    padding: 8px 0 4px 0 !important; /* Removed Left/Right padding */
-    background-color: rgba(78, 118, 77, 0.15) !important; /* 15% Accent Green */
+    padding: 8px 0 4px 0 !important; 
+    background-color: rgba(78, 118, 77, 0.15) !important; 
 }
 body.view-managersmall .routing-module-core {
     display: grid !important;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    gap: 0px 8px; /* Extremely tight vertical gap */
+    gap: 0px 8px; 
     width: 100%;
 }
 body.view-managersmall #parameters-container { display: contents !important; }
