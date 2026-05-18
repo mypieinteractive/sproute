@@ -1,7 +1,9 @@
-/* Dashboard - V18.41 */
+/* Dashboard - V18.42 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added dynamic [data-state="Pending"] logic to Managersmall Routing Controls Grid. When non-pending, it switches from a 2-row grid to a single flex row and completely hides the parameters container, matching the manager view logic. */
+/* 1. Added body.view-managersmall .module-action-btn { min-height: 38px; } to restore button heights. */
+/* 2. Removed #route-view-toggles from the split-show-map hiding rule so it remains visible on both views. */
+/* 3. Styled body.view-managersmall #route-view-toggles to share the same background color as #routing-controls and removed the border between them to create a seamless container. */
 
 :root { 
     /* Base / Accent */
@@ -213,8 +215,7 @@ body.view-managersmall #resizer { display: none; }
 
 /* Managersmall Split View Display Logic */
 body.view-managersmall.split-show-map #stop-list,
-body.view-managersmall.split-show-map #list-header-container,
-body.view-managersmall.split-show-map #route-view-toggles { display: none !important; }
+body.view-managersmall.split-show-map #list-header-container { display: none !important; }
 body.view-managersmall.split-show-map #map-container { display: flex !important; flex-direction: column; }
 
 body.view-managersmall.split-show-list #map-container { display: none !important; }
@@ -295,6 +296,14 @@ body.view-managersmall #routing-controls {
     height: auto !important; 
     padding: 8px !important; 
     background-color: rgba(78, 118, 77, 0.15) !important; 
+    border-bottom: none !important; 
+}
+
+body.view-managersmall #route-view-toggles {
+    background-color: rgba(78, 118, 77, 0.15) !important;
+    padding: 0 8px 8px 8px !important; 
+    border-top: none !important;
+    border-bottom: 1px solid var(--route-mod-border) !important;
 }
 
 /* Pending State (2-Row Grid) */
@@ -327,6 +336,7 @@ body.view-managersmall #routing-controls:not([data-state="Pending"]) #routing-ac
 body.view-managersmall #priority-container label { margin-bottom: 0px !important; line-height: 1 !important; }
 body.view-managersmall #priority-container input[type=range] { margin-bottom: 0px !important; margin-top: 2px !important; }
 
+body.view-managersmall .module-action-btn { min-height: 38px; }
 
 .start-over-overlay {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
