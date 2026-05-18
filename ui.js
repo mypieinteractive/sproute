@@ -1406,7 +1406,7 @@ window.handleMapModeChange = function(mode) {
 
 window.syncBodyHeight = function() {
     const isMobile = document.body.classList.contains('view-managersmall');
-    const offset = isMobile ? 100 : 320;
+    const offset = isMobile ? 120 : 320;
     
     document.body.style.height = (window.innerHeight - offset) + 'px';
     
