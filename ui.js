@@ -1,7 +1,7 @@
-/* Dashboard - V18.32 */
+/* Dashboard - V18.33 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated window.syncBodyHeight to use '100%' height for managersmall to let the browser natively scale to the iframe, while retaining the pixel math for desktop. */
+/* 1. Updated window.syncBodyHeight to abandon JS height math for mobile and hand control over to CSS absolute positioning (top/bottom) to bypass iframe reporting bugs. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1405,9 +1405,13 @@ window.handleMapModeChange = function(mode) {
 };
 
 window.syncBodyHeight = function() {
-    const isMobile = document.body.classList.contains('view-managersmall');
+    const urlParams = new URLSearchParams(window.location.search);
+    const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
+    
     if (isMobile) {
-        document.body.style.height = '100%';
+        // Completely bypass JS height math for mobile.
+        // CSS absolute positioning (top/bottom) will handle framing!
+        document.body.style.height = ''; 
     } else {
         document.body.style.height = (window.innerHeight - 320) + 'px';
     }
@@ -1422,23 +1426,4 @@ window.syncBodyHeight = function() {
 
 window.addEventListener('resize', window.syncBodyHeight);
 document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
-window.syncBodyHeight = function() {
-    // 1. Check the URL directly to bypass the loading delay
-    const urlParams = new URLSearchParams(window.location.search);
-    const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
-    
-    if (isMobile) {
-        // 2. Use strict pixel math instead of CSS percentages. 
-        // Adjust the 60 here up or down to find the perfect mobile fit!
-        document.body.style.height = (window.innerHeight - 200) + 'px';
-    } else {
-        document.body.style.height = (window.innerHeight - 320) + 'px';
-    }
-    
-    const mapWrapper = document.getElementById('map-wrapper');
-    const sidebar = document.getElementById('sidebar');
-    if (mapWrapper) mapWrapper.style.minHeight = '0';
-    if (sidebar) sidebar.style.minHeight = '0';
-    const map = getMapInstance();
-    if (map) map.resize();
-}
+window.syncBodyHeight();
