@@ -1,9 +1,7 @@
-/* Dashboard - V18.43 */
+/* Dashboard - V18.44 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added a flex-basis width calculation to the first routing action button (Start Over) in managersmall to exactly match a 3-button toggle layout. Forced the gap to 8px to ensure perfect alignment. */
-/* 2. Updated managersmall #route-view-toggles padding to 4px on the top. */
-/* 3. Moved body.view-managersmall .map-overlay-btns to top: 15px instead of bottom: 85px. */
+/* 1. Changed position: fixed to position: absolute for #empty-state-container, #modal-overlay, #processing-overlay, and #unmatched-modal so they safely vertically center within the restricted height boundaries of the body rather than the overflow boundary of the iframe window. */
 
 :root { 
     /* Base / Accent */
@@ -90,7 +88,7 @@ body {
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
-    display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
+    display: flex; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-base); z-index: 50; 
 }
 
 #main-dropzone { padding: 32px 20px; box-sizing: border-box; text-align: center; }
@@ -197,7 +195,7 @@ body.view-managersmall {
     top: 0 !important; 
     
     /* ---> ADJUST THE 60px BELOW TO FIND THE PERFECT MOBILE FIT <--- */
-    bottom: 0px !important; 
+    bottom: 400px !important; 
     
     height: auto !important; 
     width: 100% !important;
@@ -498,7 +496,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 
 .due-date-container { display: flex; align-items: center; padding: 0 10px; font-weight: 400; font-size: 18px; color: var(--row-text-main); margin-left: auto; }
 .due-date-container.due-today { color: var(--orange) !important; }
-.due-date-container.past-due { color: var(--red) !important; }
+.due-date-container.past-due { color: var(--red) !important; font-weight: 400; }
 
 .stop-actions { display: flex; align-items: center; padding-right: 8px; gap: 4px; }
 .icon-btn { font-size: 28px; cursor: pointer; padding: 4px; }
@@ -574,7 +572,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 .boxdraw { background: rgba(96, 132, 95, 0.3); border: 1px solid var(--accent); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
 
 #modal-overlay { 
-    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
     background: rgba(0,0,0,0.6); z-index: 100000; align-items: center; justify-content: center; 
 }
 .modal-box { max-height: 90%; overflow-y: auto; margin: auto; }
@@ -601,7 +599,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 .form-control:focus { outline: none; border-color: var(--accent); }
 .grid-2-col { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 
-#processing-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(23, 23, 23, 0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; }
+#processing-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(23, 23, 23, 0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 99999; }
 .spinner-container { display: flex; flex-direction: column; align-items: center; background: var(--bg-panel); padding: 40px 60px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); border: 1px solid var(--border-color); }
 .loader { width: 48px; height: 48px; border-radius: 50%; border: 4px solid rgba(78, 118, 77, 0.2); border-top-color: var(--accent); border-bottom-color: var(--accent); animation: spin 1.2s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite; margin-bottom: 24px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -610,7 +608,7 @@ body.view-manager #resizer { display: block; border-top: none; }
 @keyframes pulse-text { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
 #unmatched-modal {
-    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
     background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;
 }
 .mapboxgl-touch-pan-blocker { color: transparent !important; }
