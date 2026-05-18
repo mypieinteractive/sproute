@@ -1,11 +1,10 @@
-/* Dashboard - V18.35 */
+/* Dashboard - V18.36 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Changed routing module background opacity to 15% (0.15) for managersmall. */
-/* 2. Re-aligned managersmall summary text to flex-start and adjusted clamp math to prevent right-side clipping. */
-/* 3. Tightened .routing-module-core grid gap to 2px and adjusted #routing-controls padding to perfectly balance top/bottom spacing. */
-/* 4. Overrode inline padding on #routing-action-buttons > div using !important to prevent unequal vertical spacing. */
-/* 5. Set active rocker switch text color explicitly to #FFFFFF !important for better contrast. */
+/* 1. Removed left/right padding (set to 0) on #global-header and #routing-controls in managersmall to accommodate Glide padding. */
+/* 2. Increased cqi sizing to 5.8cqi on #global-summary-stats so the font scales aggressively to fill the width. */
+/* 3. Reduced .routing-module-core grid gap to 0px. */
+/* 4. Overrode default inline margins on the slider and slider label to squash the routing module rows tightly together. */
 
 :root { 
     /* Base / Accent */
@@ -125,7 +124,7 @@ body.view-managersmall #global-header {
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-rows: auto auto;
     height: auto !important;
-    padding: 10px 15px !important; 
+    padding: 10px 0 !important; /* Removed Left/Right Padding */
     gap: 10px 8px; 
 }
 body.view-managersmall #header-map-zone,
@@ -137,18 +136,19 @@ body.view-managersmall #global-summary-stats {
     grid-column: 1; 
     grid-row: 1; 
     justify-self: start; 
-    justify-content: flex-start; /* Left-justify items */
+    justify-content: flex-start; /* Keeps text flowing from the left */
     width: 100%;
     container-type: inline-size; 
     min-width: 0;
-    gap: 6px !important;
+    gap: 1.5cqi !important; /* Scalable gap */
     flex-wrap: nowrap;
     overflow: hidden;
 }
 body.view-managersmall #global-summary-stats > div,
 body.view-managersmall #global-summary-stats span {
-    font-size: clamp(9px, 4cqi, 14px) !important; /* Slightly more aggressive shrink math to prevent clipping */
+    font-size: clamp(10px, 5.8cqi, 18px) !important; /* Aggressive growth math to fill space */
     white-space: nowrap;
+    line-height: 1.2;
 }
 
 body.view-managersmall .hide-mobile-text { display: block !important; }
@@ -280,14 +280,14 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 /* Managersmall 2-Row Routing Controls Grid */
 body.view-managersmall #routing-controls { 
     height: auto !important; 
-    padding: 8px 15px 4px 15px !important; /* Top 8px, Bottom 4px for visual balance */
+    padding: 8px 0 4px 0 !important; /* Removed Left/Right padding */
     background-color: rgba(78, 118, 77, 0.15) !important; /* 15% Accent Green */
 }
 body.view-managersmall .routing-module-core {
     display: grid !important;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    gap: 2px 15px; /* Extremely tight vertical gap */
+    gap: 0px 8px; /* Extremely tight vertical gap */
     width: 100%;
 }
 body.view-managersmall #parameters-container { display: contents !important; }
@@ -295,11 +295,10 @@ body.view-managersmall #route-divider-group { grid-column: 1 / span 2; grid-row:
 body.view-managersmall #priority-container { grid-column: 1; grid-row: 2; justify-content: center; }
 body.view-managersmall #routing-action-buttons { grid-column: 2; grid-row: 2; width: 100% !important; border-left: none !important; }
 
-/* Override inline paddings from action buttons */
-body.view-managersmall #routing-action-buttons > div { 
-    justify-content: flex-end !important; 
-    padding: 0 !important; 
-}
+/* Override inline paddings and margins for extreme vertical compression */
+body.view-managersmall #routing-action-buttons > div { justify-content: flex-end !important; padding: 0 !important; }
+body.view-managersmall #priority-container label { margin-bottom: 0px !important; line-height: 1 !important; }
+body.view-managersmall #priority-container input[type=range] { margin-bottom: 0px !important; margin-top: 2px !important; }
 
 
 .start-over-overlay {
