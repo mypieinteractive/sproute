@@ -1,7 +1,7 @@
-/* Dashboard - V18.30 */
+/* Dashboard - V18.31 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Removed the injected {app} | {client} metaHtml subtext from the managersmall list rows to clean up the UI. */
+/* 1. Updated window.syncBodyHeight to dynamically calculate the offset (0px for managersmall, 320px for desktop) to ensure it fits perfectly within the respective Glide iframe dimensions. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1405,7 +1405,11 @@ window.handleMapModeChange = function(mode) {
 };
 
 window.syncBodyHeight = function() {
-    document.body.style.height = (window.innerHeight - 320) + 'px';
+    const isMobile = document.body.classList.contains('view-managersmall');
+    const offset = isMobile ? 0 : 320;
+    
+    document.body.style.height = (window.innerHeight - offset) + 'px';
+    
     const mapWrapper = document.getElementById('map-wrapper');
     const sidebar = document.getElementById('sidebar');
     if (mapWrapper) mapWrapper.style.minHeight = '0';
