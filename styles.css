@@ -1,7 +1,8 @@
-/* Dashboard - V18.38 */
+/* Dashboard - V18.39 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Split html and body rules to untangle the height logic. HTML now gets native 100% height, while body retains the desktop offsets. */
+/* 1. Split html and body rules. html is set to 100%. */
+/* 2. Updated body.view-managersmall to use absolute positioning (top/bottom) instead of heights to bypass iOS/iframe scaling bugs. */
 
 :root { 
     /* Base / Accent */
@@ -71,8 +72,8 @@ html {
 
 body { 
     margin: 0; padding: 0; 
-    height: calc(95vh - 320px);
-    height: calc(95dvh - 320px);
+    height: calc(100vh - 320px);
+    height: calc(100dvh - 320px);
     width: 100%; 
     position: fixed; 
     display: flex; flex-direction: column; 
@@ -189,7 +190,17 @@ body.view-managersmall .insp-select {
 }
 
 /* Managersmall Shell Layout */
-body.view-managersmall { overflow: hidden; height: 100% !important; }
+body.view-managersmall { 
+    overflow: hidden; 
+    position: absolute !important; 
+    top: 0 !important; 
+    
+    /* ---> ADJUST THE 60px BELOW TO FIND THE PERFECT MOBILE FIT <--- */
+    bottom: 60px !important; 
+    
+    height: auto !important; 
+    width: 100% !important;
+}
 body.view-managersmall #app-body-wrapper { display: contents !important; }
 body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents !important; }
 body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
