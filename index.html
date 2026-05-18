@@ -252,9 +252,13 @@
 
 <script>
     window.syncBodyHeight = function() {
-        const isMobile = document.body.classList.contains('view-managersmall');
+        const urlParams = new URLSearchParams(window.location.search);
+        const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
+        
         if (isMobile) {
-            document.body.style.height = '100%';
+            // Completely bypass JS height math for mobile.
+            // CSS absolute positioning (top/bottom) will handle framing!
+            document.body.style.height = ''; 
         } else {
             document.body.style.height = (window.innerHeight - 320) + 'px';
         }
@@ -268,26 +272,7 @@
     }
     window.addEventListener('resize', window.syncBodyHeight);
     document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
-window.syncBodyHeight = function() {
-    // 1. Check the URL directly to bypass the loading delay
-    const urlParams = new URLSearchParams(window.location.search);
-    const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
-    
-    if (isMobile) {
-        // 2. Use strict pixel math instead of CSS percentages. 
-        // Adjust the 60 here up or down to find the perfect mobile fit!
-        document.body.style.height = (window.innerHeight - 200) + 'px';
-    } else {
-        document.body.style.height = (window.innerHeight - 320) + 'px';
-    }
-    
-    const mapWrapper = document.getElementById('map-wrapper');
-    const sidebar = document.getElementById('sidebar');
-    if (mapWrapper) mapWrapper.style.minHeight = '0';
-    if (sidebar) sidebar.style.minHeight = '0';
-    const map = getMapInstance();
-    if (map) map.resize();
-}
+    window.syncBodyHeight();
 </script>
 </body>
 </html>
