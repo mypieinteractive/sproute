@@ -1,10 +1,7 @@
-/* Dashboard - V18.36 */
+/* Dashboard - V18.37 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Removed left/right padding (set to 0) on #global-header and #routing-controls in managersmall to accommodate Glide padding. */
-/* 2. Increased cqi sizing to 5.8cqi on #global-summary-stats so the font scales aggressively to fill the width. */
-/* 3. Reduced .routing-module-core grid gap to 0px. */
-/* 4. Overrode default inline margins on the slider and slider label to squash the routing module rows tightly together. */
+/* 1. Added height: 100% !important; to body.view-managersmall to override the desktop calc() offset so it fills the Glide mobile container perfectly. */
 
 :root { 
     /* Base / Accent */
@@ -186,7 +183,7 @@ body.view-managersmall .insp-select {
 }
 
 /* Managersmall Shell Layout */
-body.view-managersmall { overflow: hidden; height: 100%; }
+body.view-managersmall { overflow: hidden; height: 100% !important; } /* Forces 100% height inside iframe */
 body.view-managersmall #app-body-wrapper { display: contents !important; }
 body.view-managersmall #map-wrapper, body.view-managersmall #sidebar { display: contents !important; }
 body.view-managersmall #sidebar-brand { order: 2; border-bottom: 1px solid var(--summary-border); }
