@@ -71,8 +71,8 @@ html {
 
 body { 
     margin: 0; padding: 0; 
-    height: calc(90vh - 320px);
-    height: calc(90dvh - 320px);
+    height: calc(90vh - 280px);
+    height: calc(90dvh - 280px);
     width: 100%; 
     position: fixed; 
     display: flex; flex-direction: column; 
