@@ -1,7 +1,8 @@
-/* Dashboard - V18.41 */
+/* Dashboard - V18.44 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added routingControls.setAttribute('data-state', currentState) to updateRoutingUI to allow styles.css to target the routing state directly. */
+/* 1. Changed position: fixed to position: absolute for success toasts to match overlay alignment. */
+/* 2. Added adjustSummaryTextSize() and hooked it into updateSummary() and syncBodyHeight() to dynamically scale down the header summary text if it overflows its container in managersmall view. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -598,6 +599,25 @@ function buildEndpointsToDraw(activeStops) {
     return endpointsToDraw;
 }
 
+export function adjustSummaryTextSize() {
+    const container = document.getElementById('global-summary-stats');
+    if (!container || !document.body.classList.contains('view-managersmall')) return;
+
+    const textElements = container.querySelectorAll('div, span');
+    textElements.forEach(el => el.style.removeProperty('font-size'));
+
+    requestAnimationFrame(() => {
+        if (container.scrollWidth > container.clientWidth && container.clientWidth > 0) {
+            const ratio = container.clientWidth / container.scrollWidth;
+            textElements.forEach(el => {
+                const currentSize = parseFloat(window.getComputedStyle(el).fontSize) || 14;
+                const newSize = Math.max(9, currentSize * ratio * 0.95); 
+                el.style.setProperty('font-size', `${newSize}px`, 'important');
+            });
+        }
+    });
+}
+
 export function updateSummary() {
     const active = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.status !== 'Completed');
 
@@ -642,6 +662,8 @@ export function updateSummary() {
             summaryMetrics.style.visibility = (AppState.currentRoutingState === 'Pending' || AppState.currentRoutingState === 'Staging') ? 'hidden' : 'visible';
         }
     }
+
+    adjustSummaryTextSize();
 }
 
 export function updateRouteTimes() {
@@ -1169,7 +1191,7 @@ export function handleOpenEmailModal() {
                 m.style.display = 'none';
                 AppState.stops.forEach(s => { if (String(s.driverId) === String(AppState.currentInspectorFilter) && isRouteAssigned(s.status)) { s.routeState = 'Dispatched'; s.status = 'Dispatched'; } });
                 if (Config.isManagerView) { const filterEl = document.getElementById('inspector-filter'); if (filterEl) filterEl.value = 'all'; window.handleInspectorFilterChange('all'); } else { triggerFullRender(); }
-                const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+                const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
                 setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
             } else throw new Error("Dispatch failed");
         } catch (e) {
@@ -1196,7 +1218,7 @@ async function nextUnmatchedAddress() {
     if (AppState.currentUnmatchedIndex < AppState.unmatchedAddressesQueue.length) openUnmatchedModal();
     else {
         document.getElementById('unmatched-modal').style.display = 'none';
-        const toast = document.createElement('div'); toast.innerText = 'Address matching complete.'; toast.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
+        const toast = document.createElement('div'); toast.innerText = 'Address matching complete.'; toast.style.cssText = 'position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 2000);
         await loadData(); 
     }
@@ -1423,6 +1445,8 @@ window.syncBodyHeight = function() {
     if (sidebar) sidebar.style.minHeight = '0';
     const map = getMapInstance();
     if (map) map.resize();
+    
+    if (typeof adjustSummaryTextSize === 'function') adjustSummaryTextSize();
 }
 
 window.addEventListener('resize', window.syncBodyHeight);
