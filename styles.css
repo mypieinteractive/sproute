@@ -1,8 +1,7 @@
-/* Dashboard - V18.40 */
+/* Dashboard - V18.41 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Adjusted body.view-managersmall #routing-controls padding to 8px on all sides. */
-/* 2. Added display: none !important to .static-endpoint .col-app, .col-client, and .col-insp to allow the endpoint address fields to stretch to the right edge of the screen. */
+/* 1. Added dynamic [data-state="Pending"] logic to Managersmall Routing Controls Grid. When non-pending, it switches from a 2-row grid to a single flex row and completely hides the parameters container, matching the manager view logic. */
 
 :root { 
     /* Base / Accent */
@@ -297,20 +296,34 @@ body.view-managersmall #routing-controls {
     padding: 8px !important; 
     background-color: rgba(78, 118, 77, 0.15) !important; 
 }
-body.view-managersmall .routing-module-core {
+
+/* Pending State (2-Row Grid) */
+body.view-managersmall #routing-controls[data-state="Pending"] .routing-module-core {
     display: grid !important;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
     gap: 0px 8px; 
     width: 100%;
 }
-body.view-managersmall #parameters-container { display: contents !important; }
-body.view-managersmall #route-divider-group { grid-column: 1 / span 2; grid-row: 1; }
-body.view-managersmall #priority-container { grid-column: 1; grid-row: 2; justify-content: center; }
-body.view-managersmall #routing-action-buttons { grid-column: 2; grid-row: 2; width: 100% !important; border-left: none !important; }
+body.view-managersmall #routing-controls[data-state="Pending"] #parameters-container { display: contents !important; }
+body.view-managersmall #routing-controls[data-state="Pending"] #route-divider-group { grid-column: 1 / span 2; grid-row: 1; }
+body.view-managersmall #routing-controls[data-state="Pending"] #priority-container { grid-column: 1; grid-row: 2; justify-content: center; }
+body.view-managersmall #routing-controls[data-state="Pending"] #routing-action-buttons { grid-column: 2; grid-row: 2; width: 100% !important; border-left: none !important; }
+
+/* Non-Pending State (1-Row Flex) */
+body.view-managersmall #routing-controls:not([data-state="Pending"]) .routing-module-core {
+    display: flex !important;
+    width: 100%;
+    align-items: center;
+}
+body.view-managersmall #routing-controls:not([data-state="Pending"]) #parameters-container { display: none !important; }
+body.view-managersmall #routing-controls:not([data-state="Pending"]) #routing-action-buttons { width: 100% !important; border-left: none !important; }
 
 /* Override inline paddings and margins for extreme vertical compression */
-body.view-managersmall #routing-action-buttons > div { justify-content: flex-end !important; padding: 0 !important; }
+body.view-managersmall #routing-action-buttons > div { padding: 0 !important; }
+body.view-managersmall #routing-controls[data-state="Pending"] #routing-action-buttons > div { justify-content: flex-end !important; }
+body.view-managersmall #routing-controls:not([data-state="Pending"]) #routing-action-buttons > div { justify-content: center !important; }
+
 body.view-managersmall #priority-container label { margin-bottom: 0px !important; line-height: 1 !important; }
 body.view-managersmall #priority-container input[type=range] { margin-bottom: 0px !important; margin-top: 2px !important; }
 
