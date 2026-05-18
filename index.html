@@ -252,7 +252,12 @@
 
 <script>
     window.syncBodyHeight = function() {
-        document.body.style.height = (window.innerHeight - 320) + 'px';
+        // If it's managersmall, subtract 0. Otherwise, subtract 320.
+        const isMobile = document.body.classList.contains('view-managersmall');
+        const offset = isMobile ? 0 : 320;
+        
+        document.body.style.height = (window.innerHeight - offset) + 'px';
+        
         const mapWrapper = document.getElementById('map-wrapper');
         const sidebar = document.getElementById('sidebar');
         if (mapWrapper) mapWrapper.style.minHeight = '0';
