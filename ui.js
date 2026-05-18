@@ -1,7 +1,7 @@
-/* Dashboard - V18.31 */
+/* Dashboard - V18.32 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated window.syncBodyHeight to dynamically calculate the offset (0px for managersmall, 320px for desktop) to ensure it fits perfectly within the respective Glide iframe dimensions. */
+/* 1. Updated window.syncBodyHeight to use '100%' height for managersmall to let the browser natively scale to the iframe, while retaining the pixel math for desktop. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1406,9 +1406,11 @@ window.handleMapModeChange = function(mode) {
 
 window.syncBodyHeight = function() {
     const isMobile = document.body.classList.contains('view-managersmall');
-    const offset = isMobile ? 0 : 320;
-    
-    document.body.style.height = (window.innerHeight - offset) + 'px';
+    if (isMobile) {
+        document.body.style.height = '100%';
+    } else {
+        document.body.style.height = (window.innerHeight - 320) + 'px';
+    }
     
     const mapWrapper = document.getElementById('map-wrapper');
     const sidebar = document.getElementById('sidebar');
