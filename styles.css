@@ -1,8 +1,9 @@
-/* Dashboard - V18.47 */
+/* Dashboard - V18.49 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Changed position: fixed to position: absolute for #empty-state-container, #modal-overlay, #processing-overlay, and #unmatched-modal so they safely vertically center within the restricted height boundaries of the body mathematically. */
-/* 2. Added body.view-managersmall.display-compact .col-client { display: none !important; } to dynamically hide the client column entirely in compact mode for mobile. */
+/* 1. Added rules for body.view-managersmall.mobile-selection-active to completely transform .map-overlay-btns into a fixed contextual header visually overlaying #global-header. */
+/* 2. Hidden standard header elements when .mobile-selection-active is active to accommodate the new layout. */
+/* 3. Hidden default map FABs completely in managersmall view to prevent clutter, unless actively selecting. */
 
 :root { 
     /* Base / Accent */
@@ -115,11 +116,7 @@ body.view-inspector .map-overlay-btns {
     top: auto !important; bottom: 20px !important; right: 20px !important; display: flex; flex-direction: column;
 }
 
-body.view-managersmall .map-overlay-btns {
-    top: 15px !important; bottom: auto !important; right: 20px !important; display: flex; flex-direction: column;
-}
-
-body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; }
+body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; position: relative; }
 body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
 
 /* --- Managersmall Header Grid --- */
@@ -179,6 +176,41 @@ body.view-managersmall #header-list-zone > div:first-child {
     height: auto !important;
 }
 body.view-managersmall #header-resizer-gap { display: none !important; }
+
+
+/* Mobile Selection Contextual Header Integration */
+body.view-managersmall.mobile-selection-active #global-header {
+    background-color: #171C22 !important;
+    transition: background-color 0.2s;
+}
+body.view-managersmall.mobile-selection-active #header-map-zone,
+body.view-managersmall.mobile-selection-active #header-list-zone {
+    opacity: 0; pointer-events: none; 
+}
+body.view-managersmall.mobile-selection-active .map-overlay-btns {
+    position: fixed !important;
+    top: 0 !important; left: 0 !important; right: 0 !important; height: 58px !important;
+    bottom: auto !important; background: transparent; z-index: 3000;
+    flex-direction: row; align-items: center; justify-content: flex-end;
+    padding: 0 15px; gap: 15px; width: 100%; box-sizing: border-box;
+}
+body.view-managersmall.mobile-selection-active #mobile-selection-info { display: flex !important; }
+body.view-managersmall.mobile-selection-active #reset-view-btn { display: none !important; }
+body.view-managersmall.mobile-selection-active .map-overlay-btns .floating-btn {
+    background: transparent !important; border: none !important; box-shadow: none !important;
+    padding: 0 !important; margin: 0 !important; font-size: 20px !important; color: var(--text-main) !important;
+    display: flex; align-items: center; justify-content: center; height: auto;
+}
+body.view-managersmall.mobile-selection-active .map-overlay-btns .fab-text { display: none !important; }
+body.view-managersmall.mobile-selection-active .map-overlay-btns .manual-move {
+    font-size: 14px !important; font-weight: 500 !important; border-left: none !important; 
+    border: 1px solid rgba(255,255,255,0.3) !important; border-radius: 4px !important; 
+    width: 32px; height: 32px;
+}
+
+/* Hide normal map FABs on mobile unless actively selecting */
+body.view-managersmall:not(.mobile-selection-active) .map-overlay-btns { display: none !important; }
+
 
 /* Flex rules for dropdown in managersmall */
 body.view-managersmall #inspector-dropdown-wrapper {
