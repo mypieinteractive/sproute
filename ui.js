@@ -1,8 +1,10 @@
-/* Dashboard - V18.47 */
+/* Dashboard - V18.48 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added document.body.classList.add('display-' + mode) logic to setDisplayMode and render() to track the active display mode at the root level. */
-/* 2. Changed position: fixed to position: absolute for toast popups so they respect the body bounds like the modals do. */
+/* 1. Added native multi-select toggle for managersmall view (tapping an item toggles selection without clearing others). */
+/* 2. Added logic to updateSelectionUI to dynamically render a single-row preview or 'X Orders Selected' pill on the map. */
+/* 3. Toggles a 'mobile-selection-active' class on the body to allow CSS to transform the header. */
+/* 4. Added window.clearSelection() helper function. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -438,9 +440,10 @@ export function render() {
         }
         
         item.onclick = (e) => {
+            const isMobile = Config.viewMode === 'managersmall';
             const isMacCmd = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
             
-            if (e.shiftKey && window.lastSelectedId) {
+            if (e.shiftKey && window.lastSelectedId && !isMobile) {
                 const activeForSelection = AppState.stops.filter(st => isStopVisible(st, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
                 const idx1 = activeForSelection.findIndex(st => String(st.id) === String(window.lastSelectedId));
                 const idx2 = activeForSelection.findIndex(st => String(st.id) === String(s.id));
@@ -452,7 +455,7 @@ export function render() {
                         AppState.selectedIds.add(activeForSelection[i].id);
                     }
                 }
-            } else if (isMacCmd) {
+            } else if (isMacCmd || isMobile) {
                 AppState.selectedIds.has(s.id) ? AppState.selectedIds.delete(s.id) : AppState.selectedIds.add(s.id);
                 window.lastSelectedId = s.id;
             } else {
@@ -463,7 +466,7 @@ export function render() {
 
             updateSelectionUI();
             
-            if (!e.shiftKey && !isMacCmd) {
+            if (!e.shiftKey && !isMacCmd && !isMobile) {
                 document.getElementById(`item-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         };
@@ -523,10 +526,11 @@ export function render() {
             allStops: AppState.stops, 
             inspectors: AppState.inspectors,
             onMarkerClick: (id, isShift) => {
-                if (!isShift) AppState.selectedIds.clear();
+                const isMobile = Config.viewMode === 'managersmall';
+                if (!isShift && !isMobile) AppState.selectedIds.clear();
                 AppState.selectedIds.has(id) ? AppState.selectedIds.delete(id) : AppState.selectedIds.add(id);
                 updateSelectionUI();
-                document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if(!isMobile) document.getElementById(`item-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         });
 
@@ -778,6 +782,55 @@ export function updateSelectionUI() {
                 btn.style.display = 'none';
             }
         }
+    }
+
+    if (Config.viewMode === 'managersmall') {
+        const hasSelection = AppState.selectedIds.size > 0;
+        document.body.classList.toggle('mobile-selection-active', hasSelection);
+        
+        const previewContainer = document.getElementById('mobile-map-selection-preview');
+        if (previewContainer) {
+            if (hasSelection) {
+                if (AppState.selectedIds.size === 1) {
+                    const selectedId = Array.from(AppState.selectedIds)[0];
+                    const s = AppState.stops.find(st => String(st.id) === String(selectedId));
+                    if (s) {
+                        let urgencyClass = '';
+                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                        if (s.dueDate) {
+                            const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0); 
+                            if (dueTime < today) urgencyClass = 'past-due'; 
+                            else if (dueTime.getTime() === today.getTime()) urgencyClass = 'due-today'; 
+                        }
+                        const dueFmt = s.dueDate ? `${new Date(s.dueDate).getMonth()+1}/${new Date(s.dueDate).getDate()}` : "N/A";
+                        const isRoutedStop = isRouteAssigned(s.status);
+                        const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
+                        let etaTime = (!isRoutedStop || AppState.dirtyRoutes.has(routeKey) || AppState.dirtyRoutes.has('all')) ? '--' : (s.eta || '--');
+                        const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
+                        
+                        previewContainer.innerHTML = `
+                            <div class="glide-row compact" style="border:none; border-radius: 8px; margin: 0; padding: 10px 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); background: var(--row-bg);">
+                                <div class="col-num" style="margin-left: 0px; width: 26px;"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text}; width: 22px; height: 22px; font-size: 11px;">#</div></div>
+                                <div class="col-eta" style="width: 55px; font-size: 12px; display:flex; justify-content:center;">${etaTime}</div>
+                                <div class="col-due ${urgencyClass}" style="width: 45px; font-size: 12px; justify-content:center;">${dueFmt}</div>
+                                <div class="col-addr" style="flex:1;"><div class="addr-text" style="font-size: 13px;">${(s.address||'').split(',')[0]}</div></div>
+                            </div>
+                        `;
+                    }
+                } else {
+                    previewContainer.innerHTML = `
+                        <div style="background: var(--row-bg); border-radius: 8px; padding: 12px; text-align: center; font-size: 15px; font-weight: 500; color: var(--text-main); box-shadow: 0 4px 15px rgba(0,0,0,0.6);">
+                            ${AppState.selectedIds.size} Orders Selected
+                        </div>
+                    `;
+                }
+            } else {
+                previewContainer.innerHTML = '';
+            }
+        }
+
+        const selCountEl = document.getElementById('mobile-selection-count');
+        if (selCountEl) selCountEl.innerText = `${AppState.selectedIds.size} Selected`;
     }
 }
 
@@ -1310,6 +1363,11 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
         await apiFetch(payload); AppState.selectedIds.clear(); updateInspectorDropdown(); triggerFullRender(); silentSaveRouteState();
     } catch (err) { hideOverlay(); await customAlert("Error reassigning orders. Please try again."); } 
     finally { hideOverlay(); }
+};
+
+window.clearSelection = function() {
+    AppState.selectedIds.clear();
+    updateSelectionUI();
 };
 
 window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;"><h3 style="margin-top:0; font-weight:400;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button class="modal-primary-btn" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:10px 24px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight:400;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
