@@ -1,8 +1,10 @@
-/* Dashboard - V18.51 */
+/* Dashboard - V18.52 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added rules for body.view-managersmall.mobile-selection-active to entirely hide the standard header elements and expose the new #mobile-selection-header 2-row layout. */
-/* 2. Ensured .map-overlay-btns are completely hidden on mobile when selections are active so they don't clutter the map view. */
+/* 1. Updated .map-overlay-btns to default to top-left justified to clear the routing controls in Manager view. */
+/* 2. Added outline to .route-view-btn by switching default border to var(--route-mod-border). */
+/* 3. Updated body.view-managersmall.mobile-selection-active rules to fully hide #routing-controls and align the new global header padding. */
+/* 4. Styled the new #mobile-selection-header 2-row layout with flexible, equal height action buttons. */
 
 :root { 
     /* Base / Accent */
@@ -111,12 +113,37 @@ body.view-inspector { flex-direction: column; }
 body.view-inspector #map-wrapper { height: 35%; min-height: 35%; width: 100%; border-bottom: 2px solid var(--row-border); }
 body.view-inspector #sidebar { height: 65%; min-height: 65%; width: 100%; background: var(--sidebar-bg); }
 
-body.view-inspector .map-overlay-btns {
-    top: auto !important; bottom: 20px !important; right: 20px !important; display: flex; flex-direction: column;
-}
-
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; position: relative; }
 body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
+
+/* Map Overlay Buttons Default - Manager View */
+.map-overlay-btns { 
+    position: absolute; 
+    top: 75px; 
+    left: 15px; 
+    right: auto;
+    z-index: 2000; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 8px; 
+    align-items: flex-start; 
+}
+
+/* Map Overlay Buttons Override - Inspector View */
+body.view-inspector .map-overlay-btns {
+    top: auto !important; left: auto !important; bottom: 20px !important; right: 20px !important; align-items: flex-end;
+}
+
+/* Map Overlay Buttons Override - ManagerSmall View */
+body.view-managersmall .map-overlay-btns {
+    top: 15px !important; left: auto !important; bottom: auto !important; right: 20px !important; align-items: flex-end;
+}
+
+/* Hide normal map FABs on mobile when actively selecting */
+body.view-managersmall.mobile-selection-active .map-overlay-btns { 
+    display: none !important; 
+}
+
 
 /* --- Managersmall Header Grid --- */
 body.view-managersmall #global-header {
@@ -184,14 +211,15 @@ body.view-managersmall.mobile-selection-active #global-header {
     flex-direction: column;
     justify-content: center;
     height: auto !important;
-    padding: 12px 15px !important;
+    padding: 12px 8px !important;
     transition: background-color 0.2s;
 }
 
-/* Completely remove the normal elements from the layout when selecting */
+/* Completely remove the normal elements and routing module from the layout when selecting */
 body.view-managersmall.mobile-selection-active #header-map-zone,
 body.view-managersmall.mobile-selection-active #header-list-zone,
-body.view-managersmall.mobile-selection-active #header-resizer-gap {
+body.view-managersmall.mobile-selection-active #header-resizer-gap,
+body.view-managersmall.mobile-selection-active #routing-controls {
     display: none !important;
 }
 
@@ -200,7 +228,6 @@ body.view-managersmall.mobile-selection-active #header-resizer-gap {
     display: none;
     width: 100%;
     flex-direction: column;
-    gap: 12px;
 }
 body.view-managersmall.mobile-selection-active #mobile-selection-header {
     display: flex !important;
@@ -208,29 +235,33 @@ body.view-managersmall.mobile-selection-active #mobile-selection-header {
 
 /* Style the buttons inside the new mobile header */
 #mobile-selection-header .floating-btn {
-    display: none; /* Hidden by default, toggled via JS in ui.js */
+    display: none; 
     align-items: center;
     gap: 6px;
-    padding: 8px 12px;
     font-size: 13px;
-    border-radius: 8px;
-    font-weight: 400;
+    border-radius: 6px;
+    font-weight: 500;
     cursor: pointer;
     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     transition: opacity 0.2s;
-    background: var(--summary-border);
-    color: #ffffff;
-    border: 1px solid var(--sidebar-bg);
 }
 
-/* Hide normal map FABs on mobile unless viewing normally */
-body.view-managersmall .map-overlay-btns {
-    top: 15px !important; bottom: auto !important; right: 20px !important; display: flex; flex-direction: column;
-}
-body.view-managersmall.mobile-selection-active .map-overlay-btns { 
-    display: none !important; 
+/* If ui.js enables the button, force flex so the icons align properly */
+#mobile-selection-header .floating-btn[style*="display: block"] {
+    display: flex !important;
 }
 
+#mobile-selection-header .manual-move {
+    font-size: 12px !important; 
+    font-weight: 500 !important; 
+    border-left: none !important; 
+    border: 1px solid rgba(255,255,255,0.3) !important; 
+    border-radius: 4px !important; 
+    padding: 4px 8px !important;
+    background: transparent !important;
+    color: white !important;
+    box-shadow: none !important;
+}
 
 /* Flex rules for dropdown in managersmall */
 body.view-managersmall #inspector-dropdown-wrapper {
@@ -443,7 +474,7 @@ body.view-managersmall .module-action-btn { min-height: 38px; }
 .rbtn-time { font-size: 11px; color: var(--row-text-muted); pointer-events: none; margin-top: 2px; white-space: nowrap; }
 
 .route-view-btn {
-    flex: 1; border: 1px solid var(--route-mod-bg); background: var(--route-mod-bg);
+    flex: 1; border: 1px solid var(--route-mod-border); background: var(--route-mod-bg);
     color: var(--route-mod-text); border-radius: 4px; padding: 6px 10px; cursor: pointer;
     font-size: 13px; font-weight: 500; letter-spacing: 0.3px; transition: 0.2s opacity, 0.2s background, 0.2s border-color; opacity: 0.7;
 }
@@ -509,7 +540,6 @@ body.view-manager #resizer { display: block; border-top: none; }
 #btn-undo-incremental:disabled { color: var(--text-muted) !important; border-color: var(--border-color) !important; opacity: 0.5; cursor: not-allowed; }
 #btn-undo-incremental:hover:not(:disabled) { background: rgba(255,255,255,0.05) !important; }
 
-.map-overlay-btns { position: absolute; top: 15px; right: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .floating-btn { border-radius: 8px; padding: 10px 14px; font-weight: 400; font-size: 13px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: none; transition: opacity 0.2s; background: var(--summary-border); color: #ffffff; border: 1px solid var(--sidebar-bg); }
 .floating-btn i { margin-right: 6px; }
 .floating-btn:active { opacity: 0.7; }
