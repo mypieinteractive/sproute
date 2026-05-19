@@ -83,16 +83,20 @@
     </div>
     
     <div id="mobile-selection-header">
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <i class="fa-solid fa-xmark" onclick="clearSelection()" style="font-size: 22px; cursor: pointer; color: var(--text-main);"></i>
-            <span id="mobile-selection-count" style="font-size: 18px; font-weight: 500; color: var(--text-main);">0 Selected</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <i class="fa-solid fa-xmark" onclick="clearSelection()" style="font-size: 22px; cursor: pointer; color: var(--text-main);"></i>
+                <span id="mobile-selection-count" style="font-size: 18px; font-weight: 500; color: var(--text-main);">0 Selected</span>
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <button id="mobile-move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)" style="display: none;">Move to R1</button>
+                <button id="mobile-move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)" style="display: none;">Move to R2</button>
+                <button id="mobile-move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)" style="display: none;">Move to R3</button>
+            </div>
         </div>
-        <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px;">
-            <button id="mobile-bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()" style="display: none; flex: 0 0 auto;"><i class="fa-solid fa-route"></i> Remove</button>
-            <button id="mobile-bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()" style="display: none; flex: 0 0 auto; background: var(--red); border: none;"><i class="fa-solid fa-trash-can"></i> Delete</button>
-            <button id="mobile-move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)" style="display: none; flex: 0 0 auto; border-left: 4px solid transparent;">Move to R1</button>
-            <button id="mobile-move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)" style="display: none; flex: 0 0 auto; border-left: 4px solid transparent;">Move to R2</button>
-            <button id="mobile-move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)" style="display: none; flex: 0 0 auto; border-left: 4px solid transparent;">Move to R3</button>
+        <div style="display: flex; gap: 8px; width: 100%; margin-top: 12px;">
+            <button id="mobile-bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()" style="display: none; flex: 1; justify-content: center; background: var(--orange); color: white; border: none; min-height: 38px; padding: 0 10px;"><i class="fa-solid fa-route"></i> Remove selected from route</button>
+            <button id="mobile-bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()" style="display: none; flex: 1; justify-content: center; background: var(--red); color: white; border: none; min-height: 38px; padding: 0 10px;"><i class="fa-solid fa-trash-can"></i> Delete selected</button>
         </div>
     </div>
 
