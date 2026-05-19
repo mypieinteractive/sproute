@@ -81,6 +81,21 @@
             <input type="file" id="hidden-global-file-input" accept=".csv" style="display: none;">
         </div>
     </div>
+    
+    <div id="mobile-selection-header">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <i class="fa-solid fa-xmark" onclick="clearSelection()" style="font-size: 22px; cursor: pointer; color: var(--text-main);"></i>
+            <span id="mobile-selection-count" style="font-size: 18px; font-weight: 500; color: var(--text-main);">0 Selected</span>
+        </div>
+        <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px;">
+            <button id="mobile-bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()" style="display: none; flex: 0 0 auto;"><i class="fa-solid fa-route"></i> Remove</button>
+            <button id="mobile-bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()" style="display: none; flex: 0 0 auto; background: var(--red); border: none;"><i class="fa-solid fa-trash-can"></i> Delete</button>
+            <button id="mobile-move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)" style="display: none; flex: 0 0 auto; border-left: 4px solid transparent;">Move to R1</button>
+            <button id="mobile-move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)" style="display: none; flex: 0 0 auto; border-left: 4px solid transparent;">Move to R2</button>
+            <button id="mobile-move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)" style="display: none; flex: 0 0 auto; border-left: 4px solid transparent;">Move to R3</button>
+        </div>
+    </div>
+
 </div>
 <div id="app-body-wrapper" style="display: flex; flex: 1; min-height: 0; width: 100%; position: relative;">
     
@@ -173,10 +188,6 @@
         </div>
 
         <div class="map-overlay-btns">
-            <div id="mobile-selection-info" style="display: none; align-items: center; gap: 15px; margin-right: auto;">
-                <i class="fa-solid fa-xmark" onclick="clearSelection()" style="font-size: 20px; cursor: pointer; color: var(--text-main);"></i>
-                <span id="mobile-selection-count" style="font-size: 16px; font-weight: 500; color: var(--text-main);">0 Selected</span>
-            </div>
             <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()"><i class="fa-solid fa-expand"></i> <span class="fab-text">Reset View</span></button>
             <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()"><i class="fa-solid fa-route"></i> <span class="fab-text">Remove selected from route</span></button>
             <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()"><i class="fa-solid fa-trash-can"></i> <span class="fab-text">Delete selected</span></button>
