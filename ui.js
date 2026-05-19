@@ -1,7 +1,8 @@
-/* Dashboard - V18.53 */
+/* Dashboard - V18.54 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated the mobile selection preview card to always render the top navigation bar. If only 1 order is selected, it shows "1 of 1" perfectly centered without the navigation chevrons. */
+/* 1. Updated map selection preview to replace ETA column with App column data. */
+/* 2. Added border-right: none to col-addr to cleanly remove the divider. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -590,7 +591,7 @@ function buildEndpointsToDraw(activeStops) {
                 if (type === 'end') existing.isEnd = true;
             } else endpointsToDraw.push({ lng, lat, driverId: dId, isStart: type === 'start', isEnd: type === 'end' });
         }
-    }
+    };
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const activeDriverIds = new Set(activeStops.map(s => String(s.driverId)));
@@ -869,9 +870,9 @@ export function updateSelectionUI() {
                             ${navArrows}
                             <div class="glide-row compact" style="padding: 10px 8px; border-bottom: none; background: transparent;">
                                 <div class="col-num" style="margin-left: 0px; width: 26px;"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text}; width: 22px; height: 22px; font-size: 11px;">${displayIndex || '#'}</div></div>
-                                <div class="col-eta" style="width: 55px; font-size: 12px; display:flex; justify-content:center;">${etaTime}</div>
+                                <div class="col-app" style="width: 55px; font-size: 12px; display:flex; justify-content:center; align-items:center; color: var(--row-text-muted);">${s.app || '--'}</div>
                                 <div class="col-due ${urgencyClass}" style="width: 45px; font-size: 12px; justify-content:center;">${dueFmt}</div>
-                                <div class="col-addr" style="flex:1;"><div class="addr-text" style="font-size: 13px;">${(s.address||'').split(',')[0]}</div></div>
+                                <div class="col-addr" style="flex:1; border-right: none;"><div class="addr-text" style="font-size: 13px;">${(s.address||'').split(',')[0]}</div></div>
                             </div>
                         </div>
                     `;
