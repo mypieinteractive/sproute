@@ -1,8 +1,9 @@
-/* Dashboard - V18.50 */
+/* Dashboard - V18.51 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated mobile map selection preview to calculate and display the true sequence number instead of "#". */
-/* 2. Added window.mobilePreviewIndex tracking, alongside prev/next navigation functions, allowing users to scroll through the detailed cards of multiple selected orders instead of showing a generic pill. */
+/* 1. Added window.mobilePreviewIndex and prev/next functions to allow scrolling through multiple active selections on map. */
+/* 2. Map preview now calculates the actual displayIndex (sequence number) of the stop instead of a generic "#". */
+/* 3. Updated updateRouteButtonColors() and updateSelectionUI() to also target the new dedicated mobile selection header buttons (e.g. mobile-bulk-delete-btn). */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -129,6 +130,13 @@ export function updateRouteButtonColors() {
     if (mr1) mr1.style.borderLeftColor = baseColor;
     if (mr2) mr2.style.borderLeftColor = '#000000';
     if (mr3) mr3.style.borderLeftColor = '#ffffff';
+    
+    const mmr1 = document.getElementById('mobile-move-r1-btn');
+    const mmr2 = document.getElementById('mobile-move-r2-btn');
+    const mmr3 = document.getElementById('mobile-move-r3-btn');
+    if (mmr1) mmr1.style.borderLeftColor = baseColor;
+    if (mmr2) mmr2.style.borderLeftColor = '#000000';
+    if (mmr3) mmr3.style.borderLeftColor = '#ffffff';
 
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`rbtn-${i}`);
@@ -785,21 +793,28 @@ export function updateSelectionUI() {
     
     if (document.getElementById('bulk-delete-btn')) document.getElementById('bulk-delete-btn').style.display = (has && AppState.PERMISSION_MODIFY && Config.isManagerView) ? 'block' : 'none'; 
     if (document.getElementById('bulk-unroute-btn')) document.getElementById('bulk-unroute-btn').style.display = (hasRouted && AppState.PERMISSION_MODIFY) ? 'block' : 'none'; 
+    
+    const mBtnDel = document.getElementById('mobile-bulk-delete-btn');
+    if (mBtnDel) mBtnDel.style.display = (has && AppState.PERMISSION_MODIFY && Config.isManagerView) ? 'block' : 'none'; 
+    const mBtnUnroute = document.getElementById('mobile-bulk-unroute-btn');
+    if (mBtnUnroute) mBtnUnroute.style.display = (hasRouted && AppState.PERMISSION_MODIFY) ? 'block' : 'none'; 
 
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`move-r${i}-btn`);
-        if(btn) {
-            if(Config.isManagerView && AppState.currentInspectorFilter !== 'all' && has && i <= AppState.currentRouteCount && AppState.currentRouteCount > 1) {
-                let allInTargetRoute = true;
-                AppState.selectedIds.forEach(id => {
-                    const s = AppState.stops.find(st => String(st.id) === String(id));
-                    if (s && s.cluster !== (i - 1)) allInTargetRoute = false;
-                });
-                btn.style.display = allInTargetRoute ? 'none' : 'block';
-            } else {
-                btn.style.display = 'none';
-            }
-        }
+        const mBtn = document.getElementById(`mobile-move-r${i}-btn`);
+        let showMove = 'none';
+        
+        if(Config.isManagerView && AppState.currentInspectorFilter !== 'all' && has && i <= AppState.currentRouteCount && AppState.currentRouteCount > 1) {
+            let allInTargetRoute = true;
+            AppState.selectedIds.forEach(id => {
+                const s = AppState.stops.find(st => String(st.id) === String(id));
+                if (s && s.cluster !== (i - 1)) allInTargetRoute = false;
+            });
+            showMove = allInTargetRoute ? 'none' : 'block';
+        } 
+        
+        if (btn) btn.style.display = showMove;
+        if (mBtn) mBtn.style.display = showMove;
     }
 
     if (Config.viewMode === 'managersmall') {
