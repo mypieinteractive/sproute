@@ -1,10 +1,8 @@
-/* Dashboard - V18.48 */
+/* Dashboard - V18.50 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added native multi-select toggle for managersmall view (tapping an item toggles selection without clearing others). */
-/* 2. Added logic to updateSelectionUI to dynamically render a single-row preview or 'X Orders Selected' pill on the map. */
-/* 3. Toggles a 'mobile-selection-active' class on the body to allow CSS to transform the header. */
-/* 4. Added window.clearSelection() helper function. */
+/* 1. Updated mobile map selection preview to calculate and display the true sequence number instead of "#". */
+/* 2. Added window.mobilePreviewIndex tracking, alongside prev/next navigation functions, allowing users to scroll through the detailed cards of multiple selected orders instead of showing a generic pill. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -741,6 +739,26 @@ export function createEndpointRow(type, endpointData) {
     return el;
 }
 
+window.prevMobilePreview = function(e) {
+    e.stopPropagation();
+    if (window.mobilePreviewIndex > 0) {
+        window.mobilePreviewIndex--;
+    } else {
+        window.mobilePreviewIndex = AppState.selectedIds.size - 1;
+    }
+    updateSelectionUI();
+};
+
+window.nextMobilePreview = function(e) {
+    e.stopPropagation();
+    if (window.mobilePreviewIndex < AppState.selectedIds.size - 1) {
+        window.mobilePreviewIndex++;
+    } else {
+        window.mobilePreviewIndex = 0;
+    }
+    updateSelectionUI();
+};
+
 export function updateSelectionUI() { 
     document.querySelectorAll('.stop-item, .glide-row').forEach(el=>el.classList.remove('selected')); 
     AppState.selectedIds.forEach(id => {
@@ -791,40 +809,56 @@ export function updateSelectionUI() {
         const previewContainer = document.getElementById('mobile-map-selection-preview');
         if (previewContainer) {
             if (hasSelection) {
-                if (AppState.selectedIds.size === 1) {
-                    const selectedId = Array.from(AppState.selectedIds)[0];
-                    const s = AppState.stops.find(st => String(st.id) === String(selectedId));
-                    if (s) {
-                        let urgencyClass = '';
-                        const today = new Date(); today.setHours(0, 0, 0, 0);
-                        if (s.dueDate) {
-                            const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0); 
-                            if (dueTime < today) urgencyClass = 'past-due'; 
-                            else if (dueTime.getTime() === today.getTime()) urgencyClass = 'due-today'; 
-                        }
-                        const dueFmt = s.dueDate ? `${new Date(s.dueDate).getMonth()+1}/${new Date(s.dueDate).getDate()}` : "N/A";
-                        const isRoutedStop = isRouteAssigned(s.status);
-                        const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
-                        let etaTime = (!isRoutedStop || AppState.dirtyRoutes.has(routeKey) || AppState.dirtyRoutes.has('all')) ? '--' : (s.eta || '--');
-                        const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
-                        
-                        previewContainer.innerHTML = `
-                            <div class="glide-row compact" style="border:none; border-radius: 8px; margin: 0; padding: 10px 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.6); background: var(--row-bg);">
-                                <div class="col-num" style="margin-left: 0px; width: 26px;"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text}; width: 22px; height: 22px; font-size: 11px;">#</div></div>
+                if (window.mobilePreviewIndex === undefined || window.mobilePreviewIndex >= AppState.selectedIds.size) {
+                    window.mobilePreviewIndex = 0;
+                }
+                
+                const selectedArray = Array.from(AppState.selectedIds);
+                const selectedId = selectedArray[window.mobilePreviewIndex];
+                const s = AppState.stops.find(st => String(st.id) === String(selectedId));
+
+                if (s) {
+                    const activeStopsForIndex = AppState.stops.filter(st => isStopVisible(st, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
+                    const displayIndex = activeStopsForIndex.findIndex(st => String(st.id) === String(s.id)) + 1;
+
+                    let urgencyClass = '';
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    if (s.dueDate) {
+                        const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0); 
+                        if (dueTime < today) urgencyClass = 'past-due'; 
+                        else if (dueTime.getTime() === today.getTime()) urgencyClass = 'due-today'; 
+                    }
+                    const dueFmt = s.dueDate ? `${new Date(s.dueDate).getMonth()+1}/${new Date(s.dueDate).getDate()}` : "N/A";
+                    const isRoutedStop = isRouteAssigned(s.status);
+                    const routeKey = `${s.driverId || 'unassigned'}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`;
+                    let etaTime = (!isRoutedStop || AppState.dirtyRoutes.has(routeKey) || AppState.dirtyRoutes.has('all')) ? '--' : (s.eta || '--');
+                    const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
+                    
+                    let navArrows = '';
+                    if (AppState.selectedIds.size > 1) {
+                        navArrows = `
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding: 4px 8px; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border-color); border-radius: 8px 8px 0 0;">
+                                <i class="fa-solid fa-chevron-left" onclick="prevMobilePreview(event)" style="padding: 4px 12px; cursor: pointer; color: var(--accent);"></i>
+                                <span style="font-size: 12px; font-weight: 500; color: var(--text-main);">${window.mobilePreviewIndex + 1} of ${AppState.selectedIds.size}</span>
+                                <i class="fa-solid fa-chevron-right" onclick="nextMobilePreview(event)" style="padding: 4px 12px; cursor: pointer; color: var(--accent);"></i>
+                            </div>
+                        `;
+                    }
+
+                    previewContainer.innerHTML = `
+                        <div style="border:none; border-radius: 8px; margin: 0; box-shadow: 0 4px 15px rgba(0,0,0,0.6); background: var(--row-bg); overflow: hidden; pointer-events: auto;">
+                            ${navArrows}
+                            <div class="glide-row compact" style="padding: 10px 8px; border-bottom: none; background: transparent;">
+                                <div class="col-num" style="margin-left: 0px; width: 26px;"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text}; width: 22px; height: 22px; font-size: 11px;">${displayIndex || '#'}</div></div>
                                 <div class="col-eta" style="width: 55px; font-size: 12px; display:flex; justify-content:center;">${etaTime}</div>
                                 <div class="col-due ${urgencyClass}" style="width: 45px; font-size: 12px; justify-content:center;">${dueFmt}</div>
                                 <div class="col-addr" style="flex:1;"><div class="addr-text" style="font-size: 13px;">${(s.address||'').split(',')[0]}</div></div>
                             </div>
-                        `;
-                    }
-                } else {
-                    previewContainer.innerHTML = `
-                        <div style="background: var(--row-bg); border-radius: 8px; padding: 12px; text-align: center; font-size: 15px; font-weight: 500; color: var(--text-main); box-shadow: 0 4px 15px rgba(0,0,0,0.6);">
-                            ${AppState.selectedIds.size} Orders Selected
                         </div>
                     `;
                 }
             } else {
+                window.mobilePreviewIndex = 0;
                 previewContainer.innerHTML = '';
             }
         }
