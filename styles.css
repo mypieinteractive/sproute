@@ -1,10 +1,9 @@
-/* Dashboard - V18.52 */
+/* Dashboard - V18.53 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Updated .map-overlay-btns to default to top-left justified to clear the routing controls in Manager view. */
-/* 2. Added outline to .route-view-btn by switching default border to var(--route-mod-border). */
-/* 3. Updated body.view-managersmall.mobile-selection-active rules to fully hide #routing-controls and align the new global header padding. */
-/* 4. Styled the new #mobile-selection-header 2-row layout with flexible, equal height action buttons. */
+/* 1. Reverted .map-overlay-btns to top-right justified for manager desktop view. */
+/* 2. Standardized #mobile-selection-header buttons to height: 32px to ensure both rows match visually. */
+/* 3. Updated #mobile-selection-header .manual-move with border-left styles so the dynamic JavaScript route colors are visible. */
 
 :root { 
     /* Base / Accent */
@@ -113,6 +112,10 @@ body.view-inspector { flex-direction: column; }
 body.view-inspector #map-wrapper { height: 35%; min-height: 35%; width: 100%; border-bottom: 2px solid var(--row-border); }
 body.view-inspector #sidebar { height: 65%; min-height: 65%; width: 100%; background: var(--sidebar-bg); }
 
+body.view-inspector .map-overlay-btns {
+    top: auto !important; left: auto !important; bottom: 20px !important; right: 20px !important; align-items: flex-end;
+}
+
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; position: relative; }
 body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
 
@@ -120,18 +123,13 @@ body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-le
 .map-overlay-btns { 
     position: absolute; 
     top: 75px; 
-    left: 15px; 
-    right: auto;
+    left: auto; 
+    right: 15px;
     z-index: 2000; 
     display: flex; 
     flex-direction: column; 
     gap: 8px; 
-    align-items: flex-start; 
-}
-
-/* Map Overlay Buttons Override - Inspector View */
-body.view-inspector .map-overlay-btns {
-    top: auto !important; left: auto !important; bottom: 20px !important; right: 20px !important; align-items: flex-end;
+    align-items: flex-end; 
 }
 
 /* Map Overlay Buttons Override - ManagerSmall View */
@@ -244,6 +242,7 @@ body.view-managersmall.mobile-selection-active #mobile-selection-header {
     cursor: pointer;
     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     transition: opacity 0.2s;
+    height: 32px;
 }
 
 /* If ui.js enables the button, force flex so the icons align properly */
@@ -252,15 +251,17 @@ body.view-managersmall.mobile-selection-active #mobile-selection-header {
 }
 
 #mobile-selection-header .manual-move {
-    font-size: 12px !important; 
+    font-size: 13px !important; 
     font-weight: 500 !important; 
-    border-left: none !important; 
-    border: 1px solid rgba(255,255,255,0.3) !important; 
+    border: 1px solid var(--sidebar-bg);
+    border-left-width: 4px !important;
+    border-left-style: solid !important;
     border-radius: 4px !important; 
-    padding: 4px 8px !important;
-    background: transparent !important;
+    padding: 0 10px !important;
+    background: var(--summary-border) !important;
     color: white !important;
-    box-shadow: none !important;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+    height: 32px !important;
 }
 
 /* Flex rules for dropdown in managersmall */
