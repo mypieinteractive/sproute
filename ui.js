@@ -1,8 +1,7 @@
 /* Dashboard - V18.53 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added e.preventDefault() and document.body.style.userSelect = 'none' to startResize() to prevent accidental text highlighting while dragging the layout resizer. */
-/* 2. Added document.body.style.userSelect = '' to stopResize() to restore normal text highlighting after the drag is complete. */
+/* 1. Updated the mobile selection preview card to always render the top navigation bar. If only 1 order is selected, it shows "1 of 1" perfectly centered without the navigation chevrons. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -591,7 +590,7 @@ function buildEndpointsToDraw(activeStops) {
                 if (type === 'end') existing.isEnd = true;
             } else endpointsToDraw.push({ lng, lat, driverId: dId, isStart: type === 'start', isEnd: type === 'end' });
         }
-    };
+    }
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const activeDriverIds = new Set(activeStops.map(s => String(s.driverId)));
@@ -849,7 +848,13 @@ export function updateSelectionUI() {
                     const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
                     
                     let navArrows = '';
-                    if (AppState.selectedIds.size > 1) {
+                    if (AppState.selectedIds.size === 1) {
+                        navArrows = `
+                            <div style="display:flex; justify-content:center; align-items:center; padding: 4px 8px; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border-color); border-radius: 8px 8px 0 0;">
+                                <span style="font-size: 12px; font-weight: 500; color: var(--text-main);">1 of 1</span>
+                            </div>
+                        `;
+                    } else if (AppState.selectedIds.size > 1) {
                         navArrows = `
                             <div style="display:flex; justify-content:space-between; align-items:center; padding: 4px 8px; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border-color); border-radius: 8px 8px 0 0;">
                                 <i class="fa-solid fa-chevron-left" onclick="prevMobilePreview(event)" style="padding: 4px 12px; cursor: pointer; color: var(--accent);"></i>
