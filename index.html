@@ -95,8 +95,8 @@
             </div>
         </div>
         <div style="display: flex; gap: 8px; width: 100%; margin-top: 12px;">
-            <button id="mobile-bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()" style="display: none; flex: 1; justify-content: center; background: var(--orange); color: white; border: none; min-height: 38px; padding: 0 10px;"><i class="fa-solid fa-route"></i> Remove selected from route</button>
-            <button id="mobile-bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()" style="display: none; flex: 1; justify-content: center; background: var(--red); color: white; border: none; min-height: 38px; padding: 0 10px;"><i class="fa-solid fa-trash-can"></i> Delete selected</button>
+            <button id="mobile-bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()" style="display: none; flex: 1; justify-content: center; background: var(--orange); color: white; border: none; padding: 0 10px;"><i class="fa-solid fa-route"></i> Remove selected from route</button>
+            <button id="mobile-bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()" style="display: none; flex: 1; justify-content: center; background: var(--red); color: white; border: none; padding: 0 10px;"><i class="fa-solid fa-trash-can"></i> Delete selected</button>
         </div>
     </div>
 
@@ -203,7 +203,7 @@
         <div id="map-container" style="flex: 1; position: relative; min-height: 0;">
             <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
             
-            <div id="mobile-map-selection-preview" style="position: absolute; top: 15px; left: 15px; right: 15px; z-index: 1000; pointer-events: none;"></div>
+            <div id="mobile-map-selection-preview" style="position: absolute; bottom: 20px; left: 15px; right: 85px; top: auto; z-index: 1000; pointer-events: none;"></div>
 
             <div id="map"></div>
         </div>
