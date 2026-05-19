@@ -1,7 +1,8 @@
-/* Dashboard - V18.44 */
+/* Dashboard - V18.47 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Changed position: fixed to position: absolute for #empty-state-container, #modal-overlay, #processing-overlay, and #unmatched-modal so they safely vertically center within the restricted height boundaries of the body rather than the overflow boundary of the iframe window. */
+/* 1. Changed position: fixed to position: absolute for #empty-state-container, #modal-overlay, #processing-overlay, and #unmatched-modal so they safely vertically center within the restricted height boundaries of the body mathematically. */
+/* 2. Added body.view-managersmall.display-compact .col-client { display: none !important; } to dynamically hide the client column entirely in compact mode for mobile. */
 
 :root { 
     /* Base / Accent */
@@ -71,8 +72,8 @@ html {
 
 body { 
     margin: 0; padding: 0; 
-    height: calc(90vh - 280px);
-    height: calc(90dvh - 280px);
+    height: calc(100vh - 320px);
+    height: calc(100dvh - 320px);
     width: 100%; 
     position: fixed; 
     display: flex; flex-direction: column; 
@@ -232,6 +233,11 @@ body.view-managersmall .col-num { margin-left: 2px; width: 26px; }
 body.view-managersmall .num-badge { width: 22px; height: 22px; font-size: 11px; }
 body.view-managersmall .endpoint-controls-wrapper { padding-left: 4px; }
 body.view-managersmall .endpoint-label-text { display: none !important; }
+
+/* Dynamically hide the client column on managersmall when the user toggles into compact mode */
+body.view-managersmall.display-compact .col-client { 
+    display: none !important; 
+}
 
 #mobile-fab-toggle {
     position: absolute; bottom: 20px; right: 20px;
