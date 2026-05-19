@@ -1,8 +1,8 @@
-/* Dashboard - V18.44 */
+/* Dashboard - V18.47 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Changed position: fixed to position: absolute for success toasts to match overlay alignment. */
-/* 2. Added adjustSummaryTextSize() and hooked it into updateSummary() and syncBodyHeight() to dynamically scale down the header summary text if it overflows its container in managersmall view. */
+/* 1. Added document.body.classList.add('display-' + mode) logic to setDisplayMode and render() to track the active display mode at the root level. */
+/* 2. Changed position: fixed to position: absolute for toast popups so they respect the body bounds like the modals do. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -292,6 +292,8 @@ export function getSortIcon(col) {
 
 export function render() {
     updateHeaderUI();
+    document.body.classList.remove('display-compact', 'display-detailed');
+    document.body.classList.add(`display-${AppState.currentDisplayMode || 'detailed'}`);
     
     const listContainer = document.getElementById('stop-list');
     listContainer.innerHTML = ''; 
@@ -1252,6 +1254,8 @@ document.addEventListener('DOMContentLoaded', () => {
 window.setDisplayMode = function(mode) {
     AppState.currentDisplayMode = mode;
     document.querySelectorAll('.stop-item:not(.static-endpoint), .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
+    document.body.classList.remove('display-compact', 'display-detailed');
+    document.body.classList.add(`display-${mode}`);
 };
 
 window.setRouteViewFilter = function(val) {
@@ -1432,8 +1436,6 @@ window.syncBodyHeight = function() {
     const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
     
     if (isMobile) {
-        // Completely bypass JS height math for mobile.
-        // CSS absolute positioning (top/bottom) will handle framing!
         document.body.style.height = ''; 
     } else {
         document.body.style.height = (window.innerHeight - 320) + 'px';
