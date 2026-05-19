@@ -23,9 +23,9 @@
     </div>
 </div>
 
-<div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box;">
+<div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box; position: relative;">
     
-    <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 0 15px;">
+    <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; transition: opacity 0.2s;">
         <div id="header-action-container" style="display: flex; gap: 8px;">
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left" style="color: var(--global-hdr-icon);"></i> <span style="color: var(--global-hdr-text);">Undo</span>
@@ -44,7 +44,7 @@
 
     <div id="header-resizer-gap" style="width: 6px; flex: none; background: transparent;"></div>
 
-    <div id="header-list-zone" style="width: 50%; display: flex; justify-content: space-between; align-items: center; padding-left: 15px;">
+    <div id="header-list-zone" style="width: 50%; display: flex; justify-content: space-between; align-items: center; padding-left: 15px; transition: opacity 0.2s;">
         <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
             <div id="inspector-dropdown-wrapper" style="display: none;">
                 <select id="inspector-filter" class="insp-select" onchange="handleInspectorFilterChange(this.value)" style="font-size: 14px; padding: 4px 30px 4px 12px; font-weight: 400; height: 30px;"></select>
@@ -64,7 +64,7 @@
                 </div>
             </div>
         </div>
-        <div id="header-right-controls">
+        <div id="header-right-controls" style="transition: opacity 0.2s;">
             <div id="add-menu-wrapper" style="position: relative;">
                 <div class="header-action-btn primary-btn" style="padding: 0 16px; border-radius: 6px; cursor: default; display: flex; align-items: center;">
                     <i class="fa-solid fa-plus" style="color: white;"></i> <span style="margin-left: 6px; color: white;">Add</span>
@@ -94,7 +94,7 @@
         </div>
     </div>
 
-    <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0;">
+    <div id="map-wrapper" style="flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative;">
 
         <div id="routing-controls" style="display: none; height: 60px; padding: 0 15px; flex-direction: row; align-items: center; justify-content: space-between; z-index: 10; flex: none; box-sizing: border-box; overflow-x: auto; overflow-y: hidden;">
             
@@ -172,16 +172,24 @@
             </div>
         </div>
 
+        <div class="map-overlay-btns">
+            <div id="mobile-selection-info" style="display: none; align-items: center; gap: 15px; margin-right: auto;">
+                <i class="fa-solid fa-xmark" onclick="clearSelection()" style="font-size: 20px; cursor: pointer; color: var(--text-main);"></i>
+                <span id="mobile-selection-count" style="font-size: 16px; font-weight: 500; color: var(--text-main);">0 Selected</span>
+            </div>
+            <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()"><i class="fa-solid fa-expand"></i> <span class="fab-text">Reset View</span></button>
+            <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()"><i class="fa-solid fa-route"></i> <span class="fab-text">Remove selected from route</span></button>
+            <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()"><i class="fa-solid fa-trash-can"></i> <span class="fab-text">Delete selected</span></button>
+            <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)"><span class="fab-text">Move to </span>R1</button>
+            <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)"><span class="fab-text">Move to </span>R2</button>
+            <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)"><span class="fab-text">Move to </span>R3</button>
+        </div>
+
         <div id="map-container" style="flex: 1; position: relative; min-height: 0;">
             <div id="map-hint">Shift-drag or Shift-click to select multiple</div>
-            <div class="map-overlay-btns">
-                <button id="reset-view-btn" class="floating-btn" onclick="resetMapView()"><i class="fa-solid fa-expand"></i> Reset View</button>
-                <button id="bulk-unroute-btn" class="floating-btn" onclick="triggerBulkUnroute()"><i class="fa-solid fa-route"></i> Remove selected from route</button>
-                <button id="bulk-delete-btn" class="floating-btn" onclick="triggerBulkDelete()"><i class="fa-solid fa-trash-can"></i> Delete selected</button>
-                <button id="move-r1-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(0)">Move to Route 1</button>
-                <button id="move-r2-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(1)">Move to Route 2</button>
-                <button id="move-r3-btn" class="floating-btn manual-move" onclick="moveSelectedToRoute(2)">Move to Route 3</button>
-            </div>
+            
+            <div id="mobile-map-selection-preview" style="position: absolute; top: 15px; left: 15px; right: 15px; z-index: 1000; pointer-events: none;"></div>
+
             <div id="map"></div>
         </div>
     </div>
@@ -256,8 +264,6 @@
         const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
         
         if (isMobile) {
-            // Completely bypass JS height math for mobile.
-            // CSS absolute positioning (top/bottom) will handle framing!
             document.body.style.height = ''; 
         } else {
             document.body.style.height = (window.innerHeight - 320) + 'px';
@@ -269,6 +275,8 @@
         if (sidebar) sidebar.style.minHeight = '0';
         const map = getMapInstance();
         if (map) map.resize();
+        
+        if (typeof adjustSummaryTextSize === 'function') adjustSummaryTextSize();
     }
     window.addEventListener('resize', window.syncBodyHeight);
     document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
