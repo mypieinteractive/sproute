@@ -1,9 +1,8 @@
-/* Dashboard - V18.51 */
+/* Dashboard - V18.53 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added window.mobilePreviewIndex and prev/next functions to allow scrolling through multiple active selections on map. */
-/* 2. Map preview now calculates the actual displayIndex (sequence number) of the stop instead of a generic "#". */
-/* 3. Updated updateRouteButtonColors() and updateSelectionUI() to also target the new dedicated mobile selection header buttons (e.g. mobile-bulk-delete-btn). */
+/* 1. Added e.preventDefault() and document.body.style.userSelect = 'none' to startResize() to prevent accidental text highlighting while dragging the layout resizer. */
+/* 2. Added document.body.style.userSelect = '' to stopResize() to restore normal text highlighting after the drag is complete. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1503,9 +1502,11 @@ const resizerEl = document.getElementById('resizer'); const sidebarEl = document
 let isResizing = false;
 function startResize(e) { 
     if(!Config.isManagerView || Config.viewMode === 'managersmall') return; 
+    if (e && e.cancelable && e.type !== 'touchstart') e.preventDefault();
     isResizing = true; 
     resizerEl.classList.add('active'); 
     document.body.style.cursor = 'col-resize'; 
+    document.body.style.userSelect = 'none';
     mapWrapEl.style.pointerEvents = 'none'; 
 }
 resizerEl.addEventListener('mousedown', startResize); resizerEl.addEventListener('touchstart', (e) => { startResize(e.touches[0]); }, {passive: false});
@@ -1527,7 +1528,16 @@ function performResize(e) {
 }
 
 document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
-function stopResize() { if (isResizing) { isResizing = false; document.body.style.cursor = ''; resizerEl.classList.remove('active'); mapWrapEl.style.pointerEvents = 'auto'; resizeMap(); } }
+function stopResize() { 
+    if (isResizing) { 
+        isResizing = false; 
+        document.body.style.cursor = ''; 
+        document.body.style.userSelect = '';
+        resizerEl.classList.remove('active'); 
+        mapWrapEl.style.pointerEvents = 'auto'; 
+        resizeMap(); 
+    } 
+}
 document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
 
 window.currentMobileMapMode = 'pan';
