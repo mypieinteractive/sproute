@@ -1,9 +1,8 @@
-/* Dashboard - V18.53 */
+/* Dashboard - V18.55 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Reverted .map-overlay-btns to top-right justified for manager desktop view. */
-/* 2. Standardized #mobile-selection-header buttons to height: 32px to ensure both rows match visually. */
-/* 3. Updated #mobile-selection-header .manual-move with border-left styles so the dynamic JavaScript route colors are visible. */
+/* 1. Updated .map-overlay-btns to default to top: 15px in manager view. */
+/* 2. Added dynamic rule body.view-manager.manager-single-inspector .map-overlay-btns to drop the buttons to top: 75px only when the Routing Controls are active, eliminating the gap. */
 
 :root { 
     /* Base / Accent */
@@ -122,7 +121,7 @@ body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-le
 /* Map Overlay Buttons Default - Manager View */
 .map-overlay-btns { 
     position: absolute; 
-    top: 75px; 
+    top: 15px; 
     left: auto; 
     right: 15px;
     z-index: 2000; 
@@ -130,6 +129,12 @@ body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-le
     flex-direction: column; 
     gap: 8px; 
     align-items: flex-end; 
+    transition: top 0.2s ease-in-out;
+}
+
+/* Drop down 60px to clear the routing controls when in Single Inspector mode */
+body.view-manager.manager-single-inspector .map-overlay-btns {
+    top: 75px;
 }
 
 /* Map Overlay Buttons Override - ManagerSmall View */
