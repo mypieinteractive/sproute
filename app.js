@@ -1,7 +1,8 @@
-/* Dashboard - V18.7 */
+/* Dashboard - V18.8 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Changed initial body class injection for managersmall from split-show-map to split-show-list to ensure it defaults to List view on load. */
+/* 1. Added polylines object to AppState to track geometric path data. */
+/* 2. Added logic in loadData() to intercept and parse activeStaging.polylines from the backend payload. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -58,7 +59,8 @@ export const AppState = {
     currentUploadDriverId: null,
     isFreshGlideRefresh: false,
     isPollingForRoute: false,
-    pollRetries: 0
+    pollRetries: 0,
+    polylines: {}
 };
 
 document.body.className = `view-${Config.viewMode} manager-all-inspectors empty-state-active`;
@@ -170,6 +172,15 @@ export async function loadData() {
         
         if (data.adminEmail) AppState.adminEmail = data.adminEmail;
         if (data.csvTypes && Array.isArray(data.csvTypes)) AppState.availableCsvTypes = data.csvTypes;
+
+        let polyData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
+        if (polyData) {
+            try {
+                AppState.polylines = typeof polyData === 'string' ? JSON.parse(polyData) : polyData;
+            } catch(e) { AppState.polylines = {}; }
+        } else {
+            AppState.polylines = {};
+        }
 
         if (AppState.isPollingForRoute) {
             let fetchedMap = new Map();
