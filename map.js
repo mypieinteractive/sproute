@@ -1,9 +1,11 @@
-/* Dashboard - V15.8 */
+/* Dashboard - V18.8 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Decoupled toggleMobileLasso() from the old button element to ensure map.dragPan.disable() correctly locks panning when Select mode is active via the rocker switch. */
+/* 1. Integrated decodePolyline() algorithm to convert compressed ASCII strings back to Mapbox coordinates. */
+/* 2. drawRouteMap() now pulls AppState.polylines and prioritizes decoded path data over straight lines when drawing active routes. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
+import { AppState } from './app.js';
 
 let map = null;
 let markers = [];
@@ -15,6 +17,38 @@ let box_el = null;
 let canvas = null;
 let onSelectionCallback = null; 
 export let isMobileLassoActive = false;
+
+// Decode Google's Encoded Polyline String
+function decodePolyline(encoded) {
+    if (!encoded) return [];
+    let poly = [];
+    let index = 0, len = encoded.length;
+    let lat = 0, lng = 0;
+
+    while (index < len) {
+        let b, shift = 0, result = 0;
+        do {
+            b = encoded.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+        } while (b >= 0x20);
+        let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lat += dlat;
+
+        shift = 0;
+        result = 0;
+        do {
+            b = encoded.charCodeAt(index++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+        } while (b >= 0x20);
+        let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lng += dlng;
+
+        poly.push([lng * 1e-5, lat * 1e-5]); // Output as [lng, lat] for Mapbox
+    }
+    return poly;
+}
 
 export function initMap(token, config, selectionCallback) {
     mapboxgl.accessToken = token;
@@ -38,7 +72,6 @@ export function initMap(token, config, selectionCallback) {
     canvas = map.getCanvasContainer();
     canvas.addEventListener('mousedown', onCanvasMouseDown, true);
     
-    // NEW: Touch event bindings for mobile lasso
     canvas.addEventListener('touchstart', onCanvasTouchStart, { passive: false });
 
     const mapContainer = document.getElementById(config.container);
@@ -208,8 +241,6 @@ export function drawRouteMap(params) {
     routesMap.forEach((cStops, key) => {
         if (cStops.length > 0) {
             const style = getVisualStyle(cStops[0], isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
-            let coords = cStops.map(s => [parseFloat(s.lng), parseFloat(s.lat)]);
-            
             let dId = key.split('_')[0];
             let clusterIndex = parseInt(key.split('_')[1]);
             let rStart = activeEndpoints.start;
@@ -223,10 +254,25 @@ export function drawRouteMap(params) {
                 }
             }
 
-            if (rStart && rStart.lng && rStart.lat) coords.unshift([parseFloat(rStart.lng), parseFloat(rStart.lat)]);
-            if (rEnd && rEnd.lng && rEnd.lat) coords.push([parseFloat(rEnd.lng), parseFloat(rEnd.lat)]);
-
             let isDirty = dirtyRoutes.has(key) || dirtyRoutes.has('all') || dirtyRoutes.has('endpoints_0');
+            let coords = [];
+            let usePolyline = false;
+
+            if (!isDirty && AppState.polylines) {
+                let polylineStrings = AppState.polylines[`${dId}_${clusterIndex}`] || AppState.polylines[clusterIndex];
+                if (polylineStrings && Array.isArray(polylineStrings)) {
+                    polylineStrings.forEach(str => {
+                        coords.push(...decodePolyline(str));
+                    });
+                    usePolyline = coords.length > 0;
+                }
+            }
+
+            if (!usePolyline) {
+                coords = cStops.map(s => [parseFloat(s.lng), parseFloat(s.lat)]);
+                if (rStart && rStart.lng && rStart.lat) coords.unshift([parseFloat(rStart.lng), parseFloat(rStart.lat)]);
+                if (rEnd && rEnd.lng && rEnd.lat) coords.push([parseFloat(rEnd.lng), parseFloat(rEnd.lat)]);
+            }
 
             if (coords.length > 1) {
                 features.push({
