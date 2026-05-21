@@ -1,14 +1,13 @@
 /**
  * optimization.js
- * VERSION: V15.1
+ * VERSION: V15.0
  * * CHANGES:
- * V15.1 - Polyline Extraction Integration. Both standard and enterprise routing API calls 
- * now extract the encoded polyline geometry string from the Google response. These geometries 
- * are stored in a new activeStaging.polylines object keyed by route number and saved to 
- * the Users document to allow the frontend to draw physical drive paths.
  * V1.53 - Payload Isolation Restored. Because the UTC ETA drift was fixed in V1.52, 
  * we can safely re-introduce Payload Isolation to the calculate endpoint without map 
- * lines crossing.
+ * lines crossing. calculate now returns ONLY the requested stops, preventing the 
+ * frontend's singular-cluster trapdoor from overwriting the clusters of Pending orders 
+ * in local memory, which previously caused them to be erroneously saved to the DB and 
+ * sucked back into future generateRoute optimizations.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -76,14 +75,11 @@ async function callStandardRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequen
 
         const waypointOrder = (data.routes[0].waypoint_order && data.routes[0].waypoint_order.length > 0) ? data.routes[0].waypoint_order : stopsGeo.map((_, i) => i);
         
-        return {
-            visits: waypointOrder.map((origIdx, i) => ({
-                index: origIdx,
-                distance: ((data.routes[0].legs[i].distance.value || 0) * 0.000621371).toFixed(1) + " mi",
-                durationSecs: data.routes[0].legs[i].duration.value
-            })),
-            polyline: data.routes[0].overview_polyline ? data.routes[0].overview_polyline.points : ""
-        };
+        return waypointOrder.map((origIdx, i) => ({
+            index: origIdx,
+            distance: ((data.routes[0].legs[i].distance.value || 0) * 0.000621371).toFixed(1) + " mi",
+            durationSecs: data.routes[0].legs[i].duration.value
+        }));
     } catch (e) {
         console.error(`Standard API Error: ${e.message}`);
         return null;
@@ -131,14 +127,11 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
             return null;
         }
 
-        return {
-            visits: data.routes[0].visits.map((v, i) => ({
-                index: parseInt(v.shipmentLabel),
-                distance: ((data.routes[0].transitions[i]?.travelDistanceMeters || 0) * 0.000621371).toFixed(1) + " mi",
-                durationSecs: parseFloat((data.routes[0].transitions[i]?.travelDuration || "0s").replace('s', ''))
-            })),
-            polyline: data.routes[0].routePolyline ? data.routes[0].routePolyline.points : ""
-        };
+        return data.routes[0].visits.map((v, i) => ({
+            index: parseInt(v.shipmentLabel),
+            distance: ((data.routes[0].transitions[i]?.travelDistanceMeters || 0) * 0.000621371).toFixed(1) + " mi",
+            durationSecs: parseFloat((data.routes[0].transitions[i]?.travelDuration || "0s").replace('s', ''))
+        }));
     } catch (e) {
         console.error(`Enterprise API Error: ${e.message}`);
         return null;
@@ -208,9 +201,6 @@ async function generateRoute(payload, res, db) {
     let finalRoutedStops = [];
     let stdCalls = 0, entCalls = 0;
     
-    let existingPolylines = safeJsonParse(driverDoc.data().activeStaging?.polylines, {});
-    let polylines = { ...existingPolylines };
-    
     for (let routeNum in clusters) {
         let cStops = clusters[routeNum].filter(s => s && !isNaN(s.lat) && !isNaN(s.lng));
         if (cStops.length === 0) {
@@ -229,16 +219,14 @@ async function generateRoute(payload, res, db) {
             if (optimized) entCalls += routeInput.length;
         }
 
-        if (!optimized || !optimized.visits) {
+        if (!optimized) {
             console.error(`[OPTIMIZATION FAILED] Google API returned null for Route ${routeNum}`);
             return res.status(500).json({ error: "Routing APIs failed to return a sequence. Please check your Google Cloud API keys and Environment Variables." });
         }
 
-        polylines[routeNum] = [optimized.polyline];
-
         let currentSeconds = baseStartSeconds;
 
-        optimized.visits.forEach((visit) => {
+        optimized.forEach((visit) => {
             let s = cStops[visit.index].orig;
             
             // Add drive time
@@ -299,8 +287,7 @@ async function generateRoute(payload, res, db) {
     const batch = db.batch();
     batch.update(driverRef, { 
         'activeStaging.orders': JSON.stringify(finalBay), 
-        'activeStaging.status': nextState,
-        'activeStaging.polylines': JSON.stringify(polylines)
+        'activeStaging.status': nextState 
     });
     
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
@@ -314,7 +301,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V15.1'
+        backendVersion: 'V1.53'
     });
 }
 
@@ -382,9 +369,6 @@ async function calculate(payload, res, db) {
 
     let finalRoutedStops = [];
     let stdCalls = 0;
-    
-    let existingPolylines = safeJsonParse(driverDoc.data().activeStaging?.polylines, {});
-    let polylines = { ...existingPolylines };
 
     for (let routeNum in clusters) {
         let routeStops = clusters[routeNum].filter(s => s && !isNaN(s.lat) && !isNaN(s.lng));
@@ -395,7 +379,6 @@ async function calculate(payload, res, db) {
 
         let finalResults = [];
         let apiSuccess = false;
-        let chunkPolys = [];
 
         if (useExactApi) {
             apiSuccess = true;
@@ -407,17 +390,11 @@ async function calculate(payload, res, db) {
                 let currentEnd = (i + chunkSize < routeStops.length) ? routeStops[i + chunkSize] : endpoints.end;
                 
                 let chunkOptimized = await callStandardRoutingAPI(currentStart, chunkStops, currentEnd, true, mapsApiKey);
-                if (!chunkOptimized || !chunkOptimized.visits) { apiSuccess = false; break; }
+                if (!chunkOptimized) { apiSuccess = false; break; }
 
                 stdCalls++;
-                finalResults = finalResults.concat(chunkOptimized.visits);
-                if (chunkOptimized.polyline) chunkPolys.push(chunkOptimized.polyline);
-                
-                // Set the start of the next chunk exactly where this chunk ended to prevent gaps
+                finalResults = finalResults.concat(chunkOptimized);
                 currentStart = chunkStops[chunkStops.length - 1]; 
-            }
-            if (apiSuccess) {
-                polylines[routeNum] = chunkPolys;
             }
         }
 
@@ -434,7 +411,6 @@ async function calculate(payload, res, db) {
                 finalResults.push({ distance: d.toFixed(1) + " mi", durationSecs: (d / 25) * 3600 });
                 prevGeo = routeStops[i];
             }
-            delete polylines[routeNum];
         }
 
         let currentSeconds = baseStartSeconds;
@@ -499,8 +475,7 @@ async function calculate(payload, res, db) {
     const batch = db.batch();
     batch.update(driverRef, { 
         'activeStaging.orders': JSON.stringify(finalBay), 
-        'activeStaging.status': nextState,
-        'activeStaging.polylines': JSON.stringify(polylines)
+        'activeStaging.status': nextState 
     });
     
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
@@ -562,7 +537,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V15.1'
+        backendVersion: 'V1.53'
     });
 }
 
