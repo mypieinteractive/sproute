@@ -1,7 +1,10 @@
 /**
  * optimization.js
- * VERSION: V15.1
+ * VERSION: V15.2
  * * CHANGES:
+ * V15.2 - Added `populatePolylines: true` to the Enterprise Route Optimization API 
+ * payload. Google omits the polyline by default for large fleet routing to save 
+ * bandwidth; this forces it to return the geometry so the frontend can draw it.
  * V15.1 - Polyline Extraction Integration. Both standard and enterprise routing API calls 
  * now extract the encoded polyline geometry string from the Google response. These geometries 
  * are stored in a new activeStaging.polylines object keyed by route number and saved to 
@@ -101,6 +104,7 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
         const tokenResponse = await client.getAccessToken();
         
         const payload = {
+            populatePolylines: true, // EXPLICITLY ASK GOOGLE FOR THE GEOMETRY
             model: {
                 shipments: stopsGeo.map((s, i) => ({ deliveries: [{ arrivalLocation: { latitude: s.lat, longitude: s.lng } }], label: i.toString() }))
             }
@@ -314,7 +318,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V15.1'
+        backendVersion: 'V15.2'
     });
 }
 
@@ -562,7 +566,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V15.1'
+        backendVersion: 'V15.2'
     });
 }
 
