@@ -1,8 +1,7 @@
-/* Dashboard - V18.8 */
+/* Dashboard - V18.9 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Integrated decodePolyline() algorithm to convert compressed ASCII strings back to Mapbox coordinates. */
-/* 2. drawRouteMap() now pulls AppState.polylines and prioritizes decoded path data over straight lines when drawing active routes. */
+/* 1. Fixed the off-by-one indexing bug when looking up AppState.polylines. The backend saves routes as 1-based integers (1, 2, 3), so we now look for clusterIndex + 1. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 import { AppState } from './app.js';
@@ -243,6 +242,8 @@ export function drawRouteMap(params) {
             const style = getVisualStyle(cStops[0], isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
             let dId = key.split('_')[0];
             let clusterIndex = parseInt(key.split('_')[1]);
+            let routeKeyNum = clusterIndex + 1; // FIX: Backend stores polylines 1-indexed!
+            
             let rStart = activeEndpoints.start;
             let rEnd = activeEndpoints.end;
 
@@ -259,7 +260,9 @@ export function drawRouteMap(params) {
             let usePolyline = false;
 
             if (!isDirty && AppState.polylines) {
-                let polylineStrings = AppState.polylines[`${dId}_${clusterIndex}`] || AppState.polylines[clusterIndex];
+                // Look for the 1-based route index
+                let polylineStrings = AppState.polylines[`${dId}_${routeKeyNum}`] || AppState.polylines[routeKeyNum] || AppState.polylines[String(routeKeyNum)];
+                
                 if (polylineStrings && Array.isArray(polylineStrings)) {
                     polylineStrings.forEach(str => {
                         coords.push(...decodePolyline(str));
