@@ -1,12 +1,13 @@
-/* Dashboard - V18.8 */
+/* Dashboard - V19.0 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added polylines object to AppState to track geometric path data. */
-/* 2. Added logic in loadData() to intercept and parse activeStaging.polylines from the backend payload. */
+/* 1. Added Asynchronous Mapbox Verification Queue (processVerificationQueue) that triggers after loadData(). */
+/* 2. Processes 3 rows at a time (~6/sec) to avoid Mapbox rate limits while keeping the UI fully interactive. */
+/* 3. Sends batched verification results directly to the new `updateGeocodeCache` backend endpoint. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
-    isActiveStop, timeToMins, calculateClusters 
+    isActiveStop, timeToMins, calculateClusters, getDistMi 
 } from './logic.js';
 
 import { 
@@ -59,6 +60,7 @@ export const AppState = {
     currentUploadDriverId: null,
     isFreshGlideRefresh: false,
     isPollingForRoute: false,
+    isProcessingQueue: false,
     pollRetries: 0,
     polylines: {}
 };
@@ -94,6 +96,100 @@ export async function apiFetch(payload) {
         const response = await fetch(Config.BACKEND_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         return response;
     } catch (err) { throw err; }
+}
+
+export async function processVerificationQueue() {
+    if (AppState.isProcessingQueue) return;
+    
+    const pendingStops = AppState.stops.filter(s => s.verified === 0);
+    if (pendingStops.length === 0) {
+        UI.updateRouteActionButtons();
+        return;
+    }
+
+    AppState.isProcessingQueue = true;
+    const batchSize = 3; 
+    let updatesList = [];
+    let uiNeedsUpdate = false;
+
+    for (let i = 0; i < Math.min(batchSize, pendingStops.length); i++) {
+        const stop = pendingStops[i];
+        const query = encodeURIComponent(stop.fullOriginalAddress || stop.address);
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${Config.MAPBOX_TOKEN}&country=us&types=address,poi`;
+        
+        try {
+            AppState.frontEndApiUsage.geocode++;
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            let isValid = false;
+            let correctedAddress = stop.fullOriginalAddress || stop.address;
+            let finalLat = stop.lat;
+            let finalLng = stop.lng;
+
+            if (data.features && data.features.length > 0) {
+                const bestMatch = data.features[0];
+                const mapboxLng = bestMatch.center[0];
+                const mapboxLat = bestMatch.center[1];
+                
+                if (!stop.lat || !stop.lng || (stop.lat === 0 && stop.lng === 0)) {
+                    isValid = true;
+                    finalLat = mapboxLat;
+                    finalLng = mapboxLng;
+                    correctedAddress = bestMatch.place_name;
+                } else {
+                    const dist = getDistMi(stop.lat, stop.lng, mapboxLat, mapboxLng);
+                    if (dist <= 0.06) { 
+                        isValid = true;
+                        correctedAddress = bestMatch.place_name;
+                    } else {
+                        isValid = false;
+                    }
+                }
+            }
+
+            stop.verified = isValid ? 1 : -1;
+            if (isValid) {
+                stop.lat = finalLat;
+                stop.lng = finalLng;
+                stop.correctedAddress = correctedAddress;
+            } else {
+                stop.status = 'Validation Failed'; 
+            }
+
+            updatesList.push({
+                rowId: stop.id,
+                originalAddress: stop.fullOriginalAddress || stop.address,
+                lat: finalLat,
+                lng: finalLng,
+                correctedAddress: correctedAddress,
+                isValid: isValid
+            });
+            
+            uiNeedsUpdate = true;
+
+        } catch (err) {
+            stop.verified = -1;
+            stop.status = 'Validation Failed';
+            uiNeedsUpdate = true;
+        }
+    }
+
+    if (uiNeedsUpdate) UI.updateVerificationUI();
+
+    if (updatesList.length > 0) {
+        try {
+            const dId = updatesList[0] ? AppState.stops.find(s=>s.id === updatesList[0].rowId)?.driverId : null;
+            await apiFetch({
+                action: 'updateGeocodeCache',
+                driverId: dId || AppState.currentUploadDriverId || Config.driverParam,
+                updatesList: updatesList
+            });
+        } catch(e) { console.error("Cache sync failed", e); }
+    }
+
+    AppState.isProcessingQueue = false;
+    setTimeout(() => { processVerificationQueue(); }, 500); 
 }
 
 export async function loadData() {
@@ -254,6 +350,7 @@ export async function loadData() {
             }
         }
         triggerFullRender();
+        processVerificationQueue();
     } catch (e) { AppState.isFreshGlideRefresh = false; } 
     finally { if (!AppState.isPollingForRoute && !AppState.isFreshGlideRefresh) UI.hideOverlay(); UI.updateUndoUI(); }
 }
@@ -311,6 +408,13 @@ export async function handleGenerateRoute() {
     if (AppState.currentInspectorFilter === 'all') return;
     const insp = AppState.inspectors.find(i => String(i.id) === String(AppState.currentInspectorFilter));
     if (!insp) return;
+    
+    const hasUnverified = AppState.stops.some(s => s.verified === -1);
+    if (hasUnverified) {
+        UI.openUnmatchedModal();
+        return;
+    }
+
     UI.showOverlay();
 
     let stopsToOptimize = []; const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status));
@@ -371,6 +475,12 @@ export async function handleGenerateRoute() {
 }
 
 export async function handleCalculate() {
+    const hasUnverified = AppState.stops.some(s => s.verified === -1);
+    if (hasUnverified) {
+        UI.openUnmatchedModal();
+        return;
+    }
+    
     UI.showOverlay();
     try {
         const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat);
@@ -482,7 +592,7 @@ export async function handleStartOver() {
         silentSaveRouteState();
     } catch (err) { 
         UI.hideOverlay(); 
-        await UI.customAlert("Error starting over. Please try again."); 
+        await customAlert("Error starting over. Please try again."); 
     } finally { 
         UI.hideOverlay(); 
     }
@@ -530,12 +640,9 @@ export async function performUpload(file, inspectorId, csvType, overrideLock = f
                     document.body.classList.remove('manager-all-inspectors'); document.body.classList.add('manager-single-inspector');
                 }
                 
-                if (data.unmatchedAddresses && data.unmatchedAddresses.length > 0) {
-                    UI.hideOverlay(); AppState.unmatchedAddressesQueue = data.unmatchedAddresses; AppState.currentUnmatchedIndex = 0; AppState.currentUploadDriverId = inspectorId; UI.openUnmatchedModal();
-                } else { 
-                    await loadData(); 
-                    UI.hideOverlay();
-                }
+                AppState.currentUploadDriverId = inspectorId; 
+                await loadData(); 
+                UI.hideOverlay();
             } else if (data.status === 'size_limit') {
                 UI.hideOverlay(); await UI.customAlert("The uploaded file is too large. Please reduce rows and try again.");
             } else if (data.status === 'confirm_hijack') {
@@ -576,8 +683,7 @@ export function setRoutes(num) {
         const btn = document.getElementById(`rbtn-${i}`);
         if(btn) btn.classList.toggle('active', i === num);
     }
-    const headerGenBtnText = document.getElementById('btn-header-generate-text');
-    if (headerGenBtnText) headerGenBtnText.innerText = "Optimize";
+    UI.updateRouteActionButtons();
     
     AppState.stops.forEach(s => s.manualCluster = false); 
     
