@@ -1,12 +1,13 @@
 /**
  * preOptimization.js
- * VERSION: V15.1
+ * VERSION: V15.2
  * * CHANGES:
+ * V15.2 - Added billing/tracking integration to `updateGeocodeCache`. The endpoint 
+ * now extracts `payload.frontEndApiUsage.geocode` sent by the background queue and 
+ * logs it against the company's monthly usage.
  * V15.1 - Optimistic UI Validation Engine. Shifted geocoding workload off the 
  * backend upload process. `uploadCsv` now performs a lightning-fast bulk lookup 
- * against `GeocodeCache`. Cache misses are appended to the order tuple with a 
- * `verified: 0` flag for the frontend Mapbox queue to process asynchronously. 
- * Added `updateGeocodeCache` endpoint to receive and store Mapbox queue results.
+ * against `GeocodeCache`.
  */
 
 const { parse } = require('csv-parse/sync');
@@ -214,10 +215,9 @@ async function uploadCsv(payload, res, db, admin) {
     return res.status(200).json({ success: true, count: newOrders.length });
 }
 
-// --- NEW ENDPOINT: Receives Background Verification Results from Frontend Queue ---
+// --- ENDPOINT: Receives Background Verification Results from Frontend Queue ---
 async function updateGeocodeCache(payload, res, db, admin) {
     const { driverId, updatesList } = payload; 
-    // updatesList format: [{ rowId, originalAddress, lat, lng, correctedAddress, isValid }]
     if (!driverId || !updatesList || !Array.isArray(updatesList)) return res.status(400).json({error: "Missing parameters"});
     
     const batch = db.batch();
@@ -275,11 +275,20 @@ async function updateGeocodeCache(payload, res, db, admin) {
         }
     }
 
+    // --- CATCH AND BILL FRONTEND API USAGE ---
+    if (payload.frontEndApiUsage && payload.frontEndApiUsage.geocode > 0) {
+        const compId = driverDoc.data().companyId;
+        if (compId) {
+            const compRef = db.collection('Companies').doc(String(compId));
+            incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', payload.frontEndApiUsage.geocode);
+        }
+    }
+
     if (changed) {
         batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(bay) });
-        await batch.commit();
     }
     
+    await batch.commit();
     return res.status(200).json({ success: true });
 }
 
