@@ -1,10 +1,7 @@
-/* Dashboard - V19.1 */
+/* Dashboard - V19.2 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added Asynchronous Mapbox Verification Queue (processVerificationQueue) that triggers after loadData(). */
-/* 2. Processes 3 rows at a time to avoid Mapbox rate limits while keeping the UI fully interactive. */
-/* 3. Sends batched verification results directly to the new updateGeocodeCache backend endpoint. */
-/* 4. Added Exponential Backoff logic to gracefully handle Mapbox 429 Rate Limit errors without failing valid addresses. */
+/* 1. Added `currentUnmatchedStopId` to AppState to explicitly track the exact order ID during manual edits for the unmatched modal. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -59,6 +56,7 @@ export const AppState = {
     unmatchedAddressesQueue: [],
     currentUnmatchedIndex: 0,
     currentUploadDriverId: null,
+    currentUnmatchedStopId: null, // NEW: tracks exact ID during manual edit
     isFreshGlideRefresh: false,
     isPollingForRoute: false,
     isProcessingQueue: false,
@@ -104,10 +102,12 @@ let queueCooldown = 500; // Default wait time between batches
 export async function processVerificationQueue() {
     if (AppState.isProcessingQueue) return;
     
+    UI.updateVerificationUI();
+    
     const pendingStops = AppState.stops.filter(s => s.verified === 0);
     if (pendingStops.length === 0) {
-        UI.updateRouteActionButtons();
-        queueCooldown = 500; // Reset cooldown when finished
+        UI.updateVerificationUI();
+        queueCooldown = 500; 
         return;
     }
 
@@ -126,11 +126,10 @@ export async function processVerificationQueue() {
             AppState.frontEndApiUsage.geocode++;
             const res = await fetch(url);
             
-            // --- RATE LIMIT SAFETY NET ---
             if (res.status === 429) {
                 console.warn("Mapbox Rate Limit Hit. Backing off...");
                 hitRateLimit = true;
-                break; // Stop processing this batch immediately
+                break; 
             }
 
             const data = await res.json();
@@ -182,7 +181,6 @@ export async function processVerificationQueue() {
             uiNeedsUpdate = true;
 
         } catch (err) {
-            // Only fail if it's a true network error, not a rate limit
             if (!hitRateLimit) {
                 stop.verified = -1;
                 stop.status = 'Validation Failed';
@@ -206,11 +204,10 @@ export async function processVerificationQueue() {
 
     AppState.isProcessingQueue = false;
 
-    // --- DYNAMIC DELAY ---
     if (hitRateLimit) {
-        queueCooldown = 3000; // Wait 3 seconds to let Mapbox cool down
+        queueCooldown = 3000; 
     } else {
-        queueCooldown = 500;  // Back to normal speed
+        queueCooldown = 500;  
     }
 
     setTimeout(() => { processVerificationQueue(); }, queueCooldown); 
