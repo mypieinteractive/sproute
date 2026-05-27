@@ -1,13 +1,11 @@
 /**
  * optimization.js
- * VERSION: V15.3
+ * VERSION: V15.4
  * * CHANGES:
+ * V15.4 - Tuple Expansion for Notes Feature. Pushing index [16] (notes) into the payload to preserve it during Google routing.
  * V15.3 - Tuple Expansion for Verification Engine. Updated the array push methods 
  * in `generateRoute` and `calculate` to properly preserve the new tuple indexes 
- * [13] (verified), [14] (correctedAddress), and [15] (fullOriginalAddress) when 
- * rebuilding the orders array post-optimization. 
- * V15.2 - Added `populatePolylines: true` to the Enterprise Route Optimization API.
- * V15.1 - Polyline Extraction Integration. 
+ * [13] (verified), [14] (correctedAddress), and [15] (fullOriginalAddress). 
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -259,7 +257,8 @@ async function generateRoute(payload, res, db) {
                 isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs,
                 isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
                 isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
+                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
+                isTuple ? (s[16] || "") : (s.notes || "")
             ]);
         });
     }
@@ -275,7 +274,8 @@ async function generateRoute(payload, res, db) {
             isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0,
             isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
             isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
+            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
+            isTuple ? (s[16] || "") : (s.notes || "")
         ];
     });
 
@@ -320,7 +320,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V15.3'
+        backendVersion: 'V15.4'
     });
 }
 
@@ -465,7 +465,8 @@ async function calculate(payload, res, db) {
                 isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", res.durationSecs,
                 isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
                 isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
+                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
+                isTuple ? (s[16] || "") : (s.notes || "")
             ]);
         });
     }
@@ -481,7 +482,8 @@ async function calculate(payload, res, db) {
             isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0,
             isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
             isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
+            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
+            isTuple ? (s[16] || "") : (s.notes || "")
         ];
     });
 
@@ -521,8 +523,6 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    // V1.53 FIX: Payload Isolation. Only map and return the objects that were explicitly 
-    // submitted in the payload. Keeps the 'app.js' trapdoor away from clean routes and pending stops.
     let responseBay = finalBay
         .filter(s => {
             let isTuple = Array.isArray(s);
@@ -567,6 +567,7 @@ async function calculate(payload, res, db) {
                 verified: isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
                 correctedAddress: String(isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a)),
                 fullOriginalAddress: String(isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)),
+                notes: String(isTuple ? (s[16] || "") : (s.notes || "")),
                 driverId: String(payload.driverId),
                 routeState: nextState,
                 routeTargetId: String(payload.driverId)
@@ -577,7 +578,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V15.3'
+        backendVersion: 'V15.4'
     });
 }
 
