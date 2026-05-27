@@ -1,8 +1,7 @@
-/* Dashboard - V15.6 */
+/* Dashboard - V15.7 */
 /* FILE: logic.js */
 /* Changes: */
-/* 1. Added getDistMi() utility to calculate geographical distance variance. */
-/* 2. Updated expandStop and minifyStop to unpack/pack the new tuple properties: verified [13], correctedAddress [14], fullOriginalAddress [15]. */
+/* 1. Tuple Expansion. Added the `notes` property to expandStop and minifyStop at index [16]. */
 
 export const MASTER_PALETTE = [
     '#34495E', // Brand Dark Slate
@@ -68,19 +67,14 @@ export function getDistMi(lat1, lon1, lat2, lon2) {
     const R = 3958.8; // Radius of earth in miles
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
 }
 
 export function expandStop(minStop) {
     if (!minStop) return {};
-
-    if (!Array.isArray(minStop) && !minStop.rawTuple && !minStop.data && !minStop.tuple && minStop.address) {
-        return minStop;
-    }
+    if (!Array.isArray(minStop) && !minStop.rawTuple && !minStop.data && !minStop.tuple && minStop.address) return minStop;
 
     let t = null;
     if (Array.isArray(minStop)) t = minStop;
@@ -92,16 +86,11 @@ export function expandStop(minStop) {
 
     if (t && Array.isArray(t) && t.length >= 12) {
         let rawCluster = String(t[1] || '').trim().toUpperCase();
-        
         expanded.id = String(t[0]);
         expanded.rowId = String(t[0]);
         
-        if (rawCluster === 'X' || rawCluster === '') {
-            expanded.cluster = 'X';
-        } else {
-            let clusterIdx = parseInt(rawCluster);
-            expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1);
-        }
+        if (rawCluster === 'X' || rawCluster === '') expanded.cluster = 'X';
+        else { let clusterIdx = parseInt(rawCluster); expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1); }
         
         expanded.address = String(t[2] || '');
         expanded.client = String(t[3] || '');
@@ -114,12 +103,11 @@ export function expandStop(minStop) {
         expanded.lng = parseFloat(t[10] || 0);
         expanded.status = String(t[11] || 'P');
         expanded.durationSecs = parseInt(t[12] || 0, 10);
-        
         expanded.verified = t[13] !== undefined ? parseInt(t[13], 10) : 1;
         expanded.correctedAddress = String(t[14] !== undefined ? t[14] : expanded.address);
         expanded.fullOriginalAddress = String(t[15] !== undefined ? t[15] : expanded.address);
+        expanded.notes = String(t[16] !== undefined ? t[16] : (minStop.notes || ''));
     }
-
     return expanded;
 }
 
@@ -140,7 +128,8 @@ export function minifyStop(s, routeNum) {
         Number(s.durationSecs) || 0,
         s.verified !== undefined ? s.verified : 1,
         s.correctedAddress || s.address || "",
-        s.fullOriginalAddress || s.address || ""                            
+        s.fullOriginalAddress || s.address || "",
+        s.notes || ""                            
     ];
 }
 
@@ -158,25 +147,14 @@ export function isActiveStop(s, isManagerView) {
 
 export function isStopVisible(s, applyRouteFilter, isManagerView, currentInspectorFilter, currentRouteViewFilter) {
     if (!isActiveStop(s, isManagerView)) return false;
-    
-    if (isManagerView && currentInspectorFilter !== 'all') {
-        if (String(s.driverId) !== String(currentInspectorFilter)) return false;
-    }
-
-    if (!isManagerView && !isRouteAssigned(s.status)) {
-        return false;
-    }
-
-    if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') {
-        if (s.cluster !== currentRouteViewFilter) return false;
-    }
-    
+    if (isManagerView && currentInspectorFilter !== 'all') { if (String(s.driverId) !== String(currentInspectorFilter)) return false; }
+    if (!isManagerView && !isRouteAssigned(s.status)) return false;
+    if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') { if (s.cluster !== currentRouteViewFilter) return false; }
     return true;
 }
 
 export function getVisualStyle(stopData, isManagerView, currentInspectorFilter, currentRouteCount, stops, inspectors) {
     const isRouted = isRouteAssigned(stopData.status);
-    
     let inspectorIndex = 0;
     if (stopData.driverId) {
         const idx = inspectors.findIndex(i => String(i.id) === String(stopData.driverId));
@@ -203,9 +181,7 @@ export function getVisualStyle(stopData, isManagerView, currentInspectorFilter, 
     }
 
     let bgFinal = bgHex;
-    if (bgHex !== 'transparent') {
-        bgFinal = bgHex.startsWith('#') ? hexToRgba(bgHex, 0.75) : bgHex;
-    }
+    if (bgHex !== 'transparent') bgFinal = bgHex.startsWith('#') ? hexToRgba(bgHex, 0.75) : bgHex;
     return { bg: bgFinal, border: borderHex, text: textHex, line: borderHex };
 }
 
@@ -266,7 +242,6 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
     centroids[bestClusterIdx] = temp;
 
     let capacity = Math.ceil(unroutedStops.length / k);
-    
     let maxGeoDist = 0.0001;
     unroutedStops.forEach(s => {
         centroids.forEach(c => {
@@ -322,13 +297,8 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
     });
 
     unroutedStops.forEach(s => {
-        delete s._urgency;
-        delete s._tempCluster;
-        delete s._dist0;
-        delete s._bestAltDist;
-        delete s._bestAltIdx;
-        delete s._effectiveDist0;
-        delete s._affinity0;
+        delete s._urgency; delete s._tempCluster; delete s._dist0; delete s._bestAltDist;
+        delete s._bestAltIdx; delete s._effectiveDist0; delete s._affinity0;
     });
 }
 
