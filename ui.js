@@ -1,10 +1,10 @@
-/* Dashboard - V18.55 */
+/* Dashboard - V18.57 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added status rendering for verification (spinners, green checks, red Xs). */
-/* 2. Added hover tooltips for verified addresses using inline CSS. */
-/* 3. Logic to toggle [Optimize] button to [Resolve] when validation fails. */
-/* 4. buildUnmatchedQueue() dynamically populates the array based on verification failure states. */
+/* 1. Address Column Integration: Removed the standalone verif column and embedded the icons and notes directly into the Address string. */
+/* 2. Tooltip UI: Added floating tooltips on hover to display verification data and user notes. */
+/* 3. Modal Notes Injection: Dynamically injects a Notes textarea into the Unmatched modal and passes it via API. */
+/* 4. Added toggleOptimizeButton(isDisabled) to block routing while addresses are validating. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData, handleGenerateRoute } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -68,40 +68,59 @@ export function customConfirm(msg) {
 
 // --- Verification UI Helpers ---
 
-window.openUnmatchedModalFor = function(addr) {
+window.openUnmatchedModalForId = function(id) {
+    AppState.currentUnmatchedStopId = id;
     buildUnmatchedQueue();
-    const idx = AppState.unmatchedAddressesQueue.indexOf(addr);
-    if (idx !== -1) AppState.currentUnmatchedIndex = idx;
+    const idx = AppState.unmatchedAddressesQueue.indexOf(id);
+    if (idx !== -1) { AppState.currentUnmatchedIndex = idx; } 
+    else { AppState.unmatchedAddressesQueue = [id]; AppState.currentUnmatchedIndex = 0; }
     openUnmatchedModal();
 };
 
 export function getVerificationStatusIcon(s) {
-    const rawAddrEscaped = (s.fullOriginalAddress || s.address).replace(/'/g, "\\'");
+    if (s.verified === 1) return `<i class="fa-solid fa-check-circle" style="color: #10b981; font-size: 14px;"></i>`;
+    else if (s.verified === 0) return `<i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted); font-size: 14px;"></i>`;
+    else return `<i class="fa-solid fa-times-circle" style="color: #ef4444; font-size: 14px; cursor: pointer;" onclick="openUnmatchedModalForId('${s.id}')"></i>`;
+}
+
+export function getTooltipHTML(s) {
+    let html = `<div class="v-tip" style="display:none; position:absolute; right:100%; top:50%; transform:translateY(-50%); margin-right:12px; background:rgba(23,23,23,0.95); border:1px solid var(--border-color); padding:12px; border-radius:6px; width:260px; z-index:1000; box-shadow:0 4px 15px rgba(0,0,0,0.5); text-align:left; line-height:1.4; white-space: normal;">`;
     
     if (s.verified === 1) {
-        return `<div style="position:relative; display:flex; align-items:center; justify-content:center;" onmouseenter="this.querySelector('.v-tip').style.display='block'" onmouseleave="this.querySelector('.v-tip').style.display='none'">
-                    <i class="fa-solid fa-check-circle" style="color: #10b981; cursor: pointer;"></i>
-                    <div class="v-tip" style="display:none; position:absolute; right:100%; top:50%; transform:translateY(-50%); margin-right:12px; background:rgba(23,23,23,0.95); border:1px solid var(--border-color); padding:12px; border-radius:6px; width:220px; z-index:100; box-shadow:0 4px 15px rgba(0,0,0,0.5); text-align:left; line-height:1.4;">
-                        <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase;">Original</div>
-                        <div style="color:var(--text-main); font-size:13px; margin-bottom:8px;">${s.fullOriginalAddress || s.address}</div>
-                        <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase;">Verified Match</div>
-                        <div style="color:var(--text-main); font-size:13px; margin-bottom:8px;">${s.correctedAddress || s.address}</div>
-                        <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase;">Coordinates</div>
-                        <div style="color:var(--accent); font-size:13px; font-family:monospace;">${s.lat}, ${s.lng}</div>
-                    </div>
-                </div>`;
-    } else if (s.verified === 0) {
-        return `<i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted);"></i>`;
-    } else {
-        return `<i class="fa-solid fa-times-circle" style="color: #ef4444; cursor: pointer;" onclick="openUnmatchedModalFor('${rawAddrEscaped}')"></i>`;
+        html += `
+            <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase; font-weight:600;">Original</div>
+            <div style="color:var(--text-main); font-size:13px; margin-bottom:8px;">${s.fullOriginalAddress || s.address}</div>
+            <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase; font-weight:600;">Verified Match</div>
+            <div style="color:var(--text-main); font-size:13px; margin-bottom:8px;">${s.correctedAddress || s.address}</div>
+            <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase; font-weight:600;">Coordinates</div>
+            <div style="color:var(--accent); font-size:13px; font-family:monospace; margin-bottom:${s.notes ? '12px' : '0'};">${s.lat}, ${s.lng}</div>
+        `;
+    } else if (s.verified === -1) {
+        html += `<div style="color:#ef4444; font-size:13px; margin-bottom:8px; font-weight:500;"><i class="fa-solid fa-triangle-exclamation"></i> Verification Failed</div>`;
     }
+    
+    if (s.notes) {
+        html += `
+            <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase; font-weight:600;">Notes</div>
+            <div style="color:var(--text-main); font-size:13px; white-space:pre-wrap;">${s.notes}</div>
+        `;
+    }
+    html += `</div>`;
+    return html;
+}
+
+export function toggleOptimizeButton(isDisabled) {
+    const optimizeBtn = document.getElementById('btn-header-generate');
+    if (!optimizeBtn) return;
+    optimizeBtn.disabled = isDisabled;
+    optimizeBtn.style.opacity = isDisabled ? '0.5' : '1';
+    optimizeBtn.style.cursor = isDisabled ? 'not-allowed' : 'pointer';
 }
 
 export function updateRouteActionButtons() {
     const hasUnverified = AppState.stops.some(s => s.verified === -1);
     const optimizeBtn = document.getElementById('btn-header-generate');
     const optimizeText = document.getElementById('btn-header-generate-text');
-    
     if (!optimizeBtn || !optimizeText) return;
 
     if (hasUnverified) {
@@ -117,11 +136,20 @@ export function updateRouteActionButtons() {
 
 export function updateVerificationUI() {
     if (!Config.isManagerView) return;
+    const hasPending = AppState.stops.some(s => s.verified === 0);
+    toggleOptimizeButton(hasPending);
+
     AppState.stops.forEach(s => {
         const row = document.getElementById(`item-${s.id}`);
         if (row) {
-            const verifCol = row.querySelector('.col-verif');
-            if (verifCol) verifCol.innerHTML = getVerificationStatusIcon(s);
+            const wrapper = row.querySelector('.verif-wrapper');
+            if (wrapper) {
+                const iconHTML = getVerificationStatusIcon(s);
+                const notesHTML = s.notes ? `<i class="fa-solid fa-note-sticky" style="color: var(--accent); margin-left: 6px; font-size: 13px;"></i>` : '';
+                const pencilHTML = `<i class="fa-solid fa-pencil v-pencil" style="display: none; color: var(--text-muted); cursor: pointer; margin-left: 8px; font-size: 13px; transition: color 0.2s;" onmouseenter="this.style.color='var(--text-main)'" onmouseleave="this.style.color='var(--text-muted)'" onclick="openUnmatchedModalForId('${s.id}')" title="Edit/Re-verify Address"></i>`;
+                const tooltipHTML = (s.verified === 1 || s.notes) ? getTooltipHTML(s) : '';
+                wrapper.innerHTML = iconHTML + notesHTML + pencilHTML + tooltipHTML;
+            }
         }
     });
     updateRouteActionButtons();
@@ -409,7 +437,6 @@ export function render() {
             <div class="col-app ${sortClass}" ${sortClick('app')}>App ${sortIcon('app')}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'flex'}; justify-content: center;">Inspector ${sortIcon('driverName')}</div>
-            <div class="col-verif" style="width: 40px; display:flex; justify-content:center;">V</div>
         `;
         
         const headerContainer = document.getElementById('list-header-container');
@@ -480,14 +507,25 @@ export function render() {
                 <div class="col-num"><div class="num-badge" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};">${displayIndex}</div></div>
                 <div class="col-eta" style="display: ${isAllInspectors ? 'none' : 'flex'}; justify-content: center; text-align: center;">${etaTime}</div>
                 <div class="col-due ${urgencyClass}">${dueFmt}</div>
-                <div class="col-addr">
-                    <div class="addr-text">${(s.address||'').split(',')[0]}</div>
-                    <div class="type-text">${s.type || ''}</div>
+                
+                <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
+                    <div style="display:flex; flex-direction:column; min-width:0; flex:1;">
+                        <div style="display:flex; align-items:center;">
+                            <div class="addr-text" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:0;">${(s.address||'').split(',')[0]}</div>
+                            <div class="verif-wrapper" style="display:flex; align-items:center; position:relative; margin-left:8px;" onmouseenter="this.querySelector('.v-tip') ? this.querySelector('.v-tip').style.display='block' : null; if(this.querySelector('.v-pencil')) this.querySelector('.v-pencil').style.display='block';" onmouseleave="this.querySelector('.v-tip') ? this.querySelector('.v-tip').style.display='none' : null; if(this.querySelector('.v-pencil')) this.querySelector('.v-pencil').style.display='none';">
+                                ${getVerificationStatusIcon(s)}
+                                ${s.notes ? `<i class="fa-solid fa-note-sticky" style="color: var(--accent); margin-left: 6px; font-size: 14px;"></i>` : ''}
+                                <i class="fa-solid fa-pencil v-pencil" style="display: none; color: var(--text-muted); cursor: pointer; margin-left: 8px; font-size: 13px; transition: color 0.2s;" onmouseenter="this.style.color='var(--text-main)'" onmouseleave="this.style.color='var(--text-muted)'" onclick="openUnmatchedModalForId('${s.id}')" title="Edit/Re-verify Address"></i>
+                                ${s.verified === 1 || s.notes ? getTooltipHTML(s) : ''}
+                            </div>
+                        </div>
+                        <div class="type-text">${s.type || ''}</div>
+                    </div>
                 </div>
+
                 <div class="col-app">${s.app || '--'}</div>
                 <div class="col-client">${s.client || '--'}</div>
                 ${inspectorHtml}
-                <div class="col-verif" style="width: 40px; display:flex; justify-content:center; align-items:center;">${getVerificationStatusIcon(s)}</div>
             `;
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${AppState.currentDisplayMode}`;
@@ -606,11 +644,9 @@ export function render() {
         });
 
         updateSelectionUI();
-        
         if (window.lastAddressSearchValue) { window.filterListDOM(window.lastAddressSearchValue); }
 
         resizeMap(); 
-        
         const hlZone = document.getElementById('header-list-zone');
         const sidebar = document.getElementById('sidebar');
         if (hlZone && sidebar) {
@@ -783,9 +819,7 @@ export function createEndpointRow(type, endpointData) {
     const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
     const icon = type === 'start' ? '<i class="fa-solid fa-location-dot"></i>' : '<i class="fa-solid fa-flag-checkered"></i>';
     const labelText = type === 'start' ? 'START' : 'END';
-    
     const isAllInspectors = Config.isManagerView && AppState.currentInspectorFilter === 'all';
-    
     const el = document.createElement('div');
     el.className = 'stop-item static-endpoint';
     
@@ -802,33 +836,25 @@ export function createEndpointRow(type, endpointData) {
                 <input type="text" id="input-endpoint-${type}" class="endpoint-input" data-nodrag="true" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
             </div>
-            <div style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; visibility: hidden; width: 20px;"></div>
         </div>
         <div class="col-app"></div>
         <div class="col-client"></div>
         <div class="col-insp" style="display:${Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? 'none' : 'flex'};"></div>
-        <div class="col-verif" style="width:40px;"></div>
     `;
     return el;
 }
 
 window.prevMobilePreview = function(e) {
     e.stopPropagation();
-    if (window.mobilePreviewIndex > 0) {
-        window.mobilePreviewIndex--;
-    } else {
-        window.mobilePreviewIndex = AppState.selectedIds.size - 1;
-    }
+    if (window.mobilePreviewIndex > 0) window.mobilePreviewIndex--;
+    else window.mobilePreviewIndex = AppState.selectedIds.size - 1;
     updateSelectionUI();
 };
 
 window.nextMobilePreview = function(e) {
     e.stopPropagation();
-    if (window.mobilePreviewIndex < AppState.selectedIds.size - 1) {
-        window.mobilePreviewIndex++;
-    } else {
-        window.mobilePreviewIndex = 0;
-    }
+    if (window.mobilePreviewIndex < AppState.selectedIds.size - 1) window.mobilePreviewIndex++;
+    else window.mobilePreviewIndex = 0;
     updateSelectionUI();
 };
 
@@ -839,9 +865,7 @@ export function updateSelectionUI() {
         if (row) row.classList.add('selected');
     });
 
-    if (typeof updateMapSelectionStyles === 'function') {
-        updateMapSelectionStyles(AppState.selectedIds);
-    }
+    if (typeof updateMapSelectionStyles === 'function') updateMapSelectionStyles(AppState.selectedIds);
 
     const has = AppState.selectedIds.size > 0; 
     let hasRouted = false;
@@ -889,9 +913,7 @@ export function updateSelectionUI() {
         const previewContainer = document.getElementById('mobile-map-selection-preview');
         if (previewContainer) {
             if (hasSelection) {
-                if (window.mobilePreviewIndex === undefined || window.mobilePreviewIndex >= AppState.selectedIds.size) {
-                    window.mobilePreviewIndex = 0;
-                }
+                if (window.mobilePreviewIndex === undefined || window.mobilePreviewIndex >= AppState.selectedIds.size) window.mobilePreviewIndex = 0;
                 
                 const selectedArray = Array.from(AppState.selectedIds);
                 const selectedId = selectedArray[window.mobilePreviewIndex];
@@ -963,12 +985,10 @@ export function initSortable() {
     if (sortableUnrouted) { sortableUnrouted.destroy(); sortableUnrouted = null; }
 
     if (!AppState.PERMISSION_MODIFY) return;
-
     if (AppState.currentRoutingState === 'Pending') return;
-
-    if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
-        return; 
-    } else if (Config.isManagerView && AppState.currentInspectorFilter !== 'all') {
+    if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return; 
+    
+    if (Config.isManagerView && AppState.currentInspectorFilter !== 'all') {
         const unroutedEl = document.getElementById('unrouted-list');
 
         document.querySelectorAll('.routed-group-container').forEach(routedEl => {
@@ -1379,24 +1399,41 @@ export function handleOpenEmailModal() {
 export function buildUnmatchedQueue() {
     AppState.unmatchedAddressesQueue = [...new Set(
         AppState.stops.filter(s => s.verified === -1 || s.status === 'Validation Failed' || s.status === 'V')
-                      .map(s => s.fullOriginalAddress || s.address)
+                      .map(s => s.id)
     )];
 }
 
 export function openUnmatchedModal() {
-    buildUnmatchedQueue();
     if (AppState.unmatchedAddressesQueue.length === 0) return;
+    if (AppState.currentUnmatchedIndex >= AppState.unmatchedAddressesQueue.length) AppState.currentUnmatchedIndex = 0;
+
+    const stopId = AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex];
+    AppState.currentUnmatchedStopId = stopId;
+    const stop = AppState.stops.find(s => String(s.id) === String(stopId));
     
-    if (AppState.currentUnmatchedIndex >= AppState.unmatchedAddressesQueue.length) {
-        AppState.currentUnmatchedIndex = 0;
-    }
+    if (!stop) { nextUnmatchedAddress(); return; }
 
     const modal = document.getElementById('unmatched-modal');
     document.getElementById('unmatched-modal-title').textContent = `Match Addresses (${AppState.currentUnmatchedIndex + 1} of ${AppState.unmatchedAddressesQueue.length})`;
-    document.getElementById('unmatched-original-address').textContent = AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex];
-    document.getElementById('unmatched-lat').value = '';
-    document.getElementById('unmatched-lng').value = '';
-    document.getElementById('unmatched-corrected').value = '';
+    document.getElementById('unmatched-original-address').textContent = stop.fullOriginalAddress || stop.address;
+    document.getElementById('unmatched-lat').value = (stop.lat && stop.verified === 1) ? stop.lat : '';
+    document.getElementById('unmatched-lng').value = (stop.lng && stop.verified === 1) ? stop.lng : '';
+    document.getElementById('unmatched-corrected').value = (stop.correctedAddress && stop.verified === 1) ? stop.correctedAddress : '';
+    
+    let notesContainer = document.getElementById('unmatched-notes-container');
+    if (!notesContainer) {
+        const btns = document.getElementById('btn-unmatched-submit').parentElement;
+        notesContainer = document.createElement('div');
+        notesContainer.id = 'unmatched-notes-container';
+        notesContainer.style.marginBottom = '20px';
+        notesContainer.innerHTML = `
+            <label style="font-size: 14px; color: var(--text-main); margin-bottom: 8px; display: block; font-weight: 400;">Notes</label>
+            <textarea id="unmatched-notes" style="width: 100%; height: 80px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; font-size: 14px; resize: vertical; box-sizing: border-box;" placeholder="Add notes about this location..."></textarea>
+        `;
+        btns.parentNode.insertBefore(notesContainer, btns);
+    }
+    document.getElementById('unmatched-notes').value = stop.notes || '';
+
     document.getElementById('unmatched-error').style.display = 'none';
     document.getElementById('btn-unmatched-submit').textContent = 'Match Coordinates';
     modal.style.display = 'flex';
@@ -1415,23 +1452,60 @@ async function nextUnmatchedAddress() {
 
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('unmatched-corrected')) document.getElementById('unmatched-corrected').addEventListener('input', (e) => { document.getElementById('btn-unmatched-submit').textContent = e.target.value.trim() !== '' ? 'Update Address' : 'Match Coordinates'; });
+    
     if (document.getElementById('btn-unmatched-submit')) {
         document.getElementById('btn-unmatched-submit').addEventListener('click', async () => {
             document.getElementById('unmatched-error').style.display = 'none'; document.getElementById('unmatched-loading-overlay').style.display = 'flex';
+            
+            const stopId = AppState.currentUnmatchedStopId;
+            const stop = AppState.stops.find(s => String(s.id) === String(stopId));
+            
             try {
-                const response = await apiFetch({ action: 'resolveUnmatchedAddress', driverId: AppState.currentUploadDriverId || Config.driverParam, companyId: Config.companyParam || '', originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex], lat: document.getElementById('unmatched-lat').value, lng: document.getElementById('unmatched-lng').value, correctedAddress: document.getElementById('unmatched-corrected').value });
+                const response = await apiFetch({ 
+                    action: 'resolveUnmatchedAddress', 
+                    driverId: AppState.currentUploadDriverId || Config.driverParam, 
+                    companyId: Config.companyParam || '', 
+                    rowId: stop ? stop.id : null,
+                    originalAddress: stop ? (stop.fullOriginalAddress || stop.address) : null, 
+                    lat: document.getElementById('unmatched-lat').value, 
+                    lng: document.getElementById('unmatched-lng').value, 
+                    correctedAddress: document.getElementById('unmatched-corrected').value,
+                    notes: document.getElementById('unmatched-notes') ? document.getElementById('unmatched-notes').value : ''
+                });
+                
                 const result = await response.json();
                 document.getElementById('unmatched-loading-overlay').style.display = 'none';
-                if (result.success) nextUnmatchedAddress();
-                else { document.getElementById('unmatched-error').textContent = result.unresolvable ? 'Address not found. Please try again or enter coordinates.' : (result.error || 'Invalid coordinates provided.'); document.getElementById('unmatched-error').style.display = 'block'; }
-            } catch (err) { document.getElementById('unmatched-loading-overlay').style.display = 'none'; document.getElementById('unmatched-error').textContent = 'Network error. Please try again.'; document.getElementById('unmatched-error').style.display = 'block'; }
+                
+                if (result.success) {
+                    if (stop) {
+                        stop.verified = 1;
+                        stop.lat = parseFloat(document.getElementById('unmatched-lat').value);
+                        stop.lng = parseFloat(document.getElementById('unmatched-lng').value);
+                        stop.correctedAddress = document.getElementById('unmatched-corrected').value || stop.fullOriginalAddress || stop.address;
+                        stop.notes = document.getElementById('unmatched-notes') ? document.getElementById('unmatched-notes').value : '';
+                        stop.status = 'Pending';
+                        triggerFullRender();
+                    }
+                    nextUnmatchedAddress();
+                } else { 
+                    document.getElementById('unmatched-error').textContent = result.unresolvable ? 'Address not found. Please try again or enter coordinates.' : (result.error || 'Invalid coordinates provided.'); 
+                    document.getElementById('unmatched-error').style.display = 'block'; 
+                }
+            } catch (err) { 
+                document.getElementById('unmatched-loading-overlay').style.display = 'none'; document.getElementById('unmatched-error').textContent = 'Network error. Please try again.'; document.getElementById('unmatched-error').style.display = 'block'; 
+            }
         });
     }
+    
     if (document.getElementById('btn-unmatched-skip')) {
         document.getElementById('btn-unmatched-skip').addEventListener('click', async () => {
             if (await customConfirm("This order will be removed from the list.\n\nPress OK to delete.")) {
                 document.getElementById('unmatched-loading-overlay').style.display = 'flex';
-                try { await apiFetch({ action: 'resolveUnmatchedAddress', skip: true, driverId: AppState.currentUploadDriverId || Config.driverParam, originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex] }); } catch(e) { console.error("Skip error:", e); }
+                
+                const stopId = AppState.currentUnmatchedStopId;
+                const stop = AppState.stops.find(s => String(s.id) === String(stopId));
+                
+                try { await apiFetch({ action: 'resolveUnmatchedAddress', skip: true, rowId: stop ? stop.id : null, driverId: AppState.currentUploadDriverId || Config.driverParam, originalAddress: stop ? (stop.fullOriginalAddress || stop.address) : null }); } catch(e) { console.error("Skip error:", e); }
                 document.getElementById('unmatched-loading-overlay').style.display = 'none'; nextUnmatchedAddress();
             }
         });
