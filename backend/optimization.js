@@ -1,17 +1,13 @@
 /**
  * optimization.js
- * VERSION: V15.2
+ * VERSION: V15.3
  * * CHANGES:
- * V15.2 - Added `populatePolylines: true` to the Enterprise Route Optimization API 
- * payload. Google omits the polyline by default for large fleet routing to save 
- * bandwidth; this forces it to return the geometry so the frontend can draw it.
- * V15.1 - Polyline Extraction Integration. Both standard and enterprise routing API calls 
- * now extract the encoded polyline geometry string from the Google response. These geometries 
- * are stored in a new activeStaging.polylines object keyed by route number and saved to 
- * the Users document to allow the frontend to draw physical drive paths.
- * V1.53 - Payload Isolation Restored. Because the UTC ETA drift was fixed in V1.52, 
- * we can safely re-introduce Payload Isolation to the calculate endpoint without map 
- * lines crossing.
+ * V15.3 - Tuple Expansion for Verification Engine. Updated the array push methods 
+ * in `generateRoute` and `calculate` to properly preserve the new tuple indexes 
+ * [13] (verified), [14] (correctedAddress), and [15] (fullOriginalAddress) when 
+ * rebuilding the orders array post-optimization. 
+ * V15.2 - Added `populatePolylines: true` to the Enterprise Route Optimization API.
+ * V15.1 - Polyline Extraction Integration. 
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -104,7 +100,7 @@ async function callEnterpriseRoutingAPI(startGeo, stopsGeo, endGeo, preserveSequ
         const tokenResponse = await client.getAccessToken();
         
         const payload = {
-            populatePolylines: true, // EXPLICITLY ASK GOOGLE FOR THE GEOMETRY
+            populatePolylines: true,
             model: {
                 shipments: stopsGeo.map((s, i) => ({ deliveries: [{ arrivalLocation: { latitude: s.lat, longitude: s.lng } }], label: i.toString() }))
             }
@@ -260,7 +256,10 @@ async function generateRoute(payload, res, db) {
                 isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
                 isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
                 isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
-                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs
+                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs,
+                isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
+                isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
+                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
             ]);
         });
     }
@@ -273,7 +272,10 @@ async function generateRoute(payload, res, db) {
             isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
             isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
             isTuple ? s[6] : (s.type || s.t), "", 0, 
-            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0
+            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0,
+            isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
+            isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
+            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
         ];
     });
 
@@ -318,7 +320,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V15.2'
+        backendVersion: 'V15.3'
     });
 }
 
@@ -460,7 +462,10 @@ async function calculate(payload, res, db) {
                 isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
                 isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
                 isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
-                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", res.durationSecs
+                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", res.durationSecs,
+                isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
+                isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
+                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
             ]);
         });
     }
@@ -473,7 +478,10 @@ async function calculate(payload, res, db) {
             isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
             isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
             isTuple ? s[6] : (s.type || s.t), "", 0, 
-            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0
+            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0,
+            isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
+            isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
+            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)
         ];
     });
 
@@ -556,6 +564,9 @@ async function calculate(payload, res, db) {
                 status: fullStatus,
                 s: fullStatus,
                 durationSecs: Number(isTuple ? s[12] : s.durationSecs),
+                verified: isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
+                correctedAddress: String(isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a)),
+                fullOriginalAddress: String(isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)),
                 driverId: String(payload.driverId),
                 routeState: nextState,
                 routeTargetId: String(payload.driverId)
@@ -566,7 +577,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V15.2'
+        backendVersion: 'V15.3'
     });
 }
 
