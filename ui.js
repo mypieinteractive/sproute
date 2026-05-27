@@ -2,10 +2,11 @@
 /* FILE: ui.js */
 /* Changes: */
 /* 1. Added status rendering for verification (spinners, green checks, red Xs). */
-/* 2. Added hover tooltips for verified addresses. */
+/* 2. Added hover tooltips for verified addresses using inline CSS. */
 /* 3. Logic to toggle [Optimize] button to [Resolve] when validation fails. */
+/* 4. buildUnmatchedQueue() dynamically populates the array based on verification failure states. */
 
-import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
+import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData, handleGenerateRoute } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
 
@@ -67,31 +68,63 @@ export function customConfirm(msg) {
 
 // --- Verification UI Helpers ---
 
+window.openUnmatchedModalFor = function(addr) {
+    buildUnmatchedQueue();
+    const idx = AppState.unmatchedAddressesQueue.indexOf(addr);
+    if (idx !== -1) AppState.currentUnmatchedIndex = idx;
+    openUnmatchedModal();
+};
+
 export function getVerificationStatusIcon(s) {
+    const rawAddrEscaped = (s.fullOriginalAddress || s.address).replace(/'/g, "\\'");
+    
     if (s.verified === 1) {
-        return `<i class="fa-solid fa-check-circle" style="color: #10b981; cursor: pointer;" title="Verified: ${s.correctedAddress || s.address}"></i>`;
+        return `<div style="position:relative; display:flex; align-items:center; justify-content:center;" onmouseenter="this.querySelector('.v-tip').style.display='block'" onmouseleave="this.querySelector('.v-tip').style.display='none'">
+                    <i class="fa-solid fa-check-circle" style="color: #10b981; cursor: pointer;"></i>
+                    <div class="v-tip" style="display:none; position:absolute; right:100%; top:50%; transform:translateY(-50%); margin-right:12px; background:rgba(23,23,23,0.95); border:1px solid var(--border-color); padding:12px; border-radius:6px; width:220px; z-index:100; box-shadow:0 4px 15px rgba(0,0,0,0.5); text-align:left; line-height:1.4;">
+                        <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase;">Original</div>
+                        <div style="color:var(--text-main); font-size:13px; margin-bottom:8px;">${s.fullOriginalAddress || s.address}</div>
+                        <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase;">Verified Match</div>
+                        <div style="color:var(--text-main); font-size:13px; margin-bottom:8px;">${s.correctedAddress || s.address}</div>
+                        <div style="color:var(--text-muted); font-size:11px; margin-bottom:2px; text-transform:uppercase;">Coordinates</div>
+                        <div style="color:var(--accent); font-size:13px; font-family:monospace;">${s.lat}, ${s.lng}</div>
+                    </div>
+                </div>`;
     } else if (s.verified === 0) {
         return `<i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted);"></i>`;
     } else {
-        return `<i class="fa-solid fa-times-circle" style="color: #ef4444; cursor: pointer;" onclick="openUnmatchedModal()"></i>`;
+        return `<i class="fa-solid fa-times-circle" style="color: #ef4444; cursor: pointer;" onclick="openUnmatchedModalFor('${rawAddrEscaped}')"></i>`;
     }
 }
 
-// Update the [Optimize] / [Resolve] button in the UI
 export function updateRouteActionButtons() {
     const hasUnverified = AppState.stops.some(s => s.verified === -1);
     const optimizeBtn = document.getElementById('btn-header-generate');
-    if (!optimizeBtn) return;
+    const optimizeText = document.getElementById('btn-header-generate-text');
+    
+    if (!optimizeBtn || !optimizeText) return;
 
     if (hasUnverified) {
-        optimizeBtn.innerText = "Resolve Addresses";
+        optimizeText.innerText = "Resolve Addresses";
         optimizeBtn.style.backgroundColor = "#ef4444";
-        optimizeBtn.onclick = () => openUnmatchedModal();
+        optimizeBtn.onclick = () => { buildUnmatchedQueue(); openUnmatchedModal(); };
     } else {
-        optimizeBtn.innerText = "Optimize";
+        optimizeText.innerText = "Optimize";
         optimizeBtn.style.backgroundColor = "var(--accent)";
         optimizeBtn.onclick = () => handleGenerateRoute();
     }
+}
+
+export function updateVerificationUI() {
+    if (!Config.isManagerView) return;
+    AppState.stops.forEach(s => {
+        const row = document.getElementById(`item-${s.id}`);
+        if (row) {
+            const verifCol = row.querySelector('.col-verif');
+            if (verifCol) verifCol.innerHTML = getVerificationStatusIcon(s);
+        }
+    });
+    updateRouteActionButtons();
 }
 
 export function updateUndoUI() {
@@ -222,7 +255,7 @@ export function updateRoutingUI() {
     if(actionBtns) actionBtns.style.borderLeft = 'none';
     
     updatePrioritySliderUI();
-    updateRouteActionButtons(); // Apply our new dynamic button logic
+    updateRouteActionButtons(); 
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const routeToggles = document.getElementById('route-view-toggles');
@@ -613,19 +646,6 @@ export function render() {
         }
     }, 20); 
 }
-
-// --- Verification Queue UI ---
-export function updateVerificationUI() {
-    AppState.stops.forEach(s => {
-        const row = document.getElementById(`item-${s.id}`);
-        if (row) {
-            const verifCol = row.querySelector('.col-verif');
-            if (verifCol) verifCol.innerHTML = getVerificationStatusIcon(s);
-        }
-    });
-    updateRouteActionButtons();
-}
-// ... (rest of the file remains as previously provided, appended below)
 
 export function buildEndpointsToDraw(activeStops) {
     let endpointsToDraw = [];
@@ -1356,7 +1376,21 @@ export function handleOpenEmailModal() {
     };
 }
 
+export function buildUnmatchedQueue() {
+    AppState.unmatchedAddressesQueue = [...new Set(
+        AppState.stops.filter(s => s.verified === -1 || s.status === 'Validation Failed' || s.status === 'V')
+                      .map(s => s.fullOriginalAddress || s.address)
+    )];
+}
+
 export function openUnmatchedModal() {
+    buildUnmatchedQueue();
+    if (AppState.unmatchedAddressesQueue.length === 0) return;
+    
+    if (AppState.currentUnmatchedIndex >= AppState.unmatchedAddressesQueue.length) {
+        AppState.currentUnmatchedIndex = 0;
+    }
+
     const modal = document.getElementById('unmatched-modal');
     document.getElementById('unmatched-modal-title').textContent = `Match Addresses (${AppState.currentUnmatchedIndex + 1} of ${AppState.unmatchedAddressesQueue.length})`;
     document.getElementById('unmatched-original-address').textContent = AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex];
@@ -1385,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-unmatched-submit').addEventListener('click', async () => {
             document.getElementById('unmatched-error').style.display = 'none'; document.getElementById('unmatched-loading-overlay').style.display = 'flex';
             try {
-                const response = await apiFetch({ action: 'resolveUnmatchedAddress', driverId: AppState.currentUploadDriverId, companyId: Config.companyParam || '', originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex], lat: document.getElementById('unmatched-lat').value, lng: document.getElementById('unmatched-lng').value, correctedAddress: document.getElementById('unmatched-corrected').value });
+                const response = await apiFetch({ action: 'resolveUnmatchedAddress', driverId: AppState.currentUploadDriverId || Config.driverParam, companyId: Config.companyParam || '', originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex], lat: document.getElementById('unmatched-lat').value, lng: document.getElementById('unmatched-lng').value, correctedAddress: document.getElementById('unmatched-corrected').value });
                 const result = await response.json();
                 document.getElementById('unmatched-loading-overlay').style.display = 'none';
                 if (result.success) nextUnmatchedAddress();
@@ -1397,7 +1431,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-unmatched-skip').addEventListener('click', async () => {
             if (await customConfirm("This order will be removed from the list.\n\nPress OK to delete.")) {
                 document.getElementById('unmatched-loading-overlay').style.display = 'flex';
-                try { await apiFetch({ action: 'resolveUnmatchedAddress', skip: true, driverId: AppState.currentUploadDriverId, originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex] }); } catch(e) { console.error("Skip error:", e); }
+                try { await apiFetch({ action: 'resolveUnmatchedAddress', skip: true, driverId: AppState.currentUploadDriverId || Config.driverParam, originalAddress: AppState.unmatchedAddressesQueue[AppState.currentUnmatchedIndex] }); } catch(e) { console.error("Skip error:", e); }
                 document.getElementById('unmatched-loading-overlay').style.display = 'none'; nextUnmatchedAddress();
             }
         });
