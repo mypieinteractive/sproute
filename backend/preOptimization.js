@@ -1,13 +1,12 @@
 /**
  * preOptimization.js
- * VERSION: V15.0
+ * VERSION: V15.1
  * * CHANGES:
- * V1.42 - Active Array Evaluation. Re-introduced evaluateRouteState into the 
- * mutation endpoints. If a manager removes all routed ('R') orders but 'P' 
- * orders remain, the backend will now catch the array change and revert the 
- * macro status to 'Pending' automatically, fixing the bug where the board 
- * would get stuck in 'Staging'.
- * V1.41 - Zero-Order Clearing. 
+ * V15.1 - Optimistic UI Validation Engine. Shifted geocoding workload off the 
+ * backend upload process. `uploadCsv` now performs a lightning-fast bulk lookup 
+ * against `GeocodeCache`. Cache misses are appended to the order tuple with a 
+ * `verified: 0` flag for the frontend Mapbox queue to process asynchronously. 
+ * Added `updateGeocodeCache` endpoint to receive and store Mapbox queue results.
  */
 
 const { parse } = require('csv-parse/sync');
@@ -24,6 +23,7 @@ function evaluateRouteState(arr, currState) {
     return currState === "Ready" ? "Staging" : currState;
 }
 
+// Kept exclusively for the manual `resolveUnmatchedAddress` endpoint fallback
 async function performGeocodingWaterfall(address, db, mapsApiKey) {
     const cleanAddr = address.replace(/\//g, '');
     const cacheRef = db.collection('GeocodeCache').doc(cleanAddr);
@@ -107,11 +107,40 @@ async function uploadCsv(payload, res, db, admin) {
 
     const records = parse(csvData, { skip_empty_lines: true, relax_column_count: true });
     const fallbackState = 'TX';
-    const mapsApiKey = process.env.MAPS_API_KEY;
+    
+    // STEP 1: Pre-Extract Addresses for Bulk Cache Lookup
+    let addressesToLookup = [];
+    for (let j = 1; j < records.length; j++) {
+        const row = records[j];
+        let street = settingsMap.address > -1 ? row[settingsMap.address] : "";
+        if (street) {
+            let city = settingsMap.city > -1 ? row[settingsMap.city] : "";
+            let state = settingsMap.state > -1 ? row[settingsMap.state] : fallbackState;
+            let zip = settingsMap.zip > -1 ? row[settingsMap.zip] : "";
+            let fullAddr = `${street}, ${city}, ${state} ${zip}`.replace(/,,/g, ",").trim();
+            addressesToLookup.push(fullAddr);
+        }
+    }
+
+    // STEP 2: Bulk Check the GeocodeCache
+    let cacheMap = new Map();
+    if (addressesToLookup.length > 0) {
+        let uniqueAddrs = [...new Set(addressesToLookup)];
+        let refs = uniqueAddrs.map(a => db.collection('GeocodeCache').doc(a.replace(/\//g, '')));
+        // db.getAll handles up to 100 references per call
+        for (let i = 0; i < refs.length; i += 100) {
+            let chunk = refs.slice(i, i + 100);
+            let snapshots = await db.getAll(...chunk);
+            snapshots.forEach(snap => {
+                if (snap.exists) cacheMap.set(snap.id, snap.data());
+            });
+        }
+    }
     
     const batch = db.batch();
-    let newOrders = [], unmatchedList = [], geocodeCallCount = 0;
+    let newOrders = [];
 
+    // STEP 3: Process the Orders
     for (let j = 1; j < records.length; j++) {
         const row = records[j];
         let street = settingsMap.address > -1 ? row[settingsMap.address] : "";
@@ -121,39 +150,30 @@ async function uploadCsv(payload, res, db, admin) {
 
         if (street) {
             let fullAddr = `${street}, ${city}, ${state} ${zip}`.replace(/,,/g, ",").trim();
+            let cleanAddr = fullAddr.replace(/\//g, '');
+            
             let csvLatRaw = settingsMap.lat > -1 ? row[settingsMap.lat] : "";
             let csvLngRaw = settingsMap.lng > -1 ? row[settingsMap.lng] : "";
-            
             let parsedCsvLat = parseFloat(csvLatRaw), parsedCsvLng = parseFloat(csvLngRaw);
             let hasCsvCoords = !isNaN(parsedCsvLat) && !isNaN(parsedCsvLng) && parsedCsvLat !== 0 && parsedCsvLng !== 0;
             
-            let lat = null, lng = null;
-            let isUnmatched = false;
+            let lat = 0, lng = 0, verified = 0;
+            let correctedAddress = fullAddr;
+            let cachedData = cacheMap.get(cleanAddr);
 
-            if (hasCsvCoords) {
-                lat = parsedCsvLat; lng = parsedCsvLng;
+            if (cachedData) {
+                lat = cachedData.lat; 
+                lng = cachedData.lng;
+                correctedAddress = cachedData.correctedAddress || fullAddr;
+                verified = 1;
+            } else if (hasCsvCoords) {
+                lat = parsedCsvLat; 
+                lng = parsedCsvLng;
+                verified = 0; // Requires Frontend Background Check
             } else {
-                let geoResult = await performGeocodingWaterfall(fullAddr, db, mapsApiKey);
-                if (geoResult) {
-                    lat = geoResult.lat; lng = geoResult.lng;
-                    if (!geoResult.cached) {
-                        const cacheRef = db.collection('GeocodeCache').doc(fullAddr.replace(/\//g, ''));
-                        batch.set(cacheRef, { lat: lat, lng: lng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
-                        geocodeCallCount++;
-                    }
-                } else {
-                    isUnmatched = true;
-                }
-            }
-
-            let initialStatus = isUnmatched ? "V" : "P"; 
-            if (isUnmatched) { 
-                lat = 0; lng = 0; 
-                unmatchedList.push(fullAddr);
-                const unRef = db.collection('Unmatched').doc(fullAddr.replace(/\//g, ''));
-                batch.set(unRef, { originalAddress: fullAddr, lat: null, lng: null, correctedAddress: "", timestamp: admin.firestore.FieldValue.serverTimestamp() });
-            } else { 
-                lat = Number(parseFloat(lat).toFixed(5)); lng = Number(parseFloat(lng).toFixed(5)); 
+                lat = 0; 
+                lng = 0;
+                verified = 0; // Requires Frontend Background Check
             }
 
             maxSeq++;
@@ -164,19 +184,21 @@ async function uploadCsv(payload, res, db, admin) {
             let shortDate = dueDateRaw ? String(dueDateRaw).substring(0,10) : "";
             let orderTypeVal = settingsMap.orderType > -1 ? row[settingsMap.orderType] : "";
 
-            newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, csvType, shortDate, orderTypeVal, "", 0, lat, lng, initialStatus, 0 ]);
+            // Expanded Tuple Index Mapping:
+            // [0] id, [1] route, [2] addr, [3] client, [4] app, [5] date, [6] type, [7] eta, [8] dist, [9] lat, [10] lng, [11] status, [12] duration, 
+            // [13] verifiedFlag, [14] correctedAddress, [15] fullOriginalAddress
+            newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, csvType, shortDate, orderTypeVal, "", 0, Number(parseFloat(lat).toFixed(5)), Number(parseFloat(lng).toFixed(5)), "P", 0, verified, correctedAddress, fullAddr ]);
         }
     }
 
     if (newOrders.length === 0) return res.status(200).json({ success: true, message: "No valid orders found." });
 
-    const compRef = db.collection('Companies').doc(String(companyId));
     const updatedBay = existingBay.concat(newOrders);
     let bayToSave = JSON.stringify(updatedBay);
 
     let updates = {
         'activeStaging.orders': bayToSave,
-        'activeStaging.status': 'Pending' // Uploads always reset to Pending
+        'activeStaging.status': 'Pending' 
     };
 
     if (updatedBay.length === 0) {
@@ -187,14 +209,78 @@ async function uploadCsv(payload, res, db, admin) {
     }
 
     batch.update(driverRef, updates);
-    if (geocodeCallCount > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_Geocode', geocodeCallCount);
-    
     await batch.commit();
     
-    let responsePayload = { success: true, count: newOrders.length };
-    if (unmatchedList.length > 0) responsePayload.unmatchedAddresses = [...new Set(unmatchedList)];
+    return res.status(200).json({ success: true, count: newOrders.length });
+}
+
+// --- NEW ENDPOINT: Receives Background Verification Results from Frontend Queue ---
+async function updateGeocodeCache(payload, res, db, admin) {
+    const { driverId, updatesList } = payload; 
+    // updatesList format: [{ rowId, originalAddress, lat, lng, correctedAddress, isValid }]
+    if (!driverId || !updatesList || !Array.isArray(updatesList)) return res.status(400).json({error: "Missing parameters"});
     
-    return res.status(200).json(responsePayload);
+    const batch = db.batch();
+    const driverRef = db.collection('Users').doc(String(driverId));
+    const driverDoc = await driverRef.get();
+    if (!driverDoc.exists) return res.status(404).json({error: "Driver not found"});
+
+    let bay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
+    let changed = false;
+    let updatesMap = new Map();
+
+    updatesList.forEach(u => {
+        updatesMap.set(String(u.rowId), u);
+        const cleanAddr = String(u.originalAddress).replace(/\//g, '');
+        
+        if (u.isValid) {
+            const cacheRef = db.collection('GeocodeCache').doc(cleanAddr);
+            batch.set(cacheRef, { lat: u.lat, lng: u.lng, correctedAddress: u.correctedAddress || u.originalAddress, timestamp: admin.firestore.FieldValue.serverTimestamp() });
+        } else {
+            const unRef = db.collection('Unmatched').doc(cleanAddr);
+            batch.set(unRef, { originalAddress: u.originalAddress, lat: null, lng: null, correctedAddress: "", timestamp: admin.firestore.FieldValue.serverTimestamp() });
+        }
+    });
+
+    for (let i = 0; i < bay.length; i++) {
+        let s = bay[i];
+        let sId = String(Array.isArray(s) ? s[0] : (s.rowId || s.id));
+        
+        if (updatesMap.has(sId)) {
+            let u = updatesMap.get(sId);
+            if (Array.isArray(s)) {
+                if (u.isValid) {
+                    bay[i][9] = Number(parseFloat(u.lat).toFixed(5));
+                    bay[i][10] = Number(parseFloat(u.lng).toFixed(5));
+                    bay[i][11] = "P";
+                    bay[i][13] = 1; // Mark Verified
+                    bay[i][14] = u.correctedAddress || u.originalAddress;
+                } else {
+                    bay[i][11] = "V"; // Flag for manual resolution
+                    bay[i][13] = 0;
+                }
+            } else {
+                if (u.isValid) {
+                    bay[i].lat = Number(parseFloat(u.lat).toFixed(5));
+                    bay[i].lng = Number(parseFloat(u.lng).toFixed(5));
+                    bay[i].status = "P";
+                    bay[i].verified = 1;
+                    bay[i].correctedAddress = u.correctedAddress || u.originalAddress;
+                } else {
+                    bay[i].status = "V";
+                    bay[i].verified = 0;
+                }
+            }
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(bay) });
+        await batch.commit();
+    }
+    
+    return res.status(200).json({ success: true });
 }
 
 async function resolveUnmatchedAddress(payload, res, db, admin) {
@@ -216,10 +302,9 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
             let newBay = bay.filter(s => {
                 let isTuple = Array.isArray(s);
                 let sStat = isTuple ? s[11] : (s.status || s.s);
-                let sAddr = isTuple ? s[2] : (s.address || s.a);
-                let tupleDisplayAddr = String(sAddr).split(',')[0].trim().toLowerCase();
+                let tupleOriginalAddr = isTuple ? s[15] : (s.fullOriginalAddress || s.address || "");
                 
-                if (sStat === 'V' && originalAddress.toLowerCase().includes(tupleDisplayAddr)) {
+                if (sStat === 'V' && originalAddress.toLowerCase() === String(tupleOriginalAddr).toLowerCase()) {
                     changed = true;
                     return false; 
                 }
@@ -268,7 +353,7 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
     finalLng = Number(finalLng.toFixed(5));
 
     const cacheRef = db.collection('GeocodeCache').doc(cleanOrigAddr);
-    batch.set(cacheRef, { lat: finalLat, lng: finalLng, timestamp: admin.firestore.FieldValue.serverTimestamp() });
+    batch.set(cacheRef, { lat: finalLat, lng: finalLng, correctedAddress: correctedAddress || originalAddress, timestamp: admin.firestore.FieldValue.serverTimestamp() });
 
     const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
     batch.delete(unmatchedRef);
@@ -286,18 +371,21 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
             let s = bay[i];
             let isTuple = Array.isArray(s);
             let sStat = isTuple ? s[11] : (s.status || s.s);
-            let sAddr = isTuple ? s[2] : (s.address || s.a);
+            let tupleOriginalAddr = isTuple ? s[15] : (s.fullOriginalAddress || s.address || "");
             
-            let tupleDisplayAddr = String(sAddr).split(',')[0].trim().toLowerCase();
-            if (sStat === 'V' && originalAddress.toLowerCase().includes(tupleDisplayAddr)) {
+            if (sStat === 'V' && originalAddress.toLowerCase() === String(tupleOriginalAddr).toLowerCase()) {
                 if (isTuple) {
                     bay[i][9] = finalLat;
                     bay[i][10] = finalLng;
                     bay[i][11] = "P";
+                    bay[i][13] = 1; // Mark Verified
+                    bay[i][14] = correctedAddress || originalAddress;
                 } else {
                     bay[i].lat = finalLat;
                     bay[i].lng = finalLng;
                     bay[i].status = "P";
+                    bay[i].verified = 1;
+                    bay[i].correctedAddress = correctedAddress || originalAddress;
                 }
                 changed = true;
             }
@@ -677,5 +765,5 @@ async function deleteMultipleOrders(payload, res, db) {
 }
 
 module.exports = {
-    uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress
+    uploadCsv, updateGeocodeCache, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress
 };
