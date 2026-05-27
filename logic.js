@@ -1,4 +1,4 @@
-/* Dashboard - V15.5 */
+/* Dashboard - V15.6 */
 /* FILE: logic.js */
 /* Changes: */
 /* 1. Added getDistMi() utility to calculate geographical distance variance. */
@@ -8,7 +8,7 @@ export const MASTER_PALETTE = [
     '#34495E', // Brand Dark Slate
     '#3498DB', // Brand Blue
     '#85BA4E', // Brand Green
-    '#800000', // Maroon (Corrected from #8000000)
+    '#800000', // Maroon
     '#f58231', // Orange
     '#000000', // Black
     '#ffe119', // Yellow
@@ -140,7 +140,7 @@ export function minifyStop(s, routeNum) {
         Number(s.durationSecs) || 0,
         s.verified !== undefined ? s.verified : 1,
         s.correctedAddress || s.address || "",
-        s.fullOriginalAddress || s.address || ""                             
+        s.fullOriginalAddress || s.address || ""                            
     ];
 }
 
@@ -148,7 +148,7 @@ export function isActiveStop(s, isManagerView) {
     const status = (s.status || '').toLowerCase().trim();
     if (isManagerView) {
         if (status === 'dispatched' || status === 's') return false;
-        return (status === 'pending' || status === 'routed' || status === 'completed');
+        return (status === 'pending' || status === 'routed' || status === 'completed' || status === 'validation failed');
     } else {
         let active = status !== 'cancelled' && status !== 'deleted' && !status.includes('failed') && status !== 'unfound';
         if (s.hiddenInInspector) active = false;
