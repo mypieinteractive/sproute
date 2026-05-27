@@ -1,13 +1,14 @@
 /**
  * preOptimization.js
- * VERSION: V15.2
+ * VERSION: V15.3
  * * CHANGES:
+ * V15.3 - Tuple Expansion. Added the `notes` property to GeocodeCache logic. 
+ * `resolveUnmatchedAddress` now prioritizes strict matching via `rowId` and actively 
+ * overwrites/preserves the new notes property at index [16].
  * V15.2 - Added billing/tracking integration to `updateGeocodeCache`. The endpoint 
  * now extracts `payload.frontEndApiUsage.geocode` sent by the background queue and 
  * logs it against the company's monthly usage.
- * V15.1 - Optimistic UI Validation Engine. Shifted geocoding workload off the 
- * backend upload process. `uploadCsv` now performs a lightning-fast bulk lookup 
- * against `GeocodeCache`.
+ * V15.1 - Optimistic UI Validation Engine.
  */
 
 const { parse } = require('csv-parse/sync');
@@ -158,7 +159,7 @@ async function uploadCsv(payload, res, db, admin) {
             let parsedCsvLat = parseFloat(csvLatRaw), parsedCsvLng = parseFloat(csvLngRaw);
             let hasCsvCoords = !isNaN(parsedCsvLat) && !isNaN(parsedCsvLng) && parsedCsvLat !== 0 && parsedCsvLng !== 0;
             
-            let lat = 0, lng = 0, verified = 0;
+            let lat = 0, lng = 0, verified = 0, notes = "";
             let correctedAddress = fullAddr;
             let cachedData = cacheMap.get(cleanAddr);
 
@@ -167,14 +168,11 @@ async function uploadCsv(payload, res, db, admin) {
                 lng = cachedData.lng;
                 correctedAddress = cachedData.correctedAddress || fullAddr;
                 verified = 1;
+                notes = cachedData.notes || "";
             } else if (hasCsvCoords) {
-                lat = parsedCsvLat; 
-                lng = parsedCsvLng;
-                verified = 0; // Requires Frontend Background Check
+                lat = parsedCsvLat; lng = parsedCsvLng; verified = 0; 
             } else {
-                lat = 0; 
-                lng = 0;
-                verified = 0; // Requires Frontend Background Check
+                lat = 0; lng = 0; verified = 0;
             }
 
             maxSeq++;
@@ -186,9 +184,9 @@ async function uploadCsv(payload, res, db, admin) {
             let orderTypeVal = settingsMap.orderType > -1 ? row[settingsMap.orderType] : "";
 
             // Expanded Tuple Index Mapping:
-            // [0] id, [1] route, [2] addr, [3] client, [4] app, [5] date, [6] type, [7] eta, [8] dist, [9] lat, [10] lng, [11] status, [12] duration, 
-            // [13] verifiedFlag, [14] correctedAddress, [15] fullOriginalAddress
-            newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, csvType, shortDate, orderTypeVal, "", 0, Number(parseFloat(lat).toFixed(5)), Number(parseFloat(lng).toFixed(5)), "P", 0, verified, correctedAddress, fullAddr ]);
+            // [0]id, [1]route, [2]addr, [3]client, [4]app, [5]date, [6]type, [7]eta, [8]dist, [9]lat, [10]lng, [11]status, [12]duration, 
+            // [13]verifiedFlag, [14]correctedAddr, [15]originalAddr, [16]notes
+            newOrders.push([ `${driverId}-${maxSeq}`, 1, displayAddress, displayClient, csvType, shortDate, orderTypeVal, "", 0, Number(parseFloat(lat).toFixed(5)), Number(parseFloat(lng).toFixed(5)), "P", 0, verified, correctedAddress, fullAddr, notes ]);
         }
     }
 
@@ -215,7 +213,7 @@ async function uploadCsv(payload, res, db, admin) {
     return res.status(200).json({ success: true, count: newOrders.length });
 }
 
-// --- ENDPOINT: Receives Background Verification Results from Frontend Queue ---
+// --- NEW ENDPOINT: Receives Background Verification Results from Frontend Queue ---
 async function updateGeocodeCache(payload, res, db, admin) {
     const { driverId, updatesList } = payload; 
     if (!driverId || !updatesList || !Array.isArray(updatesList)) return res.status(400).json({error: "Missing parameters"});
@@ -235,10 +233,10 @@ async function updateGeocodeCache(payload, res, db, admin) {
         
         if (u.isValid) {
             const cacheRef = db.collection('GeocodeCache').doc(cleanAddr);
-            batch.set(cacheRef, { lat: u.lat, lng: u.lng, correctedAddress: u.correctedAddress || u.originalAddress, timestamp: admin.firestore.FieldValue.serverTimestamp() });
+            batch.set(cacheRef, { lat: u.lat, lng: u.lng, correctedAddress: u.correctedAddress || u.originalAddress, timestamp: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
         } else {
             const unRef = db.collection('Unmatched').doc(cleanAddr);
-            batch.set(unRef, { originalAddress: u.originalAddress, lat: null, lng: null, correctedAddress: "", timestamp: admin.firestore.FieldValue.serverTimestamp() });
+            batch.set(unRef, { originalAddress: u.originalAddress, lat: null, lng: null, correctedAddress: "", timestamp: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
         }
     });
 
@@ -293,15 +291,17 @@ async function updateGeocodeCache(payload, res, db, admin) {
 }
 
 async function resolveUnmatchedAddress(payload, res, db, admin) {
-    const { driverId, companyId, originalAddress, lat, lng, correctedAddress, skip } = payload;
-    if (!originalAddress || !driverId) return res.status(400).json({ error: "Missing parameters" });
+    const { driverId, companyId, originalAddress, lat, lng, correctedAddress, skip, notes, rowId } = payload;
+    if (!driverId) return res.status(400).json({ error: "Missing parameters" });
 
     const batch = db.batch();
-    const cleanOrigAddr = originalAddress.replace(/\//g, '');
+    const cleanOrigAddr = String(originalAddress || "").replace(/\//g, '');
 
     if (skip) {
-        const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
-        batch.delete(unmatchedRef);
+        if (cleanOrigAddr) {
+            const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
+            batch.delete(unmatchedRef);
+        }
 
         const driverRef = db.collection('Users').doc(String(driverId));
         const driverDoc = await driverRef.get();
@@ -310,28 +310,13 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
             let changed = false;
             let newBay = bay.filter(s => {
                 let isTuple = Array.isArray(s);
-                let sStat = isTuple ? s[11] : (s.status || s.s);
-                let tupleOriginalAddr = isTuple ? s[15] : (s.fullOriginalAddress || s.address || "");
-                
-                if (sStat === 'V' && originalAddress.toLowerCase() === String(tupleOriginalAddr).toLowerCase()) {
-                    changed = true;
-                    return false; 
-                }
+                let tupleId = String(isTuple ? s[0] : (s.rowId || s.id));
+                if (rowId && tupleId === String(rowId)) { changed = true; return false; }
                 return true;
             });
             if (changed) {
                 let currState = driverDoc.data().activeStaging?.status || 'Pending';
-                let nextState = evaluateRouteState(newBay, currState);
-
-                let updates = { 
-                    'activeStaging.orders': JSON.stringify(newBay),
-                    'activeStaging.status': nextState
-                };
-                if (newBay.length === 0) {
-                    updates['lockedBy'] = null;
-                    updates['activeStaging.status'] = null;
-                }
-                batch.update(driverRef, updates);
+                batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(newBay), 'activeStaging.status': evaluateRouteState(newBay, currState) });
             }
         }
         await batch.commit();
@@ -346,72 +331,63 @@ async function resolveUnmatchedAddress(payload, res, db, admin) {
     if (correctedAddress && (isNaN(finalLat) || isNaN(finalLng))) {
         let geoResult = await performGeocodingWaterfall(correctedAddress, db, mapsApiKey);
         if (geoResult) {
-            finalLat = geoResult.lat;
-            finalLng = geoResult.lng;
+            finalLat = geoResult.lat; finalLng = geoResult.lng;
             if (!geoResult.cached) geocodeCallCount++;
-        } else {
-            return res.status(400).json({ error: "Address not found.", unresolvable: true });
-        }
+        } else { return res.status(400).json({ error: "Address not found.", unresolvable: true }); }
     }
 
-    if (isNaN(finalLat) || isNaN(finalLng) || (finalLat === 0 && finalLng === 0)) {
-        return res.status(400).json({ error: "Valid coordinates or a verifiable address are required." });
-    }
+    if (isNaN(finalLat) || isNaN(finalLng) || (finalLat === 0 && finalLng === 0)) return res.status(400).json({ error: "Valid coordinates or a verifiable address are required." });
 
     finalLat = Number(finalLat.toFixed(5));
     finalLng = Number(finalLng.toFixed(5));
 
-    const cacheRef = db.collection('GeocodeCache').doc(cleanOrigAddr);
-    batch.set(cacheRef, { lat: finalLat, lng: finalLng, correctedAddress: correctedAddress || originalAddress, timestamp: admin.firestore.FieldValue.serverTimestamp() });
+    if (cleanOrigAddr) {
+        const cacheRef = db.collection('GeocodeCache').doc(cleanOrigAddr);
+        batch.set(cacheRef, { lat: finalLat, lng: finalLng, correctedAddress: correctedAddress || originalAddress, notes: notes || "", timestamp: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 
-    const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
-    batch.delete(unmatchedRef);
+        const unmatchedRef = db.collection('Unmatched').doc(cleanOrigAddr);
+        batch.delete(unmatchedRef);
+    }
 
     const driverRef = db.collection('Users').doc(String(driverId));
     const driverDoc = await driverRef.get();
     if (driverDoc.exists) {
-        let bay = [];
-        if (driverDoc.data().activeStaging?.orders) {
-            bay = safeJsonParse(driverDoc.data().activeStaging.orders, []);
-        }
-        
+        let bay = safeJsonParse(driverDoc.data().activeStaging?.orders, []);
         let changed = false;
+        
         for (let i = 0; i < bay.length; i++) {
             let s = bay[i];
             let isTuple = Array.isArray(s);
-            let sStat = isTuple ? s[11] : (s.status || s.s);
+            let tupleId = String(isTuple ? s[0] : (s.rowId || s.id));
             let tupleOriginalAddr = isTuple ? s[15] : (s.fullOriginalAddress || s.address || "");
             
-            if (sStat === 'V' && originalAddress.toLowerCase() === String(tupleOriginalAddr).toLowerCase()) {
+            let isMatch = false;
+            // Use rigorous rowId match if provided by the frontend payload
+            if (rowId) isMatch = (tupleId === String(rowId));
+            else { let sStat = isTuple ? s[11] : (s.status || s.s); isMatch = (sStat === 'V' && (originalAddress || "").toLowerCase() === String(tupleOriginalAddr).toLowerCase()); }
+
+            if (isMatch) {
                 if (isTuple) {
-                    bay[i][9] = finalLat;
-                    bay[i][10] = finalLng;
-                    bay[i][11] = "P";
-                    bay[i][13] = 1; // Mark Verified
-                    bay[i][14] = correctedAddress || originalAddress;
+                    bay[i][9] = finalLat; 
+                    bay[i][10] = finalLng; 
+                    bay[i][11] = "P"; 
+                    bay[i][13] = 1; 
+                    bay[i][14] = correctedAddress || originalAddress; 
+                    bay[i][16] = notes || "";
                 } else {
-                    bay[i].lat = finalLat;
-                    bay[i].lng = finalLng;
-                    bay[i].status = "P";
-                    bay[i].verified = 1;
-                    bay[i].correctedAddress = correctedAddress || originalAddress;
+                    bay[i].lat = finalLat; 
+                    bay[i].lng = finalLng; 
+                    bay[i].status = "P"; 
+                    bay[i].verified = 1; 
+                    bay[i].correctedAddress = correctedAddress || originalAddress; 
+                    bay[i].notes = notes || "";
                 }
                 changed = true;
             }
         }
         if (changed) {
             let currState = driverDoc.data().activeStaging?.status || 'Pending';
-            let nextState = evaluateRouteState(bay, currState);
-
-            let updates = { 
-                'activeStaging.orders': JSON.stringify(bay),
-                'activeStaging.status': nextState 
-            };
-            if (bay.length === 0) {
-                updates['lockedBy'] = null;
-                updates['activeStaging.status'] = null;
-            }
-            batch.update(driverRef, updates);
+            batch.update(driverRef, { 'activeStaging.orders': JSON.stringify(bay), 'activeStaging.status': evaluateRouteState(bay, currState) });
         }
     }
 
