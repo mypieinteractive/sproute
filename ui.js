@@ -1,8 +1,9 @@
-/* Dashboard - V18.54 */
+/* Dashboard - V18.55 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated map selection preview to replace ETA column with App column data. */
-/* 2. Added border-right: none to col-addr to cleanly remove the divider. */
+/* 1. Added status rendering for verification (spinners, green checks, red Xs). */
+/* 2. Added hover tooltips for verified addresses. */
+/* 3. Logic to toggle [Optimize] button to [Resolve] when validation fails. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -62,6 +63,35 @@ export function customConfirm(msg) {
         document.getElementById('modal-confirm-ok').onclick = () => { m.style.display = 'none'; resolve(true); };
         document.getElementById('modal-confirm-cancel').onclick = () => { m.style.display = 'none'; resolve(false); };
     });
+}
+
+// --- Verification UI Helpers ---
+
+export function getVerificationStatusIcon(s) {
+    if (s.verified === 1) {
+        return `<i class="fa-solid fa-check-circle" style="color: #10b981; cursor: pointer;" title="Verified: ${s.correctedAddress || s.address}"></i>`;
+    } else if (s.verified === 0) {
+        return `<i class="fa-solid fa-spinner fa-spin" style="color: var(--text-muted);"></i>`;
+    } else {
+        return `<i class="fa-solid fa-times-circle" style="color: #ef4444; cursor: pointer;" onclick="openUnmatchedModal()"></i>`;
+    }
+}
+
+// Update the [Optimize] / [Resolve] button in the UI
+export function updateRouteActionButtons() {
+    const hasUnverified = AppState.stops.some(s => s.verified === -1);
+    const optimizeBtn = document.getElementById('btn-header-generate');
+    if (!optimizeBtn) return;
+
+    if (hasUnverified) {
+        optimizeBtn.innerText = "Resolve Addresses";
+        optimizeBtn.style.backgroundColor = "#ef4444";
+        optimizeBtn.onclick = () => openUnmatchedModal();
+    } else {
+        optimizeBtn.innerText = "Optimize";
+        optimizeBtn.style.backgroundColor = "var(--accent)";
+        optimizeBtn.onclick = () => handleGenerateRoute();
+    }
 }
 
 export function updateUndoUI() {
@@ -192,6 +222,7 @@ export function updateRoutingUI() {
     if(actionBtns) actionBtns.style.borderLeft = 'none';
     
     updatePrioritySliderUI();
+    updateRouteActionButtons(); // Apply our new dynamic button logic
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const routeToggles = document.getElementById('route-view-toggles');
@@ -345,6 +376,7 @@ export function render() {
             <div class="col-app ${sortClass}" ${sortClick('app')}>App ${sortIcon('app')}</div>
             <div class="col-client ${sortClass}" ${sortClick('client')}>Client ${sortIcon('client')}</div>
             <div class="col-insp ${sortClass}" ${sortClick('driverName')} style="display: ${isSingleInspector ? 'none' : 'flex'}; justify-content: center;">Inspector ${sortIcon('driverName')}</div>
+            <div class="col-verif" style="width: 40px; display:flex; justify-content:center;">V</div>
         `;
         
         const headerContainer = document.getElementById('list-header-container');
@@ -422,6 +454,7 @@ export function render() {
                 <div class="col-app">${s.app || '--'}</div>
                 <div class="col-client">${s.client || '--'}</div>
                 ${inspectorHtml}
+                <div class="col-verif" style="width: 40px; display:flex; justify-content:center; align-items:center;">${getVerificationStatusIcon(s)}</div>
             `;
         } else {
             item.className = `stop-item ${s.status.toLowerCase().replace(' ', '-')} ${AppState.currentDisplayMode}`;
@@ -581,7 +614,20 @@ export function render() {
     }, 20); 
 }
 
-function buildEndpointsToDraw(activeStops) {
+// --- Verification Queue UI ---
+export function updateVerificationUI() {
+    AppState.stops.forEach(s => {
+        const row = document.getElementById(`item-${s.id}`);
+        if (row) {
+            const verifCol = row.querySelector('.col-verif');
+            if (verifCol) verifCol.innerHTML = getVerificationStatusIcon(s);
+        }
+    });
+    updateRouteActionButtons();
+}
+// ... (rest of the file remains as previously provided, appended below)
+
+export function buildEndpointsToDraw(activeStops) {
     let endpointsToDraw = [];
     const pushEndpoint = (lng, lat, dId, type) => {
         if (lng && lat) {
@@ -719,7 +765,6 @@ export function createEndpointRow(type, endpointData) {
     const labelText = type === 'start' ? 'START' : 'END';
     
     const isAllInspectors = Config.isManagerView && AppState.currentInspectorFilter === 'all';
-    const dummySort = isAllInspectors ? '<i class="fa-solid fa-sort" style="margin-left:4px;"></i>' : '';
     
     const el = document.createElement('div');
     el.className = 'stop-item static-endpoint';
@@ -742,6 +787,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-app"></div>
         <div class="col-client"></div>
         <div class="col-insp" style="display:${Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? 'none' : 'flex'};"></div>
+        <div class="col-verif" style="width:40px;"></div>
     `;
     return el;
 }
