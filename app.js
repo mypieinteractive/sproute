@@ -1,9 +1,8 @@
-/* Dashboard - V19.3 */
+/* Dashboard - V19.4 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Fixed "Endless Processing" Bug: Added error handling to the polling loop in `loadData()` so a network failure aborts the overlay rather than freezing the screen. */
-/* 2. Added a timeout alert if optimization polling hits 15 retries without a successful route. */
-/* 3. Added `reader.onerror` to `performUpload()` to unlock the UI if the browser fails to read the CSV file. */
+/* 1. Added explicit `UI.hideOverlay()` logic inside `handleGenerateRoute` for jobs that complete instantly and bypass polling. */
+/* 2. Strengthened legacy ID parsing (s.rowId || s.id || s.r) to prevent crashes on older historical data arrays. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -58,7 +57,7 @@ export const AppState = {
     unmatchedAddressesQueue: [],
     currentUnmatchedIndex: 0,
     currentUploadDriverId: null,
-    currentUnmatchedStopId: null,
+    currentUnmatchedStopId: null, // Tracks exact ID during manual edit
     isFreshGlideRefresh: false,
     isPollingForRoute: false,
     isProcessingQueue: false,
@@ -122,7 +121,7 @@ export async function apiFetch(payload) {
     }
 }
 
-let queueCooldown = 500; 
+let queueCooldown = 500; // Default wait time between batches
 
 export async function processVerificationQueue() {
     if (AppState.isProcessingQueue) return;
@@ -196,7 +195,7 @@ export async function processVerificationQueue() {
             }
 
             updatesList.push({
-                rowId: stop.id,
+                rowId: stop.id || stop.rowId || stop.r,
                 originalAddress: stop.fullOriginalAddress || stop.address,
                 lat: finalLat,
                 lng: finalLng,
@@ -235,7 +234,7 @@ export async function processVerificationQueue() {
     AppState.isProcessingQueue = false;
 
     if (hitRateLimit) {
-        queueCooldown = 3000; 
+        queueCooldown = 3000; // Wait 3 seconds if Mapbox is throttling us
     } else {
         queueCooldown = 500;  
     }
@@ -296,7 +295,11 @@ export async function loadData() {
             rawStops = data;
         } else if (data.stops) {
             if (typeof data.stops === 'string') { 
-                try { rawStops = JSON.parse(data.stops); } catch(e) { rawStops = []; } 
+                try { 
+                    rawStops = JSON.parse(data.stops); 
+                } catch(e) { 
+                    rawStops = []; 
+                } 
             } else if (Array.isArray(data.stops)) {
                 rawStops = data.stops;
             }
@@ -357,7 +360,9 @@ export async function loadData() {
         if (polyData) {
             try {
                 AppState.polylines = typeof polyData === 'string' ? JSON.parse(polyData) : polyData;
-            } catch(e) { AppState.polylines = {}; }
+            } catch(e) { 
+                AppState.polylines = {}; 
+            }
         } else {
             AppState.polylines = {};
         }
@@ -366,9 +371,9 @@ export async function loadData() {
             let fetchedMap = new Map();
             rawStops.forEach(s => {
                 let exp = expandStop(s);
-                fetchedMap.set(String(exp.rowId || exp.id), {
+                fetchedMap.set(String(exp.rowId || exp.id || exp.r), {
                     ...exp, 
-                    id: exp.rowId || exp.id, 
+                    id: exp.rowId || exp.id || exp.r, 
                     status: getStatusText(exp.status), 
                     cluster: exp.cluster, 
                     manualCluster: false, 
@@ -380,7 +385,8 @@ export async function loadData() {
             });
 
             AppState.stops = AppState.stops.map(s => {
-                if (fetchedMap.has(String(s.id))) return fetchedMap.get(String(s.id));
+                let idKey = String(s.id || s.rowId || s.r);
+                if (fetchedMap.has(idKey)) return fetchedMap.get(idKey);
                 if (s.routeState === 'Queued') s.routeState = 'Ready'; 
                 return s;
             });
@@ -411,7 +417,7 @@ export async function loadData() {
                 let exp = expandStop(s);
                 return { 
                     ...exp, 
-                    id: exp.rowId || exp.id, 
+                    id: exp.rowId || exp.id || exp.r, 
                     status: getStatusText(exp.status), 
                     cluster: exp.cluster, 
                     manualCluster: false, 
@@ -495,7 +501,6 @@ export async function loadData() {
     } catch (e) { 
         AppState.isFreshGlideRefresh = false; 
         
-        // --- NEW: FATAL ERROR ABORT ---
         // If a network drop occurs during optimization polling, abort the UI lock safely
         if (AppState.isPollingForRoute) {
             AppState.isPollingForRoute = false;
@@ -702,16 +707,17 @@ export async function handleGenerateRoute() {
                     else if (sentClusters.length === 1) mappedCluster = sentClusters[0]; 
                 }
                 
-                returnedStopsMap.set(exp.rowId || exp.id, { 
+                returnedStopsMap.set(exp.rowId || exp.id || exp.r, { 
                     ...exp, 
-                    id: exp.rowId || exp.id, 
+                    id: exp.rowId || exp.id || exp.r, 
                     cluster: mappedCluster, 
                     manualCluster: false 
                 });
             });
 
             AppState.stops = AppState.stops.map(s => {
-                if (returnedStopsMap.has(String(s.id))) return returnedStopsMap.get(String(s.id));
+                let idKey = String(s.id || s.rowId || s.r);
+                if (returnedStopsMap.has(idKey)) return returnedStopsMap.get(idKey);
                 if (s.routeState === 'Queued') s.routeState = 'Ready'; 
                 return s;
             });
@@ -727,6 +733,9 @@ export async function handleGenerateRoute() {
             AppState.dirtyRoutes.clear(); 
             triggerFullRender(); 
             silentSaveRouteState(); 
+            
+            // --- FIX: Safely unlock the UI if route succeeded instantly without polling
+            UI.hideOverlay();
             
         } else if (data.status === 'queued' || data.success) {
             let pqPayload = { action: 'processQueue', driverId: insp.id };
@@ -810,15 +819,19 @@ export async function handleCalculate() {
                 else if (backendCluster < sentClusters.length) mappedCluster = sentClusters[backendCluster];
                 else if (sentClusters.length === 1) mappedCluster = sentClusters[0];
             }
-            returnedStopsMap.set(exp.rowId || exp.id, { 
+            returnedStopsMap.set(exp.rowId || exp.id || exp.r, { 
                 ...exp, 
-                id: exp.rowId || exp.id, 
+                id: exp.rowId || exp.id || exp.r, 
                 cluster: mappedCluster, 
                 manualCluster: false 
             });
         });
 
-        AppState.stops = AppState.stops.map(s => returnedStopsMap.has(String(s.id)) ? returnedStopsMap.get(String(s.id)) : s);
+        AppState.stops = AppState.stops.map(s => {
+            let idKey = String(s.id || s.rowId || s.r);
+            if (returnedStopsMap.has(idKey)) return returnedStopsMap.get(idKey);
+            return s;
+        });
         
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
@@ -1026,7 +1039,7 @@ export async function performUpload(file, inspectorId, csvType, overrideLock = f
     UI.showOverlay("Uploading CSV...", "Processing order data locally");
     const reader = new FileReader();
     
-    // --- NEW: CATCH LOCAL FILE ERRORS ---
+    // --- FIX: Ensure the UI unlocks if the local file read operation fails
     reader.onerror = async () => {
         UI.hideOverlay();
         await UI.customAlert("Failed to read the file locally. Ensure the file is not corrupted or locked by another program.");
