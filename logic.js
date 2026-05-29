@@ -1,7 +1,8 @@
-/* Dashboard - V15.7 */
+/* Dashboard - V15.8 */
 /* FILE: logic.js */
 /* Changes: */
-/* 1. Tuple Expansion. Added the `notes` property to expandStop and minifyStop at index [16]. */
+/* 1. Legacy Data Hardening. Added strict null and NaN checks inside expandStop 
+   to prevent old 13-item arrays from breaking the validation queue or rendering loop. */
 
 export const MASTER_PALETTE = [
     '#34495E', // Brand Dark Slate
@@ -14,18 +15,37 @@ export const MASTER_PALETTE = [
     '#fabed4'  // Pink
 ];
 
-export const STATUS_MAP_TO_TEXT = { 'P': 'Pending', 'R': 'Routed', 'C': 'Completed', 'D': 'Deleted', 'V': 'Validation Failed', 'O': 'Optimization Failed', 'S': 'Dispatched' };
-export const STATUS_MAP_TO_CODE = { 'pending': 'P', 'routed': 'R', 'completed': 'C', 'deleted': 'D', 'validation failed': 'V', 'optimization failed': 'O', 'dispatched': 'S' };
+export const STATUS_MAP_TO_TEXT = { 
+    'P': 'Pending', 
+    'R': 'Routed', 
+    'C': 'Completed', 
+    'D': 'Deleted', 
+    'V': 'Validation Failed', 
+    'O': 'Optimization Failed', 
+    'S': 'Dispatched' 
+};
+
+export const STATUS_MAP_TO_CODE = { 
+    'pending': 'P', 
+    'routed': 'R', 
+    'completed': 'C', 
+    'deleted': 'D', 
+    'validation failed': 'V', 
+    'optimization failed': 'O', 
+    'dispatched': 'S' 
+};
 
 export function getStatusText(code) {
     if (!code) return 'Pending';
     let c = String(code).trim().toUpperCase();
+    
     if (c === 'S' || c === 'DISPATCHED') return 'Dispatched';
     if (c === 'R' || c === 'ROUTED') return 'Routed';
     if (c === 'C' || c === 'COMPLETED') return 'Completed';
     if (c === 'D' || c === 'DELETED') return 'Deleted';
     if (c === 'V' || c === 'O') return 'Validation Failed';
     if (c === 'P' || c === 'PENDING') return 'Pending';
+    
     return STATUS_MAP_TO_TEXT[c] || 'Pending';
 }
 
@@ -43,19 +63,25 @@ export function isRouteAssigned(status) {
 export const isTrueInspector = (val) => val === true || String(val).trim().toLowerCase() === 'true';
 
 export function hexToRgba(hex, alpha) {
-    let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    let r = parseInt(hex.slice(1, 3), 16), 
+        g = parseInt(hex.slice(3, 5), 16), 
+        b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export function timeToMins(tStr) {
     if (!tStr || typeof tStr !== 'string') return Number.MAX_SAFE_INTEGER;
+    
     let m = tStr.match(/(\d+):(\d+)\s*(AM|PM|am|pm)/i);
     if (!m) return Number.MAX_SAFE_INTEGER;
+    
     let h = parseInt(m[1], 10);
     let mins = parseInt(m[2], 10);
     let p = m[3].toUpperCase();
+    
     if (p === 'PM' && h < 12) h += 12;
     if (p === 'AM' && h === 12) h = 0;
+    
     return (h * 60) + mins;
 }
 
@@ -67,14 +93,18 @@ export function getDistMi(lat1, lon1, lat2, lon2) {
     const R = 3958.8; // Radius of earth in miles
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
 }
 
 export function expandStop(minStop) {
     if (!minStop) return {};
-    if (!Array.isArray(minStop) && !minStop.rawTuple && !minStop.data && !minStop.tuple && minStop.address) return minStop;
+
+    if (!Array.isArray(minStop) && !minStop.rawTuple && !minStop.data && !minStop.tuple && minStop.address) {
+        return minStop;
+    }
 
     let t = null;
     if (Array.isArray(minStop)) t = minStop;
@@ -86,11 +116,17 @@ export function expandStop(minStop) {
 
     if (t && Array.isArray(t) && t.length >= 12) {
         let rawCluster = String(t[1] || '').trim().toUpperCase();
-        expanded.id = String(t[0]);
-        expanded.rowId = String(t[0]);
         
-        if (rawCluster === 'X' || rawCluster === '') expanded.cluster = 'X';
-        else { let clusterIdx = parseInt(rawCluster); expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1); }
+        // --- FIX: Ensure legacy `r` IDs are correctly mapped if `id` is missing
+        expanded.id = String(t[0] || minStop.id || minStop.rowId || minStop.r || "");
+        expanded.rowId = expanded.id;
+        
+        if (rawCluster === 'X' || rawCluster === '') {
+            expanded.cluster = 'X';
+        } else { 
+            let clusterIdx = parseInt(rawCluster); 
+            expanded.cluster = isNaN(clusterIdx) ? 'X' : Math.max(0, clusterIdx - 1); 
+        }
         
         expanded.address = String(t[2] || '');
         expanded.client = String(t[3] || '');
@@ -103,17 +139,22 @@ export function expandStop(minStop) {
         expanded.lng = parseFloat(t[10] || 0);
         expanded.status = String(t[11] || 'P');
         expanded.durationSecs = parseInt(t[12] || 0, 10);
-        expanded.verified = t[13] !== undefined ? parseInt(t[13], 10) : 1;
-        expanded.correctedAddress = String(t[14] !== undefined ? t[14] : expanded.address);
-        expanded.fullOriginalAddress = String(t[15] !== undefined ? t[15] : expanded.address);
-        expanded.notes = String(t[16] !== undefined ? t[16] : (minStop.notes || ''));
+        
+        // --- FIX: Safely parse verification tuple properties (preventing NaN/null leaks)
+        let parsedVerif = parseInt(t[13], 10);
+        expanded.verified = (!isNaN(parsedVerif) && t[13] !== null) ? parsedVerif : 1; 
+        
+        expanded.correctedAddress = String((t[14] !== undefined && t[14] !== null) ? t[14] : expanded.address);
+        expanded.fullOriginalAddress = String((t[15] !== undefined && t[15] !== null) ? t[15] : expanded.address);
+        expanded.notes = String((t[16] !== undefined && t[16] !== null) ? t[16] : (minStop.notes || ''));
     }
+    
     return expanded;
 }
 
 export function minifyStop(s, routeNum) {
     return [
-        s.rowId || s.id || "", 
+        s.rowId || s.id || s.r || "", 
         routeNum, 
         s.address || "", 
         s.client ? String(s.client).substring(0, 3) : "", 
@@ -135,6 +176,7 @@ export function minifyStop(s, routeNum) {
 
 export function isActiveStop(s, isManagerView) {
     const status = (s.status || '').toLowerCase().trim();
+    
     if (isManagerView) {
         if (status === 'dispatched' || status === 's') return false;
         return (status === 'pending' || status === 'routed' || status === 'completed' || status === 'validation failed');
@@ -147,15 +189,24 @@ export function isActiveStop(s, isManagerView) {
 
 export function isStopVisible(s, applyRouteFilter, isManagerView, currentInspectorFilter, currentRouteViewFilter) {
     if (!isActiveStop(s, isManagerView)) return false;
-    if (isManagerView && currentInspectorFilter !== 'all') { if (String(s.driverId) !== String(currentInspectorFilter)) return false; }
+    
+    if (isManagerView && currentInspectorFilter !== 'all') { 
+        if (String(s.driverId) !== String(currentInspectorFilter)) return false; 
+    }
+    
     if (!isManagerView && !isRouteAssigned(s.status)) return false;
-    if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') { if (s.cluster !== currentRouteViewFilter) return false; }
+    
+    if (applyRouteFilter && currentRouteViewFilter !== 'all' && isRouteAssigned(s.status) && s.cluster !== 'X') { 
+        if (s.cluster !== currentRouteViewFilter) return false; 
+    }
+    
     return true;
 }
 
 export function getVisualStyle(stopData, isManagerView, currentInspectorFilter, currentRouteCount, stops, inspectors) {
     const isRouted = isRouteAssigned(stopData.status);
     let inspectorIndex = 0;
+    
     if (stopData.driverId) {
         const idx = inspectors.findIndex(i => String(i.id) === String(stopData.driverId));
         if (idx !== -1) inspectorIndex = idx;
@@ -171,17 +222,29 @@ export function getVisualStyle(stopData, isManagerView, currentInspectorFilter, 
     let bgHex, borderHex = baseColor, textHex;
     
     if (isRouted || isPreviewingClusters) {
-        if (cluster === 0) { bgHex = baseColor; textHex = '#ffffff'; }
-        else if (cluster === 1) { bgHex = '#000000'; textHex = '#ffffff'; }
-        else { bgHex = '#ffffff'; textHex = '#000000'; }
+        if (cluster === 0) { 
+            bgHex = baseColor; 
+            textHex = '#ffffff'; 
+        } else if (cluster === 1) { 
+            bgHex = '#000000'; 
+            textHex = '#ffffff'; 
+        } else { 
+            bgHex = '#ffffff'; 
+            textHex = '#000000'; 
+        }
     } else if (isSinglePreview) {
-        bgHex = baseColor; textHex = '#ffffff';
+        bgHex = baseColor; 
+        textHex = '#ffffff';
     } else {
-        bgHex = 'transparent'; textHex = baseColor;
+        bgHex = 'transparent'; 
+        textHex = baseColor;
     }
 
     let bgFinal = bgHex;
-    if (bgHex !== 'transparent') bgFinal = bgHex.startsWith('#') ? hexToRgba(bgHex, 0.75) : bgHex;
+    if (bgHex !== 'transparent') {
+        bgFinal = bgHex.startsWith('#') ? hexToRgba(bgHex, 0.75) : bgHex;
+    }
+    
     return { bg: bgFinal, border: borderHex, text: textHex, line: borderHex };
 }
 
@@ -189,7 +252,10 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
     if (unroutedStops.length === 0) return;
 
     if (k === 1) {
-        unroutedStops.forEach(s => { s.cluster = 0; s.manualCluster = false; });
+        unroutedStops.forEach(s => { 
+            s.cluster = 0; 
+            s.manualCluster = false; 
+        });
         return;
     }
 
@@ -208,23 +274,27 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
     });
 
     let centroids = [];
-    for(let i=0; i<k; i++) {
+    for (let i = 0; i < k; i++) {
         let idx = Math.floor(i * unroutedStops.length / k);
         centroids.push({ lat: unroutedStops[idx].lat, lng: unroutedStops[idx].lng });
     }
 
-    for(let iter=0; iter<5; iter++) {
+    for (let iter = 0; iter < 5; iter++) {
         unroutedStops.forEach(s => {
             let bestD = Infinity, bestC = 0;
             centroids.forEach((c, cIdx) => {
                 let d = Math.sqrt(Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2));
-                if (d < bestD) { bestD = d; bestC = cIdx; }
+                if (d < bestD) { 
+                    bestD = d; 
+                    bestC = cIdx; 
+                }
             });
             s._tempCluster = bestC;
         });
-        for(let i=0; i<k; i++) {
+        
+        for (let i = 0; i < k; i++) {
             let cStops = unroutedStops.filter(s => s._tempCluster === i);
-            if(cStops.length > 0) {
+            if (cStops.length > 0) {
                 centroids[i].lat = cStops.reduce((sum, s) => sum + s.lat, 0) / cStops.length;
                 centroids[i].lng = cStops.reduce((sum, s) => sum + s.lng, 0) / cStops.length;
             }
@@ -233,16 +303,22 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
 
     let clusterUrgency = new Array(k).fill(0);
     unroutedStops.forEach(s => { clusterUrgency[s._tempCluster] += s._urgency; });
+    
     let bestClusterIdx = 0, maxUrg = -1;
-    for(let i=0; i<k; i++) {
-        if (clusterUrgency[i] > maxUrg) { maxUrg = clusterUrgency[i]; bestClusterIdx = i; }
+    for (let i = 0; i < k; i++) {
+        if (clusterUrgency[i] > maxUrg) { 
+            maxUrg = clusterUrgency[i]; 
+            bestClusterIdx = i; 
+        }
     }
+    
     let temp = centroids[0];
     centroids[0] = centroids[bestClusterIdx];
     centroids[bestClusterIdx] = temp;
 
     let capacity = Math.ceil(unroutedStops.length / k);
     let maxGeoDist = 0.0001;
+    
     unroutedStops.forEach(s => {
         centroids.forEach(c => {
             let d = Math.sqrt(Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2));
@@ -259,12 +335,16 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
         let bestAltDist = Infinity;
         let bestAltIdx = 0;
 
-        for(let i=1; i<k; i++) {
+        for (let i = 1; i < k; i++) {
             let d = Math.sqrt(Math.pow(s.lat - centroids[i].lat, 2) + Math.pow(s.lng - centroids[i].lng, 2));
-            if (d < bestAltDist) { bestAltDist = d; bestAltIdx = i; }
+            if (d < bestAltDist) { 
+                bestAltDist = d; 
+                bestAltIdx = i; 
+            }
         }
 
         let effectiveDist0 = dist0 - ((s._urgency / 2) * w * pullMultiplier);
+        
         s._dist0 = dist0;
         s._bestAltDist = bestAltDist;
         s._bestAltIdx = bestAltIdx;
@@ -279,6 +359,7 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
 
     sortedStops.forEach(s => {
         let wants0 = s._affinity0 > 0;
+        
         if (wants0) {
             if (route0Count < capacity) {
                 s.cluster = 0;
@@ -297,22 +378,32 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
     });
 
     unroutedStops.forEach(s => {
-        delete s._urgency; delete s._tempCluster; delete s._dist0; delete s._bestAltDist;
-        delete s._bestAltIdx; delete s._effectiveDist0; delete s._affinity0;
+        delete s._urgency; 
+        delete s._tempCluster; 
+        delete s._dist0; 
+        delete s._bestAltDist;
+        delete s._bestAltIdx; 
+        delete s._effectiveDist0; 
+        delete s._affinity0;
     });
 }
 
 export function sortStops(stopsArr, col, asc) {
     return stopsArr.sort((a, b) => {
-        let valA = a[col] || ''; let valB = b[col] || '';
+        let valA = a[col] || ''; 
+        let valB = b[col] || '';
+        
         if (col === 'dueDate') {
             valA = valA ? new Date(valA).getTime() : Number.MAX_SAFE_INTEGER;
             valB = valB ? new Date(valB).getTime() : Number.MAX_SAFE_INTEGER;
         } else {
-            valA = String(valA).toLowerCase(); valB = String(valB).toLowerCase();
+            valA = String(valA).toLowerCase(); 
+            valB = String(valB).toLowerCase();
         }
+        
         if (valA < valB) return asc ? -1 : 1;
         if (valA > valB) return asc ? 1 : -1;
+        
         return 0;
     });
 }
