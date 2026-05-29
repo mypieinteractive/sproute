@@ -1,11 +1,10 @@
 /**
  * optimization.js
- * VERSION: V15.4
+ * VERSION: V15.5
  * * CHANGES:
- * V15.4 - Tuple Expansion for Notes Feature. Pushing index [16] (notes) into the payload to preserve it during Google routing.
- * V15.3 - Tuple Expansion for Verification Engine. Updated the array push methods 
- * in `generateRoute` and `calculate` to properly preserve the new tuple indexes 
- * [13] (verified), [14] (correctedAddress), and [15] (fullOriginalAddress). 
+ * V15.5 - Legacy Data Hardening. Explicitly checking for and sanitizing `null` 
+ * and `undefined` properties inside finalRoutedStops, cleanedUnrouted, and responseBay 
+ * to ensure missing legacy properties never break the front-end rendering arrays.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -249,16 +248,25 @@ async function generateRoute(payload, res, db) {
             let numDist = Number(parseFloat(visit.distance).toFixed(1));
             let isTuple = Array.isArray(s);
             
+            // FIX: Safely parse verification items, substituting nulls for 1 or ""
             finalRoutedStops.push([
-                isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
-                isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
-                isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
-                isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
-                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", visit.durationSecs,
-                isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
-                isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
-                isTuple ? (s[16] || "") : (s.notes || "")
+                isTuple ? s[0] : (s.rowId || s.r), 
+                parseInt(routeNum), 
+                isTuple ? s[2] : (s.address || s.a), 
+                isTuple ? s[3] : (s.client || s.c), 
+                isTuple ? s[4] : (s.app || s.p), 
+                isTuple ? s[5] : (s.dueDate || s.d), 
+                isTuple ? s[6] : (s.type || s.t), 
+                etaTimeOnly, 
+                numDist, 
+                isTuple ? s[9] : (s.lat || s.l), 
+                isTuple ? s[10] : (s.lng || s.g), 
+                "R", 
+                visit.durationSecs,
+                isTuple ? ((s[13] !== undefined && s[13] !== null) ? parseInt(s[13]) : 1) : ((s.verified !== undefined && s.verified !== null) ? parseInt(s.verified) : 1),
+                isTuple ? (s[14] !== undefined && s[14] !== null ? s[14] : s[2]) : (s.correctedAddress || s.address || s.a || ""),
+                isTuple ? (s[15] !== undefined && s[15] !== null ? s[15] : s[2]) : (s.fullOriginalAddress || s.address || s.a || ""),
+                isTuple ? (s[16] !== undefined && s[16] !== null ? s[16] : "") : (s.notes || "")
             ]);
         });
     }
@@ -267,15 +275,23 @@ async function generateRoute(payload, res, db) {
         let isTuple = Array.isArray(s);
         let sId = isTuple ? s[0] : (s.rowId || s.r);
         return [
-            sId, 'X', 
-            isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
-            isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
-            isTuple ? s[6] : (s.type || s.t), "", 0, 
-            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0,
-            isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
-            isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
-            isTuple ? (s[16] || "") : (s.notes || "")
+            sId, 
+            'X', 
+            isTuple ? s[2] : (s.address || s.a), 
+            isTuple ? s[3] : (s.client || s.c), 
+            isTuple ? s[4] : (s.app || s.p), 
+            isTuple ? s[5] : (s.dueDate || s.d), 
+            isTuple ? s[6] : (s.type || s.t), 
+            "", 
+            0, 
+            isTuple ? s[9] : (s.lat || s.l), 
+            isTuple ? s[10] : (s.lng || s.g), 
+            "P", 
+            0,
+            isTuple ? ((s[13] !== undefined && s[13] !== null) ? parseInt(s[13]) : 1) : ((s.verified !== undefined && s.verified !== null) ? parseInt(s.verified) : 1),
+            isTuple ? (s[14] !== undefined && s[14] !== null ? s[14] : s[2]) : (s.correctedAddress || s.address || s.a || ""),
+            isTuple ? (s[15] !== undefined && s[15] !== null ? s[15] : s[2]) : (s.fullOriginalAddress || s.address || s.a || ""),
+            isTuple ? (s[16] !== undefined && s[16] !== null ? s[16] : "") : (s.notes || "")
         ];
     });
 
@@ -419,7 +435,6 @@ async function calculate(payload, res, db) {
                 finalResults = finalResults.concat(chunkOptimized.visits);
                 if (chunkOptimized.polyline) chunkPolys.push(chunkOptimized.polyline);
                 
-                // Set the start of the next chunk exactly where this chunk ended to prevent gaps
                 currentStart = chunkStops[chunkStops.length - 1]; 
             }
             if (apiSuccess) {
@@ -446,11 +461,8 @@ async function calculate(payload, res, db) {
         let currentSeconds = baseStartSeconds;
 
         finalResults.forEach((res, i) => {
-            // Add drive time
             currentSeconds += res.durationSecs;
             let etaTimeOnly = formatEtaString(currentSeconds);
-            
-            // Add service delay
             currentSeconds += (serviceDelay * 60);
 
             let s = routeStops[i].orig;
@@ -458,15 +470,23 @@ async function calculate(payload, res, db) {
             let isTuple = Array.isArray(s);
 
             finalRoutedStops.push([
-                isTuple ? s[0] : (s.rowId || s.r), parseInt(routeNum), 
-                isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
-                isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
-                isTuple ? s[6] : (s.type || s.t), etaTimeOnly, numDist, 
-                isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "R", res.durationSecs,
-                isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
-                isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-                isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
-                isTuple ? (s[16] || "") : (s.notes || "")
+                isTuple ? s[0] : (s.rowId || s.r), 
+                parseInt(routeNum), 
+                isTuple ? s[2] : (s.address || s.a), 
+                isTuple ? s[3] : (s.client || s.c), 
+                isTuple ? s[4] : (s.app || s.p), 
+                isTuple ? s[5] : (s.dueDate || s.d), 
+                isTuple ? s[6] : (s.type || s.t), 
+                etaTimeOnly, 
+                numDist, 
+                isTuple ? s[9] : (s.lat || s.l), 
+                isTuple ? s[10] : (s.lng || s.g), 
+                "R", 
+                res.durationSecs,
+                isTuple ? ((s[13] !== undefined && s[13] !== null) ? parseInt(s[13]) : 1) : ((s.verified !== undefined && s.verified !== null) ? parseInt(s.verified) : 1),
+                isTuple ? (s[14] !== undefined && s[14] !== null ? s[14] : s[2]) : (s.correctedAddress || s.address || s.a || ""),
+                isTuple ? (s[15] !== undefined && s[15] !== null ? s[15] : s[2]) : (s.fullOriginalAddress || s.address || s.a || ""),
+                isTuple ? (s[16] !== undefined && s[16] !== null ? s[16] : "") : (s.notes || "")
             ]);
         });
     }
@@ -475,15 +495,23 @@ async function calculate(payload, res, db) {
         let isTuple = Array.isArray(s);
         let sId = isTuple ? s[0] : (s.rowId || s.r);
         return [
-            sId, 'X', 
-            isTuple ? s[2] : (s.address || s.a), isTuple ? s[3] : (s.client || s.c), 
-            isTuple ? s[4] : (s.app || s.p), isTuple ? s[5] : (s.dueDate || s.d), 
-            isTuple ? s[6] : (s.type || s.t), "", 0, 
-            isTuple ? s[9] : (s.lat || s.l), isTuple ? s[10] : (s.lng || s.g), "P", 0,
-            isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
-            isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a),
-            isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a),
-            isTuple ? (s[16] || "") : (s.notes || "")
+            sId, 
+            'X', 
+            isTuple ? s[2] : (s.address || s.a), 
+            isTuple ? s[3] : (s.client || s.c), 
+            isTuple ? s[4] : (s.app || s.p), 
+            isTuple ? s[5] : (s.dueDate || s.d), 
+            isTuple ? s[6] : (s.type || s.t), 
+            "", 
+            0, 
+            isTuple ? s[9] : (s.lat || s.l), 
+            isTuple ? s[10] : (s.lng || s.g), 
+            "P", 
+            0,
+            isTuple ? ((s[13] !== undefined && s[13] !== null) ? parseInt(s[13]) : 1) : ((s.verified !== undefined && s.verified !== null) ? parseInt(s.verified) : 1),
+            isTuple ? (s[14] !== undefined && s[14] !== null ? s[14] : s[2]) : (s.correctedAddress || s.address || s.a || ""),
+            isTuple ? (s[15] !== undefined && s[15] !== null ? s[15] : s[2]) : (s.fullOriginalAddress || s.address || s.a || ""),
+            isTuple ? (s[16] !== undefined && s[16] !== null ? s[16] : "") : (s.notes || "")
         ];
     });
 
@@ -564,10 +592,10 @@ async function calculate(payload, res, db) {
                 status: fullStatus,
                 s: fullStatus,
                 durationSecs: Number(isTuple ? s[12] : s.durationSecs),
-                verified: isTuple ? (s[13] !== undefined ? s[13] : 1) : (s.verified !== undefined ? s.verified : 1),
-                correctedAddress: String(isTuple ? (s[14] || s[2]) : (s.correctedAddress || s.address || s.a)),
-                fullOriginalAddress: String(isTuple ? (s[15] || s[2]) : (s.fullOriginalAddress || s.address || s.a)),
-                notes: String(isTuple ? (s[16] || "") : (s.notes || "")),
+                verified: isTuple ? ((s[13] !== undefined && s[13] !== null) ? parseInt(s[13]) : 1) : ((s.verified !== undefined && s.verified !== null) ? parseInt(s.verified) : 1),
+                correctedAddress: String(isTuple ? (s[14] !== undefined && s[14] !== null ? s[14] : s[2]) : (s.correctedAddress || s.address || s.a || "")),
+                fullOriginalAddress: String(isTuple ? (s[15] !== undefined && s[15] !== null ? s[15] : s[2]) : (s.fullOriginalAddress || s.address || s.a || "")),
+                notes: String(isTuple ? (s[16] !== undefined && s[16] !== null ? s[16] : "") : (s.notes || "")),
                 driverId: String(payload.driverId),
                 routeState: nextState,
                 routeTargetId: String(payload.driverId)
@@ -578,7 +606,7 @@ async function calculate(payload, res, db) {
         success: true, 
         updatedStops: responseBay,
         processUsed: calcMethod,
-        backendVersion: 'V15.4'
+        backendVersion: 'V15.5'
     });
 }
 
