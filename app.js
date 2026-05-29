@@ -1,8 +1,9 @@
-/* Dashboard - V19.2 */
+/* Dashboard - V19.3 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added `currentUnmatchedStopId` to AppState to explicitly track the exact order ID during manual edits for the unmatched modal. */
-/* 2. Added Exponential Backoff logic to gracefully handle Mapbox rate limits. */
+/* 1. Fixed "Endless Processing" Bug: Added error handling to the polling loop in `loadData()` so a network failure aborts the overlay rather than freezing the screen. */
+/* 2. Added a timeout alert if optimization polling hits 15 retries without a successful route. */
+/* 3. Added `reader.onerror` to `performUpload()` to unlock the UI if the browser fails to read the CSV file. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -57,7 +58,7 @@ export const AppState = {
     unmatchedAddressesQueue: [],
     currentUnmatchedIndex: 0,
     currentUploadDriverId: null,
-    currentUnmatchedStopId: null, // Tracks exact ID during manual edit
+    currentUnmatchedStopId: null,
     isFreshGlideRefresh: false,
     isPollingForRoute: false,
     isProcessingQueue: false,
@@ -121,7 +122,7 @@ export async function apiFetch(payload) {
     }
 }
 
-let queueCooldown = 500; // Default wait time between batches
+let queueCooldown = 500; 
 
 export async function processVerificationQueue() {
     if (AppState.isProcessingQueue) return;
@@ -234,7 +235,7 @@ export async function processVerificationQueue() {
     AppState.isProcessingQueue = false;
 
     if (hitRateLimit) {
-        queueCooldown = 3000; // Wait 3 seconds if Mapbox is throttling us
+        queueCooldown = 3000; 
     } else {
         queueCooldown = 500;  
     }
@@ -295,11 +296,7 @@ export async function loadData() {
             rawStops = data;
         } else if (data.stops) {
             if (typeof data.stops === 'string') { 
-                try { 
-                    rawStops = JSON.parse(data.stops); 
-                } catch(e) { 
-                    rawStops = []; 
-                } 
+                try { rawStops = JSON.parse(data.stops); } catch(e) { rawStops = []; } 
             } else if (Array.isArray(data.stops)) {
                 rawStops = data.stops;
             }
@@ -348,7 +345,6 @@ export async function loadData() {
 
         AppState.routeStart = data.routeStart || null; 
         AppState.routeEnd = data.routeEnd || null;
-        
         if (data.isAlteredRoute) AppState.isAlteredRoute = true;
 
         let globalRouteState = data.routeState || 'Pending';
@@ -361,9 +357,7 @@ export async function loadData() {
         if (polyData) {
             try {
                 AppState.polylines = typeof polyData === 'string' ? JSON.parse(polyData) : polyData;
-            } catch(e) { 
-                AppState.polylines = {}; 
-            }
+            } catch(e) { AppState.polylines = {}; }
         } else {
             AppState.polylines = {};
         }
@@ -406,6 +400,11 @@ export async function loadData() {
                 AppState.isPollingForRoute = false; 
                 AppState.dirtyRoutes.clear(); 
                 silentSaveRouteState(); 
+                
+                // Add an explicit alert if polling timed out after 15 retries without routing
+                if (!driverHasRouted && AppState.pollRetries >= 15) {
+                    UI.customAlert("Optimization timed out or failed in the background. Please check your route addresses and try again.");
+                }
             }
         } else {
             AppState.stops = rawStops.map(s => {
@@ -495,6 +494,15 @@ export async function loadData() {
         
     } catch (e) { 
         AppState.isFreshGlideRefresh = false; 
+        
+        // --- NEW: FATAL ERROR ABORT ---
+        // If a network drop occurs during optimization polling, abort the UI lock safely
+        if (AppState.isPollingForRoute) {
+            AppState.isPollingForRoute = false;
+            UI.hideOverlay();
+            UI.customAlert("Network connection disrupted while waiting for optimization. Please check your internet and try again.");
+        }
+        
     } finally { 
         if (!AppState.isPollingForRoute && !AppState.isFreshGlideRefresh) {
             UI.hideOverlay(); 
@@ -1018,6 +1026,12 @@ export async function performUpload(file, inspectorId, csvType, overrideLock = f
     UI.showOverlay("Uploading CSV...", "Processing order data locally");
     const reader = new FileReader();
     
+    // --- NEW: CATCH LOCAL FILE ERRORS ---
+    reader.onerror = async () => {
+        UI.hideOverlay();
+        await UI.customAlert("Failed to read the file locally. Ensure the file is not corrupted or locked by another program.");
+    };
+
     reader.onload = async (e) => {
         const text = e.target.result;
         try {
