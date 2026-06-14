@@ -1,17 +1,11 @@
 /**
  * optimization.js
- * VERSION: V15.2
+ * VERSION: V15.3
  * * CHANGES:
+ * V15.3 - Polyline Output formatting. Calculate endpoint now includes the newly calculated
+ * polylines in the JSON response, correctly keyed by `${driverId}_${routeNum}` to ensure 
+ * the frontend maps the routes precisely without overwriting other drivers.
  * V15.2 - Added `populatePolylines: true` to the Enterprise Route Optimization API 
- * payload. Google omits the polyline by default for large fleet routing to save 
- * bandwidth; this forces it to return the geometry so the frontend can draw it.
- * V15.1 - Polyline Extraction Integration. Both standard and enterprise routing API calls 
- * now extract the encoded polyline geometry string from the Google response. These geometries 
- * are stored in a new activeStaging.polylines object keyed by route number and saved to 
- * the Users document to allow the frontend to draw physical drive paths.
- * V1.53 - Payload Isolation Restored. Because the UTC ETA drift was fixed in V1.52, 
- * we can safely re-introduce Payload Isolation to the calculate endpoint without map 
- * lines crossing.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -318,7 +312,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V15.2'
+        backendVersion: 'V15.3'
     });
 }
 
@@ -513,8 +507,6 @@ async function calculate(payload, res, db) {
 
     let calcMethod = useExactApi ? `Standard Directions API - Exact Match (${stdCalls} chunk(s))` : `Local Math (Haversine Formula)`;
     
-    // V1.53 FIX: Payload Isolation. Only map and return the objects that were explicitly 
-    // submitted in the payload. Keeps the 'app.js' trapdoor away from clean routes and pending stops.
     let responseBay = finalBay
         .filter(s => {
             let isTuple = Array.isArray(s);
@@ -562,11 +554,18 @@ async function calculate(payload, res, db) {
             };
         });
 
+    // FORMAT RETURN POLYLINES TO PREVENT MANAGER COLLISION
+    let formattedPolys = {};
+    for (let rNum in polylines) {
+        formattedPolys[`${payload.driverId}_${rNum}`] = polylines[rNum];
+    }
+
     return res.status(200).json({ 
         success: true, 
         updatedStops: responseBay,
+        polylines: formattedPolys, // Return polylines to frontend
         processUsed: calcMethod,
-        backendVersion: 'V15.2'
+        backendVersion: 'V15.3'
     });
 }
 
