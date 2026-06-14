@@ -1,7 +1,8 @@
-/* Dashboard - V18.55 */
+/* Dashboard - V18.56 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added a "click here" hyperlink to the missing CSV settings alert in handleFileSelection to direct users to the Glide settings page. */
+/* 1. Updated handleOpenEmailModal to remove the floating summary stats from the map screenshot. */
+/* 2. Added a Sproute logo overlay to cover the map attribution area in the bottom left corner of the email map image. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1243,23 +1244,11 @@ export function handleOpenEmailModal() {
         const overlaysToHide = mapContainer.querySelectorAll('.map-overlay-btns, #map-hint');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
 
-        // Temporarily move the global summary stats onto the map container to ensure they are captured in the screenshot.
-        const statsSource = document.getElementById('global-summary-stats');
-        let statsClone = null;
-        if (statsSource) {
-            statsClone = statsSource.cloneNode(true);
-            statsClone.style.position = 'absolute';
-            statsClone.style.top = '15px';
-            statsClone.style.left = '50%';
-            statsClone.style.transform = 'translateX(-50%)';
-            statsClone.style.zIndex = '10';
-            statsClone.style.background = 'rgba(23, 23, 23, 0.85)';
-            statsClone.style.padding = '8px 16px';
-            statsClone.style.borderRadius = '6px';
-            statsClone.style.border = '1px solid var(--border-color)';
-            statsClone.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
-            mapContainer.appendChild(statsClone);
-        }
+        // Add Sproute logo over the Mapbox attribution area
+        const sprouteLogoBar = document.createElement('div');
+        sprouteLogoBar.style.cssText = 'position: absolute; bottom: 0; left: 0; width: 140px; height: 40px; background-color: #171717; z-index: 10; display: flex; align-items: center; justify-content: center;';
+        sprouteLogoBar.innerHTML = `<img src="https://raw.githubusercontent.com/mypieinteractive/Sproute/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 22px; opacity: 0.9;">`;
+        mapContainer.appendChild(sprouteLogoBar);
 
         const bounds = new mapboxgl.LngLatBounds();
         let lats = [], lngs = [];
@@ -1286,7 +1275,7 @@ export function handleOpenEmailModal() {
         mapWrapper.style.cssText = originalWrapperStyle;
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
         overlaysToHide.forEach((el, index) => el.style.display = originalDisplays[index]);
-        if (statsClone) statsClone.remove();
+        sprouteLogoBar.remove();
 
         try {
             const res = await apiFetch({
