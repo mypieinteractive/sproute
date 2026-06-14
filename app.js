@@ -1,8 +1,8 @@
-/* Dashboard - V18.8 */
+/* Dashboard - V18.9 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added polylines object to AppState to track geometric path data. */
-/* 2. Added logic in loadData() to intercept and parse activeStaging.polylines from the backend payload. */
+/* 1. Added a robust escape handler for JSON.parse() on polylines to prevent backslashes from crashing the initial load. */
+/* 2. Updated handleGenerateRoute and handleCalculate to immediately extract and store the newly generated polylines from the API response so the map visually updates without a page refresh. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -173,11 +173,18 @@ export async function loadData() {
         if (data.adminEmail) AppState.adminEmail = data.adminEmail;
         if (data.csvTypes && Array.isArray(data.csvTypes)) AppState.availableCsvTypes = data.csvTypes;
 
+        // SAFELY PARSE POLYLINES
         let polyData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
         if (polyData) {
-            try {
-                AppState.polylines = typeof polyData === 'string' ? JSON.parse(polyData) : polyData;
-            } catch(e) { AppState.polylines = {}; }
+            if (typeof polyData === 'string') {
+                try { AppState.polylines = JSON.parse(polyData); } 
+                catch (e) {
+                    try { AppState.polylines = JSON.parse(polyData.replace(/\\/g, '\\\\')); } 
+                    catch (err) { AppState.polylines = {}; }
+                }
+            } else {
+                AppState.polylines = polyData;
+            }
         } else {
             AppState.polylines = {};
         }
@@ -354,6 +361,20 @@ export async function handleGenerateRoute() {
                 if (s.routeState === 'Queued') s.routeState = 'Ready'; return s;
             });
 
+            // EXTRACT NEW POLYLINES
+            let pData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
+            if (pData) {
+                if (typeof pData === 'string') {
+                    try { AppState.polylines = JSON.parse(pData); } 
+                    catch (e) {
+                        try { AppState.polylines = JSON.parse(pData.replace(/\\/g, '\\\\')); } 
+                        catch (err) { /* silent fail */ }
+                    }
+                } else {
+                    AppState.polylines = pData;
+                }
+            }
+
             AppState.stops.sort((a, b) => {
                 let cA = a.cluster === 'X' ? 999 : (a.cluster || 0); let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
                 if (cA !== cB) return cA - cB; return timeToMins(a.eta) - timeToMins(b.eta);
@@ -404,6 +425,20 @@ export async function handleCalculate() {
             }
             returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
         });
+
+        // EXTRACT NEW POLYLINES
+        let pData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
+        if (pData) {
+            if (typeof pData === 'string') {
+                try { AppState.polylines = JSON.parse(pData); } 
+                catch (e) {
+                    try { AppState.polylines = JSON.parse(pData.replace(/\\/g, '\\\\')); } 
+                    catch (err) { /* silent fail */ }
+                }
+            } else {
+                AppState.polylines = pData;
+            }
+        }
 
         AppState.stops = AppState.stops.map(s => returnedStopsMap.has(String(s.id)) ? returnedStopsMap.get(String(s.id)) : s);
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
