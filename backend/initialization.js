@@ -1,11 +1,12 @@
 /**
  * initialization.js
- * VERSION: V15.0
+ * VERSION: V15.1
  * * CHANGES:
- * V1.37 - Inspector "Dead Link" Fix. Added support for 'req.query.id' to intercept 
- * dispatched route links. It now queries the Dispatch collection, retrieves the 
- * frozen currentRoute array, and returns the immutable snapshot payload for the Inspector UI.
- * V1.36 - Decoupled Billing Logic. 
+ * V15.1 - Polyline Extraction Integration. The endpoint now extracts the activeStaging.polylines 
+ * object, formats the keys to include the driverId (driverId_routeNum) to prevent collisions 
+ * in Manager view, and includes them in the response payload. Also added support for extracting 
+ * polylines from intercepted Dispatch documents.
+ * V1.37 - Inspector "Dead Link" Fix. 
  */
 
 const { safeJsonParse, formatStopForManager } = require('./helpers');
@@ -21,7 +22,6 @@ async function getDashboardInit(req, res, db) {
         const isManager = req.query.isManager === 'true';
 
         // --- 1. INSPECTOR DISPATCH LINK INTERCEPT ---
-        // If an ID is present but no Company ID, it is a direct link from a dispatch email
         if (explicitRouteId && !explicitCompanyId) {
             const dispatchDoc = await db.collection('Dispatch').doc(String(explicitRouteId)).get();
             if (!dispatchDoc.exists) return res.status(404).json({ error: "Route not found.", id: explicitRouteId });
@@ -41,9 +41,21 @@ async function getDashboardInit(req, res, db) {
             let activeStops = currentRoute.map(obj => formatStopForManager(obj, dispatchDriverId, resolvedCompanyId, 'Dispatched', explicitRouteId));
             let isAlteredRoute = dData.currentRoute !== originalRoute;
 
+            // EXTRACT AND FORMAT DISPATCH POLYLINES
+            let interceptPolys = {};
+            let pRaw = dData.polylines;
+            if (pRaw) {
+                let pParsed = {};
+                if (typeof pRaw === 'string') {
+                    try { pParsed = JSON.parse(pRaw); } catch(e) { try { pParsed = JSON.parse(pRaw.replace(/\\/g, '\\\\')); } catch(err){} }
+                } else { pParsed = pRaw; }
+                for (let k in pParsed) { interceptPolys[`${dispatchDriverId}_${k}`] = pParsed[k]; }
+            }
+
             return res.status(200).json({
                 routeId: explicitRouteId,
                 stops: activeStops,
+                polylines: interceptPolys, // Send polylines to inspector
                 routeStart: driverData.startAddress ? { address: driverData.startAddress, lat: driverData.startLat, lng: driverData.startLng } : null,
                 routeEnd: driverData.endAddress ? { address: driverData.endAddress, lat: driverData.endLat, lng: driverData.endLng } : null,
                 serviceDelay: parseInt(companyData.serviceDelayMins) || 0,
@@ -53,7 +65,6 @@ async function getDashboardInit(req, res, db) {
                 companyAddress: companyData.address || "",
                 companyEmail: companyData.email || "",
                 defaultEmailMessage: companyData.defaultEmailMessage || "",
-                // Treat this as an immutable snapshot for the inspector
                 permissions: { modify: false, reoptimize: false, useExactApi: companyData.useExactApi }, 
                 displayName: driverData.name || "Inspector",
                 isAlteredRoute: isAlteredRoute,
@@ -105,6 +116,7 @@ async function getDashboardInit(req, res, db) {
         
         const inspectors = [];
         let globalRouteStart = null, globalRouteEnd = null, globalRouteState = 'Pending', foundDriverName = '';
+        let globalPolylines = {}; // Store master polylines map
         
         usersSnap.forEach(doc => {
             const uData = doc.data();
@@ -123,6 +135,17 @@ async function getDashboardInit(req, res, db) {
             if (uData.activeStaging?.orders) {
                 stagingBay = safeJsonParse(uData.activeStaging.orders, []);
             }
+
+            // EXTRACT POLYLINES AND APPEND DRIVER ID TO KEY
+            let pRaw = uData.activeStaging?.polylines;
+            if (pRaw) {
+                let pParsed = {};
+                if (typeof pRaw === 'string') {
+                    try { pParsed = JSON.parse(pRaw); } catch(e) { try { pParsed = JSON.parse(pRaw.replace(/\\/g, '\\\\')); } catch(err){} }
+                } else { pParsed = pRaw; }
+                
+                for (let k in pParsed) { globalPolylines[`${doc.id}_${k}`] = pParsed[k]; }
+            }
             
             let rState = uData.activeStaging?.status || 'Pending';
 
@@ -138,7 +161,6 @@ async function getDashboardInit(req, res, db) {
                 });
             } else {
                 if (driverId && doc.id === String(driverId)) {
-                    // Safe mapping using the updated helper formatting
                     activeStops = stagingBay.map(obj => formatStopForManager(obj, doc.id, resolvedCompanyId, rState));
                     globalRouteState = rState;
                     foundDriverName = driverName;
@@ -165,6 +187,7 @@ async function getDashboardInit(req, res, db) {
 
         const responseObj = {
             stops: activeStops,
+            polylines: globalPolylines, // Send the compiled polylines down
             routeStart: globalRouteStart || null,
             routeEnd: globalRouteEnd || null,
             inspectors: inspectors,
