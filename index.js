@@ -1,13 +1,13 @@
 /**
  * index.js
- * VERSION: V15.1
+ * VERSION: V15.0
  * * CHANGES:
- * V15.1 - Optimistic UI Validation Integration. Added routing for the new 
- * `updateGeocodeCache` endpoint to handle incoming asynchronous Mapbox verification 
- * results from the frontend queue.
  * V1.38 - Firestore Claim Check API. Added a dedicated GET endpoint `/dispatchData/:id` 
  * to securely serve large Dispatch documents (containing base64 map images and full arrays) 
  * back to the Google Apps Script background worker.
+ * V1.37 - Deployment Crash Fix. Removed duplicate import declaration for `dispatchRoute` 
+ * and deleted the stray `if (action === 'dispatchRoute')` execution block that sat outside 
+ * the main switch statement, resolving the fatal SyntaxError preventing server startup.
  */
 
 const express = require('express');
@@ -31,7 +31,7 @@ const db = getFirestore(firebaseApp, 'sproute');
 // Import Modular Controllers
 const { getDashboardInit } = require('./backend/initialization');
 const { updateUserFromGlide, updateCompanyFromGlide, updateCsvSettingsFromGlide, updateEndpoint } = require('./backend/glideWebhooks');
-const { uploadCsv, updateGeocodeCache, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress } = require('./backend/preOptimization');
+const { uploadCsv, updateOrder, updateMultipleOrders, deleteMultipleOrders, resolveUnmatchedAddress } = require('./backend/preOptimization');
 const { generateRoute, calculate } = require('./backend/optimization');
 const { saveRoute, resetRoute, recreateOrders, restoreOriginalRoute, dispatchRoute } = require('./backend/postOptimization');
 
@@ -98,7 +98,6 @@ app.post('/', async (req, res) => {
 
             // Pre-Optimization
             case 'uploadCsv': return await uploadCsv(payload, res, db, admin);
-            case 'updateGeocodeCache': return await updateGeocodeCache(payload, res, db, admin);
             case 'resolveUnmatchedAddress': return await resolveUnmatchedAddress(payload, res, db, admin);
             case 'updateOrder': return await updateOrder(payload, res, db);
             case 'updateMultipleOrders': return await updateMultipleOrders(payload, res, db);
