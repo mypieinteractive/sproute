@@ -1,8 +1,7 @@
-/* Dashboard - V18.10 */
+/* Dashboard - V18.11 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added logic in handleGenerateRoute and handleCalculate to MERGE incoming polylines into 
-/* AppState instead of overwriting, preventing other drivers' polylines from being erased in Manager view. */
+/* 1. Updated markRouteDirty to automatically delete the stored polyline from AppState. This prevents lingering driving paths when performing local math recalculations on modified routes. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -266,7 +265,19 @@ export async function loadData() {
 }
 
 export function triggerFullRender() { UI.render(); UI.drawRoute(); UI.updateSummary(); UI.initSortable(); }
-export function markRouteDirty(driverId, clusterIdx) { AppState.dirtyRoutes.add(`${driverId || 'unassigned'}_${clusterIdx || 0}`); }
+
+export function markRouteDirty(driverId, clusterIdx) { 
+    const dId = driverId || 'unassigned';
+    const cIdx = clusterIdx === 'X' ? 0 : (clusterIdx || 0);
+    AppState.dirtyRoutes.add(`${dId}_${cIdx}`); 
+    
+    // Immediately clear the stored polyline so local math correctly falls back to straight lines
+    const routeKeyNum = cIdx + 1;
+    delete AppState.polylines[`${dId}_${routeKeyNum}`];
+    delete AppState.polylines[routeKeyNum];
+    delete AppState.polylines[String(routeKeyNum)];
+}
+
 export function pushToHistory() { AppState.historyStack.push({ stops: JSON.parse(JSON.stringify(AppState.stops)), dirty: new Set(AppState.dirtyRoutes) }); if (AppState.historyStack.length > 20) AppState.historyStack.shift(); UI.updateUndoUI(); }
 
 export async function undoLastAction() {
