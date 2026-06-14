@@ -1461,7 +1461,10 @@ const hiddenFileInput = document.getElementById('hidden-global-file-input');
 
 function handleFileSelection(file) {
     if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { 
-        customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings. <a href='https://sproute.glide.page/dl/012f16/m/55cb4d' target='_blank' style='color: var(--accent); text-decoration: underline;'>Click here</a> to set them up."); 
+        customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings.")
+        .then(() => {
+            window.top.location.href = "https://sproute.glide.page/dl/012f16/m/55cb4d";
+        });
         return; 
     }
     if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
