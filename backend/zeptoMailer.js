@@ -1,10 +1,13 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.6
+ * VERSION: V15.7
  * CHANGES:
- * V15.6 - UI Alignment Update
- * 1. Stripped all font-weight: bold and <strong> tags from the HTML email template to enforce the global 400-weight typography mandate.
- * 2. Replaced generic blue link colors (#2563eb) with the new Sproute green primary accent (#4E764D) for brand consistency.
+ * V15.7 - Email Styling Update
+ * 1. Made list header text bold (#, ETA, APP, etc.).
+ * 2. Darkened the background of Route subheaders to distinguish them better.
+ * 3. Added alternating row backgrounds (zebra striping) for readability.
+ * 4. Made the stop # in the list bold.
+ * 5. Changed addresses to blue and underlined to indicate they are clickable links.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -185,12 +188,12 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             let hrs = stats.count > 0 ? ((stats.secs + (stats.count * serviceDelay * 60)) / 3600).toFixed(1) : 0;
             let dueText = stats.pastDue > 0 ? `<span style="color:#ef4444">${stats.pastDue} Past Due</span>` : (stats.dueToday > 0 ? `<span style="color:#f59e0b">${stats.dueToday} Due Today</span>` : `0 Due`);
             
-            let routeSubInfo = `<span style="color:#6b7280; font-weight:400; text-transform:none;">${stats.miles.toFixed(1)} mi  |  ${hrs} hrs  |  ${stats.count} stops  |  ${dueText}</span>`;
+            let routeSubInfo = `<span style="color:#6b7280; font-weight:400; text-transform:none;">${stats.miles.toFixed(1)} mi  |  ${hrs} hrs  |  ${stats.count} stops  |  ${dueText}</span>`;
 
             if (Object.keys(routesMap).length > 1) {
                 tableRows += `
-                <tr style="background-color: #f3f4f6;">
-                    <td colspan="7" style="padding: 8px 10px; border-bottom: 1px solid #d1d5db;">
+                <tr style="background-color: #e5e7eb;">
+                    <td colspan="7" style="padding: 8px 10px; border-bottom: 1px solid #9ca3af;">
                         <table width="100%" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                                 <td style="font-weight: 500; color: ${rColor}; font-size: 11px; text-align: left; letter-spacing: 0.5px;">ROUTE ${displayRouteNum}</td>
@@ -226,10 +229,11 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                 let dueHtml = `<div style="background-color:${dueBg}; color:#ffffff; padding:4px 8px; border-radius:4px; text-align:center; font-size:11px; display:inline-block; font-weight:400;">${dueFmt}</div>`;
                 let shortAddr = addr ? addr.split(',')[0] : '--'; 
                 let mapsLink = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr || '')}`;
-                let addrHtml = `<a href="${mapsLink}" style="color:#111827; text-decoration:none; font-weight:400;">${shortAddr}</a>`;
+                let addrHtml = `<a href="${mapsLink}" style="color:#2563eb; text-decoration:underline; font-weight:400;">${shortAddr}</a>`;
+                let rowBg = localSeq % 2 === 0 ? '#f9fafb' : '#ffffff';
 
-                tableRows += `<tr>
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; text-align:center; color:#111827; font-weight:400;">${localSeq}</td>
+                tableRows += `<tr style="background-color: ${rowBg};">
+                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; text-align:center; color:#111827; font-weight:bold;">${localSeq}</td>
                     <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; white-space:nowrap; font-weight:400;">${eta || '--'}</td>
                     <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; text-align:center;">${appHtml}</td>
                     <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; white-space:nowrap;">${dueHtml}</td>
@@ -287,9 +291,9 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                 </table>
                 <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; color: #374151;">
                     <thead><tr style="background-color: #f3f4f6; text-align: left;">
-                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: 500; text-align:center;">#</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: 500;">ETA</th>
-                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: 500; text-align:center;">APP</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: 500;">DUE</th>
-                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: 500;">ADDRESS</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: 500;">CLIENT</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: 500;">ORDER TYPE</th>
+                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold; text-align:center;">#</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">ETA</th>
+                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold; text-align:center;">APP</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">DUE</th>
+                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">ADDRESS</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">CLIENT</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">ORDER TYPE</th>
                     </tr></thead>
                     <tbody>${tableRows}</tbody>
                 </table>
