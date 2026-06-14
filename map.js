@@ -1,7 +1,7 @@
-/* Dashboard - V18.11 */
+/* Dashboard - V18.12 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Made drawRouteMap highly robust to handle polyline strings nested inside objects (e.g., {points: "encoded..."}) in addition to plain strings and arrays. */
+/* 1. Updated renderMapMarkers to use cluster-specific counting so pin numbers reset to 1 for each route when "All Routes" is selected. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 import { AppState } from './app.js';
@@ -109,8 +109,9 @@ export function renderMapMarkers(params) {
     markers.forEach(m => m.remove());
     markers = [];
     const bounds = new mapboxgl.LngLatBounds();
+    const clusterCounts = {};
 
-    activeStops.forEach((s, index) => {
+    activeStops.forEach((s) => {
         if (s.lng && s.lat) {
             const el = document.createElement('div');
             el.className = `marker ${s.status.toLowerCase().replace(' ', '-')}`; 
@@ -119,7 +120,13 @@ export function renderMapMarkers(params) {
             el.setAttribute('data-search', searchStr);
             
             const style = getVisualStyle(s, isManagerView, currentInspectorFilter, currentRouteCount, allStops, inspectors);
-            el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};"><span>${index + 1}</span></div>`;
+            
+            const key = `${s.driverId || 'unassigned'}_${s.cluster}`;
+            if (!clusterCounts[key]) clusterCounts[key] = 0;
+            clusterCounts[key]++;
+            const displayIndex = clusterCounts[key];
+
+            el.innerHTML = `<div class="pin-visual" style="background-color: ${style.bg}; border: 3px solid ${style.border}; color: ${style.text};"><span>${displayIndex}</span></div>`;
 
             const today = new Date(); today.setHours(0,0,0,0);
             let urgencyClass = '';
