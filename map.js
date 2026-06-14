@@ -1,7 +1,7 @@
-/* Dashboard - V18.9 */
+/* Dashboard - V18.10 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Fixed the off-by-one indexing bug when looking up AppState.polylines. The backend saves routes as 1-based integers (1, 2, 3), so we now look for clusterIndex + 1. */
+/* 1. Fixed polyline rendering issue by updating the drawRouteMap function to handle both Array of strings and single string formats for the AppState.polylines data. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 import { AppState } from './app.js';
@@ -261,11 +261,16 @@ export function drawRouteMap(params) {
 
             if (!isDirty && AppState.polylines) {
                 // Look for the 1-based route index
-                let polylineStrings = AppState.polylines[`${dId}_${routeKeyNum}`] || AppState.polylines[routeKeyNum] || AppState.polylines[String(routeKeyNum)];
+                let polylineData = AppState.polylines[`${dId}_${routeKeyNum}`] || AppState.polylines[routeKeyNum] || AppState.polylines[String(routeKeyNum)];
                 
-                if (polylineStrings && Array.isArray(polylineStrings)) {
-                    polylineStrings.forEach(str => {
-                        coords.push(...decodePolyline(str));
+                if (polylineData) {
+                    // Handle both Array of strings and a single string
+                    let polylineArray = Array.isArray(polylineData) ? polylineData : [polylineData];
+                    
+                    polylineArray.forEach(str => {
+                        if (typeof str === 'string') {
+                            coords.push(...decodePolyline(str));
+                        }
                     });
                     usePolyline = coords.length > 0;
                 }
