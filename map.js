@@ -1,7 +1,7 @@
-/* Dashboard - V18.10 */
+/* Dashboard - V18.11 */
 /* FILE: map.js */
 /* Changes: */
-/* 1. Fixed polyline rendering issue by updating the drawRouteMap function to handle both Array of strings and single string formats for the AppState.polylines data. */
+/* 1. Made drawRouteMap highly robust to handle polyline strings nested inside objects (e.g., {points: "encoded..."}) in addition to plain strings and arrays. */
 
 import { getVisualStyle, MASTER_PALETTE } from './logic.js';
 import { AppState } from './app.js';
@@ -260,16 +260,18 @@ export function drawRouteMap(params) {
             let usePolyline = false;
 
             if (!isDirty && AppState.polylines) {
-                // Look for the 1-based route index
                 let polylineData = AppState.polylines[`${dId}_${routeKeyNum}`] || AppState.polylines[routeKeyNum] || AppState.polylines[String(routeKeyNum)];
                 
                 if (polylineData) {
-                    // Handle both Array of strings and a single string
                     let polylineArray = Array.isArray(polylineData) ? polylineData : [polylineData];
                     
-                    polylineArray.forEach(str => {
-                        if (typeof str === 'string') {
-                            coords.push(...decodePolyline(str));
+                    polylineArray.forEach(item => {
+                        if (typeof item === 'string') {
+                            coords.push(...decodePolyline(item));
+                        } else if (item && typeof item.points === 'string') {
+                            coords.push(...decodePolyline(item.points));
+                        } else if (item && typeof item.polyline === 'string') {
+                            coords.push(...decodePolyline(item.polyline));
                         }
                     });
                     usePolyline = coords.length > 0;
