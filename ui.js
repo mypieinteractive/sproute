@@ -1,8 +1,7 @@
-/* Dashboard - V18.54 */
+/* Dashboard - V18.55 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated map selection preview to replace ETA column with App column data. */
-/* 2. Added border-right: none to col-addr to cleanly remove the divider. */
+/* 1. Added a "click here" hyperlink to the missing CSV settings alert in handleFileSelection to direct users to the Glide settings page. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1461,7 +1460,10 @@ const mainInput = document.getElementById('main-file-input');
 const hiddenFileInput = document.getElementById('hidden-global-file-input');
 
 function handleFileSelection(file) {
-    if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings."); return; }
+    if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { 
+        customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings. <a href='https://sproute.glide.page/dl/012f16/m/55cb4d' target='_blank' style='color: var(--accent); text-decoration: underline;'>Click here</a> to set them up."); 
+        return; 
+    }
     if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
 }
 
