@@ -1,8 +1,8 @@
-/* Dashboard - V18.9 */
+/* Dashboard - V18.10 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added a robust escape handler for JSON.parse() on polylines to prevent backslashes from crashing the initial load. */
-/* 2. Updated handleGenerateRoute and handleCalculate to immediately extract and store the newly generated polylines from the API response so the map visually updates without a page refresh. */
+/* 1. Added logic in handleGenerateRoute and handleCalculate to MERGE incoming polylines into 
+/* AppState instead of overwriting, preventing other drivers' polylines from being erased in Manager view. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -361,18 +361,15 @@ export async function handleGenerateRoute() {
                 if (s.routeState === 'Queued') s.routeState = 'Ready'; return s;
             });
 
-            // EXTRACT NEW POLYLINES
+            // EXTRACT NEW POLYLINES (MERGE)
             let pData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
             if (pData) {
+                let parsed = {};
                 if (typeof pData === 'string') {
-                    try { AppState.polylines = JSON.parse(pData); } 
-                    catch (e) {
-                        try { AppState.polylines = JSON.parse(pData.replace(/\\/g, '\\\\')); } 
-                        catch (err) { /* silent fail */ }
-                    }
-                } else {
-                    AppState.polylines = pData;
-                }
+                    try { parsed = JSON.parse(pData); } 
+                    catch (e) { try { parsed = JSON.parse(pData.replace(/\\/g, '\\\\')); } catch (err) {} }
+                } else { parsed = pData; }
+                AppState.polylines = { ...AppState.polylines, ...parsed }; // MERGE
             }
 
             AppState.stops.sort((a, b) => {
@@ -426,18 +423,15 @@ export async function handleCalculate() {
             returnedStopsMap.set(exp.rowId || exp.id, { ...exp, id: exp.rowId || exp.id, cluster: mappedCluster, manualCluster: false });
         });
 
-        // EXTRACT NEW POLYLINES
+        // EXTRACT NEW POLYLINES (MERGE)
         let pData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
         if (pData) {
+            let parsed = {};
             if (typeof pData === 'string') {
-                try { AppState.polylines = JSON.parse(pData); } 
-                catch (e) {
-                    try { AppState.polylines = JSON.parse(pData.replace(/\\/g, '\\\\')); } 
-                    catch (err) { /* silent fail */ }
-                }
-            } else {
-                AppState.polylines = pData;
-            }
+                try { parsed = JSON.parse(pData); } 
+                catch (e) { try { parsed = JSON.parse(pData.replace(/\\/g, '\\\\')); } catch (err) {} }
+            } else { parsed = pData; }
+            AppState.polylines = { ...AppState.polylines, ...parsed }; // MERGE
         }
 
         AppState.stops = AppState.stops.map(s => returnedStopsMap.has(String(s.id)) ? returnedStopsMap.get(String(s.id)) : s);
