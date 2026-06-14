@@ -1,9 +1,11 @@
 /**
  * postOptimization.js
- * VERSION: V15.0
+ * VERSION: V15.1
  * * CHANGES:
- * V1.46 - Disconnected Google Apps Script Webhook. Imported zeptoMailer to 
- * handle email dispatches natively and instantly entirely within Node.js.
+ * V15.1 - Polyline Dispatch Support. dispatchRoute now explicitly copies the activeStaging.polylines
+ * data into the newly created Dispatch document. This ensures that inspectors clicking the emailed
+ * dispatch link will successfully load the actual physical driving path instead of straight lines.
+ * V1.46 - Disconnected Google Apps Script Webhook. Imported zeptoMailer.
  */
 
 const { safeJsonParse } = require('./helpers');
@@ -160,6 +162,7 @@ async function dispatchRoute(payload, res, db, admin) {
         companyId: payload.companyId || "",
         currentRoute: stagingJsonStr,
         originalRoute: stagingJsonStr,
+        polylines: driverData.activeStaging?.polylines || "{}", // SAVE THE PATH TO THE NEW DOC
         mapBase64: payload.mapBase64 || "",
         customBody: payload.customBody || "",
         ccCompany: payload.ccCompany || false,
@@ -183,7 +186,6 @@ async function dispatchRoute(payload, res, db, admin) {
         return res.status(200).json({ success: true, routeId: routeId });
     } catch (emailError) {
         console.error("Failed to send ZeptoMail, but route was saved:", emailError);
-        // We still return 200 so the UI resets, but we attach the warning.
         return res.status(200).json({ success: true, routeId: routeId, warning: "Route saved, but email failed to send." });
     }
 }
