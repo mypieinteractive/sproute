@@ -1,8 +1,7 @@
-/* Dashboard - V18.55 */
+/* Dashboard - V20.0 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Updated .map-overlay-btns to default to top: 15px in manager view. */
-/* 2. Added dynamic rule body.view-manager.manager-single-inspector .map-overlay-btns to drop the buttons to top: 75px only when the Routing Controls are active, eliminating the gap. */
+/* 1. Added explicit height: 100vh / 100dvh for body.view-inspector to ensure the Inspector view fills the browser viewport correctly without relying entirely on the JS calculation offset. */
 
 :root { 
     /* Base / Accent */
@@ -107,7 +106,11 @@ body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
-body.view-inspector { flex-direction: column; }
+body.view-inspector { 
+    flex-direction: column; 
+    height: 100vh !important; 
+    height: 100dvh !important; 
+}
 body.view-inspector #map-wrapper { height: 35%; min-height: 35%; width: 100%; border-bottom: 2px solid var(--row-border); }
 body.view-inspector #sidebar { height: 65%; min-height: 65%; width: 100%; background: var(--sidebar-bg); }
 
@@ -706,3 +709,5 @@ body.view-manager #resizer { display: block; border-top: none; }
     background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;
 }
 .mapboxgl-touch-pan-blocker { color: transparent !important; }
+
+}
