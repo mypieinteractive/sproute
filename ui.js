@@ -1,8 +1,9 @@
-/* Dashboard - V20.2 */
+/* Dashboard - V20.3 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated render() to toggle Add button visibility in Inspector view based on AppState.PERMISSION_MODIFY. */
-/* 2. Modified the Add button behavior in Inspector view to bypass the dropdown and directly trigger showAddOrderModal(). */
+/* 1. Updated updateUndoUI() to completely hide the Undo button in Inspector view if AppState.PERMISSION_MODIFY is false. */
+/* 2. Updated updateRoutingUI() to completely hide the entire routing module in Inspector view if AppState.PERMISSION_REOPTIMIZE is false. */
+/* 3. Added safety disabled attribute logic to the Start/End endpoint inputs in createEndpointRow() if AppState.PERMISSION_MODIFY is false. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -66,7 +67,14 @@ export function customConfirm(msg) {
 
 export function updateUndoUI() {
     const undoBtn = document.getElementById('btn-undo-incremental');
-    if (undoBtn) undoBtn.disabled = AppState.historyStack.length === 0;
+    if (undoBtn) {
+        undoBtn.disabled = AppState.historyStack.length === 0;
+        if (Config.viewMode === 'inspector' && !AppState.PERMISSION_MODIFY) {
+            undoBtn.style.display = 'none';
+        } else {
+            undoBtn.style.display = 'flex';
+        }
+    }
 }
 
 export function updateHeaderUI() {
@@ -192,6 +200,10 @@ export function updateRoutingUI() {
     if(actionBtns) actionBtns.style.borderLeft = 'none';
     
     updatePrioritySliderUI();
+
+    if (Config.viewMode === 'inspector' && !AppState.PERMISSION_REOPTIMIZE) {
+        return; 
+    }
 
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const routeToggles = document.getElementById('route-view-toggles');
@@ -736,6 +748,7 @@ export function createEndpointRow(type, endpointData) {
     
     const isAllInspectors = Config.isManagerView && AppState.currentInspectorFilter === 'all';
     const dummySort = isAllInspectors ? '<i class="fa-solid fa-sort" style="margin-left:4px;"></i>' : '';
+    const disabledAttr = (Config.viewMode === 'inspector' && !AppState.PERMISSION_MODIFY) ? 'disabled' : '';
     
     const el = document.createElement('div');
     el.className = 'stop-item static-endpoint';
@@ -750,7 +763,7 @@ export function createEndpointRow(type, endpointData) {
         <div class="col-due"></div>
         <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
             <div style="position:relative; flex: 1; display:flex; align-items:center; height:30px;">
-                <input type="text" id="input-endpoint-${type}" class="endpoint-input" data-nodrag="true" value="${displayAddr}" placeholder="${placeholder}" onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
+                <input type="text" id="input-endpoint-${type}" class="endpoint-input" data-nodrag="true" value="${displayAddr}" placeholder="${placeholder}" ${disabledAttr} onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)">
                 <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
             </div>
             <div style="margin-left:auto; padding:4px; flex-shrink:0; display:flex; align-items:center; visibility: hidden; width: 20px;"></div>
