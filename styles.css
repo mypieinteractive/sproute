@@ -1,7 +1,7 @@
-/* Dashboard - V20.0 */
+/* Dashboard - V20.1 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added explicit height: 100vh / 100dvh for body.view-inspector to ensure the Inspector view fills the browser viewport correctly without relying entirely on the JS calculation offset. */
+/* 1. Added explicit flex-direction: column to body.view-inspector #app-body-wrapper to ensure map and list stack vertically properly. */
 
 :root { 
     /* Base / Accent */
@@ -111,6 +111,12 @@ body.view-inspector {
     height: 100vh !important; 
     height: 100dvh !important; 
 }
+
+/* NEW FIX: Enforce column layout specifically for the body-wrapper in Inspector mode */
+body.view-inspector #app-body-wrapper {
+    flex-direction: column !important;
+}
+
 body.view-inspector #map-wrapper { height: 35%; min-height: 35%; width: 100%; border-bottom: 2px solid var(--row-border); }
 body.view-inspector #sidebar { height: 65%; min-height: 65%; width: 100%; background: var(--sidebar-bg); }
 
