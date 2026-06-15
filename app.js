@@ -1,7 +1,7 @@
 /* Dashboard - V18.15 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated mapConfig to set cooperativeGestures: false to allow 1-finger panning on mobile devices. */
+/* 1. Added driverName to AppState and configured loadData() to extract it to guarantee the Inspector view accurately resolves the user's name. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -51,6 +51,7 @@ export const AppState = {
     companyEmail: "",
     managerEmail: "",
     adminEmail: "",
+    driverName: "",
     ccCompanyDefault: true,
     isAlteredRoute: false,
     unmatchedAddressesQueue: [],
@@ -76,7 +77,7 @@ const MAX_RETRIES = 5;
 const mapConfig = { 
     container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
     attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
-    cooperativeGestures: false
+    cooperativeGestures: (Config.viewMode === 'inspector')
 };
 
 initMap(Config.MAPBOX_TOKEN, mapConfig, (event) => {
@@ -170,6 +171,7 @@ export async function loadData() {
         let globalDriverId = data.driverId || (Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? AppState.currentInspectorFilter : Config.driverParam);
         
         if (data.adminEmail) AppState.adminEmail = data.adminEmail;
+        if (data.driverName) AppState.driverName = data.driverName;
         if (data.csvTypes && Array.isArray(data.csvTypes)) AppState.availableCsvTypes = data.csvTypes;
 
         // SAFELY PARSE POLYLINES
