@@ -1,9 +1,10 @@
-/* Dashboard - V20.3 */
+/* Dashboard - V20.4 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated updateUndoUI() to completely hide the Undo button in Inspector view if AppState.PERMISSION_MODIFY is false. */
-/* 2. Updated updateRoutingUI() to completely hide the entire routing module in Inspector view if AppState.PERMISSION_REOPTIMIZE is false. */
-/* 3. Added safety disabled attribute logic to the Start/End endpoint inputs in createEndpointRow() if AppState.PERMISSION_MODIFY is false. */
+/* 1. Added population of Inspector Name and Dispatch Date to updateHeaderUI() for the new Inspector 2-row header. */
+/* 2. Modified updateRoutingUI() to ensure route-view-toggles are visible for multiple routes regardless of reoptimize permissions. */
+/* 3. Restricted only the #routing-controls module based on AppState.PERMISSION_REOPTIMIZE, showing Re-Calculate/Re-Optimize when dirty. */
+/* 4. Added dynamic border removal on route-view-toggles to fix the sticky subheading scrolling gap. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -78,6 +79,30 @@ export function updateUndoUI() {
 }
 
 export function updateHeaderUI() {
+    if (Config.viewMode === 'inspector') {
+        const inspNameEl = document.getElementById('insp-name');
+        const inspDateEl = document.getElementById('insp-dispatch-date');
+        
+        const inspId = Config.driverParam;
+        const insp = AppState.inspectors.find(i => String(i.id) === String(inspId));
+        
+        if (inspNameEl) {
+            inspNameEl.innerText = insp ? insp.name : (AppState.displayName || 'Inspector');
+        }
+        
+        if (inspDateEl) {
+            let displayDate = new Date();
+            const activeStops = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
+            if (activeStops.length > 0 && activeStops[0].dueDate) {
+                // Safely parse dueDate (YYYY-MM-DD) to prevent timezone shifts
+                const [y, m, d] = activeStops[0].dueDate.split('-');
+                if (y && m && d) displayDate = new Date(y, m - 1, d);
+            }
+            const dateStr = displayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            inspDateEl.innerText = `Dispatched: ${dateStr}`;
+        }
+    }
+
     if (!Config.isManagerView) return;
     const filterSelectWrap = document.getElementById('inspector-dropdown-wrapper');
     const isCompanyTier = document.body.classList.contains('tier-company');
@@ -201,10 +226,6 @@ export function updateRoutingUI() {
     
     updatePrioritySliderUI();
 
-    if (Config.viewMode === 'inspector' && !AppState.PERMISSION_REOPTIMIZE) {
-        return; 
-    }
-
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const routeToggles = document.getElementById('route-view-toggles');
         if (routeToggles) routeToggles.style.display = 'none';
@@ -246,13 +267,21 @@ export function updateRoutingUI() {
     targetStops.forEach(s => {
         if (isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster;
     });
+    
     const togglesEl = document.getElementById('route-view-toggles');
     if (maxCluster > 0) {
-        if (togglesEl) togglesEl.style.display = 'flex';
+        if (togglesEl) {
+            togglesEl.style.display = 'flex';
+            // Workaround to remove visual border collision when route buttons are visible
+            togglesEl.style.borderBottom = 'none'; 
+        }
         if (document.getElementById('view-r1-btn')) document.getElementById('view-r1-btn').style.display = maxCluster >= 1 ? 'block' : 'none';
         if (document.getElementById('view-r2-btn')) document.getElementById('view-r2-btn').style.display = maxCluster >= 2 ? 'block' : 'none';
     } else {
-        if (togglesEl) togglesEl.style.display = 'none';
+        if (togglesEl) {
+            togglesEl.style.display = 'none';
+            togglesEl.style.borderBottom = '1px solid var(--route-mod-border)';
+        }
         if (AppState.currentRouteViewFilter !== 'all') {
             AppState.currentRouteViewFilter = 'all';
             document.getElementById('view-rall-btn')?.classList.add('active');
@@ -279,14 +308,19 @@ export function updateRoutingUI() {
             if (restoreBtn) restoreBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
         }
     } else {
-        if (currentState === 'Staging') {
-            if (routingControls) routingControls.style.display = 'flex';
-            if (actionBtns) actionBtns.style.width = '100%';
-            if (btnStaging) btnStaging.style.display = 'flex';
-        } else if (AppState.isAlteredRoute && currentState === 'Ready') {
-            if (routingControls) routingControls.style.display = 'flex';
-            if (actionBtns) actionBtns.style.width = '100%';
-            if (btnReady) btnReady.style.display = 'flex';
+        // INSPECTOR VIEW: Only hide the Routing Module if they don't have reoptimize permissions
+        if (!AppState.PERMISSION_REOPTIMIZE) {
+            if (routingControls) routingControls.style.display = 'none';
+        } else {
+            if (currentState === 'Staging') {
+                if (routingControls) routingControls.style.display = 'flex';
+                if (actionBtns) actionBtns.style.width = '100%';
+                if (btnStaging) btnStaging.style.display = 'flex';
+            } else if (AppState.isAlteredRoute && currentState === 'Ready') {
+                if (routingControls) routingControls.style.display = 'flex';
+                if (actionBtns) actionBtns.style.width = '100%';
+                if (btnReady) btnReady.style.display = 'flex';
+            }
         }
     }
 }
