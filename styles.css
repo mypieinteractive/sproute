@@ -1,7 +1,9 @@
-/* Dashboard - V20.1 */
+/* Dashboard - V20.2 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added explicit flex-direction: column to body.view-inspector #app-body-wrapper to ensure map and list stack vertically properly. */
+/* 1. Added explicit flex-direction: column to body.view-inspector #app-body-wrapper. */
+/* 2. Added Inspector-specific header flex reordering to move Rocker left, Undo/Add right, and hide stats. */
+/* 3. Fixed .list-subheading gap for body.view-inspector. */
 
 :root { 
     /* Base / Accent */
@@ -71,8 +73,8 @@ html {
 
 body { 
     margin: 0; padding: 0; 
-    height: calc(100vh - 300px);
-    height: calc(100dvh - 300px);
+    height: calc(100vh - 320px);
+    height: calc(100dvh - 320px);
     width: 100%; 
     position: fixed; 
     display: flex; flex-direction: column; 
@@ -106,13 +108,13 @@ body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
+/* --- Inspector View Shell Layout --- */
 body.view-inspector { 
     flex-direction: column; 
     height: 100vh !important; 
     height: 100dvh !important; 
 }
 
-/* NEW FIX: Enforce column layout specifically for the body-wrapper in Inspector mode */
 body.view-inspector #app-body-wrapper {
     flex-direction: column !important;
 }
@@ -124,6 +126,43 @@ body.view-inspector .map-overlay-btns {
     top: auto !important; left: auto !important; bottom: 20px !important; right: 20px !important; align-items: flex-end;
 }
 
+/* Fix sticky subheading gap in inspector view */
+body.view-inspector .list-subheading {
+    top: -1px !important;
+    margin-top: 0 !important;
+}
+
+/* --- Inspector Header Reorganization via Flexbox --- */
+body.view-inspector #global-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 0 15px !important;
+}
+body.view-inspector #header-map-zone,
+body.view-inspector #header-list-zone,
+body.view-inspector #header-list-zone > div:first-child {
+    display: contents !important;
+}
+body.view-inspector #header-resizer-gap,
+body.view-inspector #global-summary-stats,
+body.view-inspector #inspector-dropdown-wrapper,
+body.view-inspector .add-dropdown-menu {
+    display: none !important;
+}
+body.view-inspector #contextual-rocker-wrapper {
+    order: 1 !important;
+    margin-right: auto !important; /* Pushes the next elements to the right */
+}
+body.view-inspector #header-action-container {
+    order: 2 !important;
+    margin-right: 8px !important;
+}
+body.view-inspector #header-right-controls {
+    order: 3 !important;
+}
+
+/* --- Manager Shell Layout --- */
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; position: relative; }
 body.view-manager #sidebar { width: 50%; min-width: 10%; height: 100%; border-left: none; flex: none; background: var(--sidebar-bg); }
 
