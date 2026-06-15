@@ -1,9 +1,7 @@
-/* Dashboard - V20.2 */
+/* Dashboard - V20.3 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added explicit flex-direction: column to body.view-inspector #app-body-wrapper. */
-/* 2. Added Inspector-specific header flex reordering to move Rocker left, Undo/Add right, and hide stats. */
-/* 3. Fixed .list-subheading gap for body.view-inspector. */
+/* 1. Updated body.view-inspector .list-subheading to top: 0 and added border-top to perfectly seal the scrolling gap. */
 
 :root { 
     /* Base / Accent */
@@ -128,8 +126,9 @@ body.view-inspector .map-overlay-btns {
 
 /* Fix sticky subheading gap in inspector view */
 body.view-inspector .list-subheading {
-    top: -1px !important;
+    top: 0 !important;
     margin-top: 0 !important;
+    border-top: 1px solid var(--row-border);
 }
 
 /* --- Inspector Header Reorganization via Flexbox --- */
