@@ -1,7 +1,7 @@
-/* Dashboard - V18.14 */
+/* Dashboard - V18.15 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated loadData() to safely extract 'modifyRoutes' and 'reoptimize' fields from the backend payload and assign them to AppState.PERMISSION_MODIFY and AppState.PERMISSION_REOPTIMIZE. */
+/* 1. Updated mapConfig to set cooperativeGestures: false to allow 1-finger panning on mobile devices. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -76,7 +76,7 @@ const MAX_RETRIES = 5;
 const mapConfig = { 
     container: 'map', style: 'mapbox://styles/mapbox/dark-v11', center: [-96.797, 32.776], zoom: 11, 
     attributionControl: false, boxZoom: false, preserveDrawingBuffer: true,
-    cooperativeGestures: (Config.viewMode === 'inspector')
+    cooperativeGestures: false
 };
 
 initMap(Config.MAPBOX_TOKEN, mapConfig, (event) => {
