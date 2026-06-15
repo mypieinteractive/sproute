@@ -1,7 +1,7 @@
-/* Dashboard - V18.11 */
+/* Dashboard - V18.12 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated markRouteDirty to automatically delete the stored polyline from AppState. This prevents lingering driving paths when performing local math recalculations on modified routes. */
+/* 1. Added UI synchronization blocks inside loadData() and handleStartOver() to automatically select the correct [X Routes] button based on the data state, ensuring the UI doesn't visually hang onto old selections. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -237,6 +237,12 @@ export async function loadData() {
         document.body.classList.toggle('manager-all-inspectors', AppState.currentInspectorFilter === 'all');
         document.body.classList.toggle('manager-single-inspector', AppState.currentInspectorFilter !== 'all');
 
+        // Force UI buttons to match currentRouteCount loaded from backend
+        for(let i=1; i<=3; i++) {
+            const btn = document.getElementById(`rbtn-${i}`);
+            if(btn) btn.classList.toggle('active', i === AppState.currentRouteCount);
+        }
+
         if (!Array.isArray(data)) {
             if (data.defaultEmailMessage) AppState.defaultEmailMessage = data.defaultEmailMessage;
             if (data.companyEmail) AppState.companyEmail = data.companyEmail;
@@ -271,7 +277,6 @@ export function markRouteDirty(driverId, clusterIdx) {
     const cIdx = clusterIdx === 'X' ? 0 : (clusterIdx || 0);
     AppState.dirtyRoutes.add(`${dId}_${cIdx}`); 
     
-    // Immediately clear the stored polyline so local math correctly falls back to straight lines
     const routeKeyNum = cIdx + 1;
     delete AppState.polylines[`${dId}_${routeKeyNum}`];
     delete AppState.polylines[routeKeyNum];
@@ -516,6 +521,15 @@ export async function handleStartOver() {
         }
         
         AppState.selectedIds.clear(); 
+        
+        // Reset route count to 1 visually and in state
+        AppState.currentRouteCount = 1;
+        document.body.setAttribute('data-route-count', 1);
+        for(let i=1; i<=3; i++) {
+            const btn = document.getElementById(`rbtn-${i}`);
+            if(btn) btn.classList.toggle('active', i === 1);
+        }
+
         UI.reorderStopsFromDOM(); 
         triggerFullRender(); 
         UI.updateRouteTimes(); 
