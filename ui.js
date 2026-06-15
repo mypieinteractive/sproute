@@ -1,7 +1,7 @@
-/* Dashboard - V20.0 */
+/* Dashboard - V20.1 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. syncBodyHeight calculation updated for Inspector view. */
+/* 1. Updated syncBodyHeight() to default to 'inspector' view if no URL parameter is present, fixing the height calculation race condition on standalone pages. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1549,8 +1549,13 @@ window.handleMapModeChange = function(mode) {
 
 window.syncBodyHeight = function() {
     const urlParams = new URLSearchParams(window.location.search);
-    const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
-    const isInspector = urlParams.get('view') === 'inspector' || document.body.classList.contains('view-inspector');
+    let viewParam = urlParams.get('view');
+    
+    // If no view is provided, safely default to 'inspector' to match app.js behavior
+    if (!viewParam) viewParam = 'inspector';
+    
+    const isMobile = viewParam === 'managersmall' || document.body.classList.contains('view-managersmall');
+    const isInspector = viewParam === 'inspector' || document.body.classList.contains('view-inspector');
     
     if (isMobile) {
         document.body.style.height = ''; 
@@ -1564,6 +1569,7 @@ window.syncBodyHeight = function() {
     const sidebar = document.getElementById('sidebar');
     if (mapWrapper) mapWrapper.style.minHeight = '0';
     if (sidebar) sidebar.style.minHeight = '0';
+    
     const map = getMapInstance();
     if (map) map.resize();
     
