@@ -1,10 +1,13 @@
 # File: Dockerfile
-# Version: V1.1
+# Version: V1.2
 # Changes from previous version:
-# - Swapped base image from `node:20-slim` to `node:20-alpine` to eliminate the 16 OS-level Debian vulnerabilities detected by Trivy.
+# - Added 'RUN apk update && apk upgrade --no-cache' to force Alpine to patch the libcrypto3 and libssl3 vulnerabilities before building the app.
 
 # Use the official, modern Node 20 alpine image
 FROM node:20-alpine
+
+# Force Alpine package updates for security patches
+RUN apk update && apk upgrade --no-cache
 
 # Create and change to the app directory
 WORKDIR /usr/src/app
