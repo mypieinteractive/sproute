@@ -25,13 +25,14 @@
 
 <div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box; position: relative;">
     
-    <div class="inspector-only-info">
-        <div id="insp-name"></div>
-        <div id="insp-dispatch-date"></div>
-    </div>
+    <div id="insp-name" class="inspector-only"></div>
+    <div id="insp-dispatch-date" class="inspector-only"></div>
 
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; transition: opacity 0.2s;">
         <div id="header-action-container" style="display: flex; gap: 8px;">
+            <button id="btn-inspector-reset" class="header-action-btn outline-btn inspector-only" onclick="handleRestoreOriginal()" style="display: none; border-color: var(--border-color)!important;">
+                <i class="fa-solid fa-rotate-left"></i> <span>Reset</span>
+            </button>
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left" style="color: var(--global-hdr-icon);"></i> <span style="color: var(--global-hdr-text);">Undo</span>
             </button>
