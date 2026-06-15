@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --bg: #121212;
+            --card: #1e1e1e;
+            --green: #76bc43;
+            --text: #e0e0e0;
+            --text-dim: #a0a0a0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .calc-container {
+            width: 100%;
+            max-width: 450px;
+            background: var(--card);
+            padding: 25px;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        h2 { color: var(--green); margin-top: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; }
+
+        .input-group { margin-bottom: 20px; }
+
+        label { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 8px; color: var(--text-dim); }
+        label span { color: var(--green); font-weight: bold; }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--green);
+            cursor: pointer;
+        }
+
+        .results {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+
+        .total-box {
+            background: rgba(118, 188, 67, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-top: 15px;
+            border: 1px solid var(--green);
+        }
+
+        .total-val { font-size: 1.5rem; font-weight: bold; color: var(--green); display: block; }
+        .total-label { font-size: 0.7rem; text-transform: uppercase; color: var(--text-dim); }
+
+        .per-inspector {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="calc-container">
+    <h2>Usage Estimator</h2>
+    
+    <div class="input-group">
+        <label>Inspectors: <span id="inspectorsVal">1</span></label>
+        <input type="range" id="inspectors" min="1" max="20" value="1">
+    </div>
+
+    <div class="input-group">
+        <label>Avg Orders per Route: <span id="ordersVal">30</span></label>
+        <input type="range" id="orders" min="1" max="100" value="30">
+    </div>
+
+    <div class="input-group">
+        <label>Avg Routes per Month: <span id="routesVal">20</span></label>
+        <input type="range" id="routes" min="1" max="31" value="20">
+    </div>
+
+    <div class="results">
+        <div class="result-row">
+            <span>Map Generations</span>
+            <span id="mapCalls">0</span>
+        </div>
+        <div class="result-row">
+            <span>Route Optimizations</span>
+            <span id="optiCalls">0</span>
+        </div>
+        <div class="result-row">
+            <span>Address Validations</span>
+            <span id="validCalls">0</span>
+        </div>
+
+        <div class="total-box">
+            <span class="total-label">Estimated Total API Calls</span>
+            <span class="total-val" id="grandTotal">0</span>
+        </div>
+        <div class="per-inspector" id="perInsText">
+            ~0 calls per inspector / mo
+        </div>
+    </div>
+</div>
+
+<script>
+    const inputs = ['inspectors', 'orders', 'routes'];
+    
+    function calculate() {
+        const ins = parseInt(document.getElementById('inspectors').value);
+        const ord = parseInt(document.getElementById('orders').value);
+        const rte = parseInt(document.getElementById('routes').value);
+
+        // UI Labels
+        document.getElementById('inspectorsVal').innerText = ins;
+        document.getElementById('ordersVal').innerText = ord;
+        document.getElementById('routesVal').innerText = rte;
+
+        const totalRoutes = ins * rte;
+        const totalOrders = totalRoutes * ord;
+
+        // V1.1 Raw Logic (Multiplier removed)
+        const mapTotal = Math.round((totalRoutes * 1.3) + (totalRoutes * 10));
+        const optimizations = Math.round(totalOrders * 1.5);
+        const validations = Math.round(totalOrders * 0.5);
+
+        const grandTotal = mapTotal + optimizations + validations;
+        const perInspector = Math.round(grandTotal / ins);
+
+        // Display
+        document.getElementById('mapCalls').innerText = mapTotal.toLocaleString();
+        document.getElementById('optiCalls').innerText = optimizations.toLocaleString();
+        document.getElementById('validCalls').innerText = validations.toLocaleString();
+        document.getElementById('grandTotal').innerText = grandTotal.toLocaleString();
+        document.getElementById('perInsText').innerText = `~${perInspector.toLocaleString()} calls per inspector / mo`;
+    }
+
+    inputs.forEach(id => {
+        document.getElementById(id).addEventListener('input', calculate);
+    });
+
+    calculate();
+</script>
+
+</body>
+</html>
