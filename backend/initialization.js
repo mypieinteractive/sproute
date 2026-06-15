@@ -1,12 +1,10 @@
 /**
  * initialization.js
- * VERSION: V15.2
+ * VERSION: V15.3
  * * CHANGES:
- * V15.2 - Dynamic Inspector Permissions. Updated both the Dispatch Intercept (Path 1) 
- * and Standard Load (Path 2) to dynamically extract the `modifyRoutes` and `reoptimize` 
- * booleans directly from the Inspector's Firestore document instead of using hardcoded defaults.
- * V15.1 - Polyline Extraction Integration. 
- * V1.37 - Inspector "Dead Link" Fix. 
+ * V15.3 - Updated Dispatch Link Intercept to correctly read from `currentPolylines` first,
+ * falling back to `polylines`, ensuring the browser refresh respects the dirty/cleared polyline state.
+ * V15.2 - Dynamic Inspector Permissions extraction added. 
  */
 
 const { safeJsonParse, formatStopForManager } = require('./helpers');
@@ -41,9 +39,9 @@ async function getDashboardInit(req, res, db) {
             let activeStops = currentRoute.map(obj => formatStopForManager(obj, dispatchDriverId, resolvedCompanyId, 'Dispatched', explicitRouteId));
             let isAlteredRoute = dData.currentRoute !== originalRoute;
 
-            // EXTRACT AND FORMAT DISPATCH POLYLINES
+            // EXTRACT AND FORMAT DISPATCH POLYLINES (Read currentPolylines first!)
             let interceptPolys = {};
-            let pRaw = dData.polylines;
+            let pRaw = dData.currentPolylines || dData.polylines;
             if (pRaw) {
                 let pParsed = {};
                 if (typeof pRaw === 'string') {
@@ -52,14 +50,13 @@ async function getDashboardInit(req, res, db) {
                 for (let k in pParsed) { interceptPolys[`${dispatchDriverId}_${k}`] = pParsed[k]; }
             }
 
-            // Dynamically extract permissions from the driver's document
             let inspectorModify = driverData.modifyRoutes === true || String(driverData.modifyRoutes).toLowerCase() === 'true';
             let inspectorReoptimize = driverData.reoptimize === true || String(driverData.reoptimize).toLowerCase() === 'true';
 
             return res.status(200).json({
                 routeId: explicitRouteId,
                 stops: activeStops,
-                polylines: interceptPolys, // Send polylines to inspector
+                polylines: interceptPolys, 
                 routeStart: driverData.startAddress ? { address: driverData.startAddress, lat: driverData.startLat, lng: driverData.startLng } : null,
                 routeEnd: driverData.endAddress ? { address: driverData.endAddress, lat: driverData.endLat, lng: driverData.endLng } : null,
                 serviceDelay: parseInt(companyData.serviceDelayMins) || 0,
@@ -120,7 +117,7 @@ async function getDashboardInit(req, res, db) {
         
         const inspectors = [];
         let globalRouteStart = null, globalRouteEnd = null, globalRouteState = 'Pending', foundDriverName = '';
-        let globalPolylines = {}; // Store master polylines map
+        let globalPolylines = {}; 
         
         let specificInspectorModify = false;
         let specificInspectorReoptimize = false;
@@ -143,7 +140,6 @@ async function getDashboardInit(req, res, db) {
                 stagingBay = safeJsonParse(uData.activeStaging.orders, []);
             }
 
-            // EXTRACT POLYLINES AND APPEND DRIVER ID TO KEY
             let pRaw = uData.activeStaging?.polylines;
             if (pRaw) {
                 let pParsed = {};
@@ -197,7 +193,7 @@ async function getDashboardInit(req, res, db) {
 
         const responseObj = {
             stops: activeStops,
-            polylines: globalPolylines, // Send the compiled polylines down
+            polylines: globalPolylines, 
             routeStart: globalRouteStart || null,
             routeEnd: globalRouteEnd || null,
             inspectors: inspectors,
@@ -223,7 +219,6 @@ async function getDashboardInit(req, res, db) {
             responseObj.driverId = driverId;
             if (foundDriverName) responseObj.driverName = foundDriverName;
             
-            // Override the default permissions with the specific Inspector's Firestore settings
             responseObj.permissions.modify = specificInspectorModify;
             responseObj.permissions.reoptimize = specificInspectorReoptimize;
         }
