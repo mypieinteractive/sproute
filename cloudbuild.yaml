@@ -1,3 +1,10 @@
+# File: cloudbuild.yaml
+# Version: V1.1
+# Changes from previous version:
+# - Injected a new Step 2 to run Aqua Security's Trivy vulnerability scanner.
+# - Mounted the Docker socket (-v /var/run/docker.sock) so Trivy can analyze the local image built in Step 1.
+# - Added --exit-code 1 and --severity HIGH,CRITICAL flags to force the pipeline to fail and halt before pushing to Artifact Registry if vulnerabilities are found.
+
 steps:
   # Step 1: Build the container natively using Docker
   - name: 'gcr.io/cloud-builders/docker'
@@ -7,13 +14,28 @@ steps:
       - '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA'
       - '.'
 
-  # Step 2: Push the image to Artifact Registry
+  # Step 2: Run Trivy vulnerability scanner on the local image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'run'
+      - '-v'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      - 'aquasec/trivy'
+      - 'image'
+      - '--exit-code'
+      - '1'
+      - '--severity'
+      - 'HIGH,CRITICAL'
+      - '--no-progress'
+      - '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA'
+
+  # Step 3: Push the image to Artifact Registry (Only runs if Step 2 passes)
   - name: 'gcr.io/cloud-builders/docker'
     args: 
       - 'push'
       - '$_AR_HOSTNAME/$PROJECT_ID/cloud-run-source-deploy/$REPO_NAME:$COMMIT_SHA'
 
-  # Step 3: Deploy to Cloud Run
+  # Step 4: Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
