@@ -1,10 +1,9 @@
-/* Dashboard - V20.4 */
+/* Dashboard - V20.5 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Added explicit flex-direction: column to body.view-inspector #app-body-wrapper. */
-/* 2. Added Inspector-specific header flex/grid reordering to move Rocker left, Undo/Add right, and explicitly position Name/Date. */
-/* 3. Hid .danger-btn (Start Over) for Inspector view routing controls. */
-/* 4. Synced #route-view-toggles styling with managersmall and perfectly sealed the sticky .list-subheading gap using top: -1px. */
+/* 1. Implemented Grid structure for body.view-inspector #global-header to construct the top and bottom rows. */
+/* 2. Added .inspector-only class control to safely isolate the Reset button and Inspector labels. */
+/* 3. Restricted the manager-all-inspectors routing module hiding behavior strictly to body.view-manager to prevent false hiding in the Inspector view. */
 
 :root { 
     /* Base / Accent */
@@ -109,6 +108,11 @@ body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab
 
 .stop-item, .glide-row, .marker, .glide-table-header { user-select: none; -webkit-user-select: none; }
 
+/* Inspector Unique Elements Isolation */
+.inspector-only { display: none !important; }
+body.view-inspector .inspector-only { display: block !important; }
+body.view-inspector #btn-inspector-reset { display: flex !important; }
+
 /* --- Inspector View Shell Layout --- */
 body.view-inspector { 
     flex-direction: column; 
@@ -127,41 +131,44 @@ body.view-inspector .map-overlay-btns {
     top: auto !important; left: auto !important; bottom: 20px !important; right: 20px !important; align-items: flex-end;
 }
 
-/* --- Inspector Header Reorganization via Flexbox -> Grid --- */
+/* Fix sticky subheading gap in inspector view */
+body.view-inspector .list-subheading {
+    top: 0 !important;
+    margin-top: 0 !important;
+    border-top: 1px solid var(--row-border);
+}
+
+/* --- Inspector Header Reorganization via CSS Grid --- */
 body.view-inspector #global-header {
     display: grid !important;
-    grid-template-columns: 1fr auto auto !important;
-    grid-template-rows: auto auto !important;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    padding: 10px 15px !important;
     height: auto !important;
-    padding: 12px 15px !important;
-    gap: 8px 8px !important;
-    align-content: center;
+    gap: 10px 15px;
 }
-.inspector-only-info { display: none; }
-body.view-inspector .inspector-only-info { display: contents !important; }
 
 body.view-inspector #header-map-zone,
 body.view-inspector #header-list-zone,
-body.view-inspector #header-list-zone > div:first-child { display: contents !important; }
+body.view-inspector #header-list-zone > div:first-child {
+    display: contents !important;
+}
 
 body.view-inspector #header-resizer-gap,
 body.view-inspector #global-summary-stats,
 body.view-inspector #inspector-dropdown-wrapper,
-body.view-inspector .add-dropdown-menu { display: none !important; }
+body.view-inspector .add-dropdown-menu {
+    display: none !important;
+}
 
-/* Top Row */
-body.view-inspector #insp-name { grid-column: 1; grid-row: 1; justify-self: start; align-self: center; font-weight: bold; font-size: 18px; color: var(--text-main); }
-body.view-inspector #contextual-rocker-wrapper { grid-column: 2 / span 2; grid-row: 1; justify-self: end; align-self: center; width: 160px; order: unset !important; margin: 0 !important; }
+/* Row 1: Inspector Name & Date */
+body.view-inspector #insp-name { grid-column: 1; grid-row: 1; align-self: center; font-weight: 600; color: var(--text-main); font-size: 16px; }
+body.view-inspector #insp-dispatch-date { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; color: var(--text-muted); font-size: 13px; }
 
-/* Bottom Row */
-body.view-inspector #insp-dispatch-date { grid-column: 1; grid-row: 2; justify-self: start; align-self: center; font-size: 13px; color: var(--text-muted); }
-body.view-inspector #header-action-container { grid-column: 2; grid-row: 2; justify-self: end; align-self: center; margin: 0 !important; }
-body.view-inspector #header-right-controls { grid-column: 3; grid-row: 2; justify-self: end; align-self: center; }
-
-/* Hide Start Over button completely for Inspector View */
-body.view-inspector #action-group-staging .danger-btn,
-body.view-inspector #action-group-ready .danger-btn { display: none !important; }
-
+/* Row 2: Rocker & Action Buttons */
+body.view-inspector #contextual-rocker-wrapper { grid-column: 1; grid-row: 2; justify-self: start; order: unset !important; margin: 0 !important; }
+body.view-inspector #header-action-container { grid-column: 2; grid-row: 2; justify-self: end; order: unset !important; margin: 0 !important; display: flex; gap: 8px; }
+body.view-inspector #header-right-controls { order: 3 !important; }
 
 /* --- Manager Shell Layout --- */
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; position: relative; }
@@ -195,7 +202,6 @@ body.view-managersmall .map-overlay-btns {
 body.view-managersmall.mobile-selection-active .map-overlay-btns { 
     display: none !important; 
 }
-
 
 /* --- Managersmall Header Grid --- */
 body.view-managersmall #global-header {
@@ -402,7 +408,9 @@ body.view-managersmall .header-action-btn { padding: 6px 10px; font-size: 12px; 
 @container sidebar (max-width: 500px) { .col-app { display: none !important; } }
 
 body.tier-individual .col-insp { display: none !important; }
-body.manager-all-inspectors #routing-controls { display: none !important; }
+
+/* Restricted Routing Controls hiding specifically to manager views */
+body.view-manager.manager-all-inspectors #routing-controls { display: none !important; }
 
 #add-menu-wrapper:hover .add-dropdown-menu { display: flex; }
 .add-dropdown-menu {
@@ -418,28 +426,12 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 .add-dropdown-item:hover { background: var(--accent); color: white; }
 
-/* FIX STICKY GAP AND SYNC TOGGLES */
-body.view-managersmall #route-view-toggles,
-body.view-inspector #route-view-toggles {
-    background-color: rgba(78, 118, 77, 0.15) !important;
-    padding: 4px 8px 8px 8px !important; 
-    border-top: none !important;
-    border-bottom: 1px solid var(--route-mod-border) !important;
-}
-
 .list-subheading {
     padding: 6px 12px; background: var(--list-sub-bg); color: var(--list-sub-text);
     font-weight: 400; font-size: 11px; text-transform: uppercase; border-bottom: none;
     display: flex; justify-content: space-between; align-items: center;
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
-
-body.view-inspector .list-subheading {
-    top: -1px !important; 
-    margin-top: -1px !important;
-    border-top: 1px solid var(--row-border);
-}
-
 .route-summary-text { font-weight: 400; font-size: 11px; text-transform: none; color: var(--row-text-muted); }
 
 /* ROUTING MODULE (Dark Workspace) */
@@ -455,6 +447,13 @@ body.view-managersmall #routing-controls {
     padding: 8px !important; 
     background-color: rgba(78, 118, 77, 0.15) !important; 
     border-bottom: none !important; 
+}
+
+body.view-managersmall #route-view-toggles {
+    background-color: rgba(78, 118, 77, 0.15) !important;
+    padding: 4px 8px 8px 8px !important; 
+    border-top: none !important;
+    border-bottom: 1px solid var(--route-mod-border) !important;
 }
 
 /* Pending State (2-Row Grid) */
