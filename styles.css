@@ -1,7 +1,10 @@
-/* Dashboard - V20.3 */
+/* Dashboard - V20.4 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Updated body.view-inspector .list-subheading to top: 0 and added border-top to perfectly seal the scrolling gap. */
+/* 1. Added explicit flex-direction: column to body.view-inspector #app-body-wrapper. */
+/* 2. Added Inspector-specific header flex/grid reordering to move Rocker left, Undo/Add right, and explicitly position Name/Date. */
+/* 3. Hid .danger-btn (Start Over) for Inspector view routing controls. */
+/* 4. Synced #route-view-toggles styling with managersmall and perfectly sealed the sticky .list-subheading gap using top: -1px. */
 
 :root { 
     /* Base / Accent */
@@ -124,42 +127,41 @@ body.view-inspector .map-overlay-btns {
     top: auto !important; left: auto !important; bottom: 20px !important; right: 20px !important; align-items: flex-end;
 }
 
-/* Fix sticky subheading gap in inspector view */
-body.view-inspector .list-subheading {
-    top: 0 !important;
-    margin-top: 0 !important;
-    border-top: 1px solid var(--row-border);
-}
-
-/* --- Inspector Header Reorganization via Flexbox --- */
+/* --- Inspector Header Reorganization via Flexbox -> Grid --- */
 body.view-inspector #global-header {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    padding: 0 15px !important;
+    display: grid !important;
+    grid-template-columns: 1fr auto auto !important;
+    grid-template-rows: auto auto !important;
+    height: auto !important;
+    padding: 12px 15px !important;
+    gap: 8px 8px !important;
+    align-content: center;
 }
+.inspector-only-info { display: none; }
+body.view-inspector .inspector-only-info { display: contents !important; }
+
 body.view-inspector #header-map-zone,
 body.view-inspector #header-list-zone,
-body.view-inspector #header-list-zone > div:first-child {
-    display: contents !important;
-}
+body.view-inspector #header-list-zone > div:first-child { display: contents !important; }
+
 body.view-inspector #header-resizer-gap,
 body.view-inspector #global-summary-stats,
 body.view-inspector #inspector-dropdown-wrapper,
-body.view-inspector .add-dropdown-menu {
-    display: none !important;
-}
-body.view-inspector #contextual-rocker-wrapper {
-    order: 1 !important;
-    margin-right: auto !important; /* Pushes the next elements to the right */
-}
-body.view-inspector #header-action-container {
-    order: 2 !important;
-    margin-right: 8px !important;
-}
-body.view-inspector #header-right-controls {
-    order: 3 !important;
-}
+body.view-inspector .add-dropdown-menu { display: none !important; }
+
+/* Top Row */
+body.view-inspector #insp-name { grid-column: 1; grid-row: 1; justify-self: start; align-self: center; font-weight: bold; font-size: 18px; color: var(--text-main); }
+body.view-inspector #contextual-rocker-wrapper { grid-column: 2 / span 2; grid-row: 1; justify-self: end; align-self: center; width: 160px; order: unset !important; margin: 0 !important; }
+
+/* Bottom Row */
+body.view-inspector #insp-dispatch-date { grid-column: 1; grid-row: 2; justify-self: start; align-self: center; font-size: 13px; color: var(--text-muted); }
+body.view-inspector #header-action-container { grid-column: 2; grid-row: 2; justify-self: end; align-self: center; margin: 0 !important; }
+body.view-inspector #header-right-controls { grid-column: 3; grid-row: 2; justify-self: end; align-self: center; }
+
+/* Hide Start Over button completely for Inspector View */
+body.view-inspector #action-group-staging .danger-btn,
+body.view-inspector #action-group-ready .danger-btn { display: none !important; }
+
 
 /* --- Manager Shell Layout --- */
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; position: relative; }
@@ -416,12 +418,28 @@ body.manager-all-inspectors #routing-controls { display: none !important; }
 }
 .add-dropdown-item:hover { background: var(--accent); color: white; }
 
+/* FIX STICKY GAP AND SYNC TOGGLES */
+body.view-managersmall #route-view-toggles,
+body.view-inspector #route-view-toggles {
+    background-color: rgba(78, 118, 77, 0.15) !important;
+    padding: 4px 8px 8px 8px !important; 
+    border-top: none !important;
+    border-bottom: 1px solid var(--route-mod-border) !important;
+}
+
 .list-subheading {
     padding: 6px 12px; background: var(--list-sub-bg); color: var(--list-sub-text);
     font-weight: 400; font-size: 11px; text-transform: uppercase; border-bottom: none;
     display: flex; justify-content: space-between; align-items: center;
     position: sticky; z-index: 15; top: 0; margin-top: -1px;
 }
+
+body.view-inspector .list-subheading {
+    top: -1px !important; 
+    margin-top: -1px !important;
+    border-top: 1px solid var(--row-border);
+}
+
 .route-summary-text { font-weight: 400; font-size: 11px; text-transform: none; color: var(--row-text-muted); }
 
 /* ROUTING MODULE (Dark Workspace) */
@@ -437,13 +455,6 @@ body.view-managersmall #routing-controls {
     padding: 8px !important; 
     background-color: rgba(78, 118, 77, 0.15) !important; 
     border-bottom: none !important; 
-}
-
-body.view-managersmall #route-view-toggles {
-    background-color: rgba(78, 118, 77, 0.15) !important;
-    padding: 4px 8px 8px 8px !important; 
-    border-top: none !important;
-    border-bottom: 1px solid var(--route-mod-border) !important;
 }
 
 /* Pending State (2-Row Grid) */
