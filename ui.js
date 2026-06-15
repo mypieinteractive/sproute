@@ -1,8 +1,8 @@
-/* Dashboard - V18.56 */
+/* Dashboard - V18.57 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated handleOpenEmailModal to remove the floating summary stats from the map screenshot. */
-/* 2. Added a Sproute logo overlay to cover the map attribution area in the bottom left corner of the email map image. */
+/* 1. Increased html2canvas scale from 1 to 2 in handleOpenEmailModal for higher resolution map images. */
+/* 2. Increased map.fitBounds padding from 50 to 120 during the screenshot process to prevent curved polyline paths from clipping outside the frame. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1265,12 +1265,12 @@ export function handleOpenEmailModal() {
         mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
         const map = getMapInstance();
         if (map) {
-            map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false });
+            map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 120, animate: false });
             await new Promise(resolve => { map.once('idle', resolve); setTimeout(resolve, 1200); });
         }
 
         let mapBase64 = '';
-        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#171717', scale: 1 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
+        try { mapBase64 = (await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#171717', scale: 2 })).toDataURL('image/jpeg', 0.85); } catch(e) { console.error(e); }
 
         mapWrapper.style.cssText = originalWrapperStyle;
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
