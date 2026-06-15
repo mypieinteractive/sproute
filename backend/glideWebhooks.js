@@ -1,7 +1,8 @@
 /**
  * glideWebhooks.js
- * VERSION: V15.0
+ * VERSION: V15.1
  * * CHANGES:
+ * V15.1 - Extracted modifyRoutes and reoptimize from the Glide payload and saved them to the Users Firestore document.
  * V1.36 - Decoupled Billing Logic. Replaced the generic subscription mapping with 
  * four explicit, dedicated billing fields (accountType, subscriptionStatus, 
  * subscriptionId, subscriptionExpiry) to support future Stripe integrations while 
@@ -12,7 +13,7 @@
 const { parseCoordsString } = require('./helpers');
 
 async function updateUserFromGlide(payload, res, db) {
-    const { driverId, companyId, name, email, startAddress, endAddress, startCoords, endCoords, isInspector } = payload;
+    const { driverId, companyId, name, email, startAddress, endAddress, startCoords, endCoords, isInspector, modifyRoutes, reoptimize } = payload;
     if (!driverId) return res.status(400).json({ error: "Missing driverId." });
 
     const driverRef = db.collection('Users').doc(String(driverId));
@@ -21,8 +22,10 @@ async function updateUserFromGlide(payload, res, db) {
     let sGeo = parseCoordsString(startCoords);
     let eGeo = parseCoordsString(endCoords);
     
-    // Safely parse the boolean in case Google Sheets/Glide passes it as a string
+    // Safely parse the booleans in case Google Sheets/Glide passes them as strings
     const parsedIsInspector = isInspector === true || String(isInspector).toLowerCase() === 'true';
+    const parsedModifyRoutes = modifyRoutes === true || String(modifyRoutes).toLowerCase() === 'true';
+    const parsedReoptimize = reoptimize === true || String(reoptimize).toLowerCase() === 'true';
 
     if (!driverDoc.exists) {
         const newUser = {
@@ -30,6 +33,8 @@ async function updateUserFromGlide(payload, res, db) {
             name: name || "New User",
             email: email || "",
             isInspector: parsedIsInspector,
+            modifyRoutes: modifyRoutes !== undefined ? parsedModifyRoutes : false,
+            reoptimize: reoptimize !== undefined ? parsedReoptimize : false,
             startAddress: startAddress || "",
             endAddress: endAddress || "",
             startLat: sGeo ? sGeo.lat : null,
@@ -50,6 +55,8 @@ async function updateUserFromGlide(payload, res, db) {
         if (email !== undefined) updates.email = email;
         if (companyId !== undefined) updates.companyId = companyId;
         if (isInspector !== undefined) updates.isInspector = parsedIsInspector;
+        if (modifyRoutes !== undefined) updates.modifyRoutes = parsedModifyRoutes;
+        if (reoptimize !== undefined) updates.reoptimize = parsedReoptimize;
 
         if (startAddress !== undefined) updates.startAddress = startAddress;
         if (sGeo) {
