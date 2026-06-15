@@ -1562,7 +1562,7 @@ window.syncBodyHeight = function() {
     } else if (isInspector) {
         document.body.style.height = window.innerHeight + 'px';
     } else {
-        document.body.style.height = (window.innerHeight - 320) + 'px';
+        document.body.style.height = (window.innerHeight - 300) + 'px';
     }
     
     const mapWrapper = document.getElementById('map-wrapper');
