@@ -1,11 +1,10 @@
 /**
  * optimization.js
- * VERSION: V15.3
+ * VERSION: V15.4
  * * CHANGES:
- * V15.3 - Polyline Output formatting. Calculate endpoint now includes the newly calculated
- * polylines in the JSON response, correctly keyed by `${driverId}_${routeNum}` to ensure 
- * the frontend maps the routes precisely without overwriting other drivers.
- * V15.2 - Added `populatePolylines: true` to the Enterprise Route Optimization API 
+ * V15.4 - Protected Manager Staging State. Wrapped the driverRef batch update in 
+ * an `if (!payload.routeId)` check so that if an Inspector re-calculates their 
+ * route, it doesn't accidentally overwrite the Manager's active staging bay.
  */
 
 const { GoogleAuth } = require('google-auth-library');
@@ -295,11 +294,15 @@ async function generateRoute(payload, res, db) {
     let nextState = hasRouted ? 'Ready' : 'Pending';
 
     const batch = db.batch();
-    batch.update(driverRef, { 
-        'activeStaging.orders': JSON.stringify(finalBay), 
-        'activeStaging.status': nextState,
-        'activeStaging.polylines': JSON.stringify(polylines)
-    });
+    
+    // Protection Rule: Only update the Manager's Staging bay if this is NOT an Inspector recalculating a Dispatch doc!
+    if (!payload.routeId) {
+        batch.update(driverRef, { 
+            'activeStaging.orders': JSON.stringify(finalBay), 
+            'activeStaging.status': nextState,
+            'activeStaging.polylines': JSON.stringify(polylines)
+        });
+    }
     
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
     if (entCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_EnterpriseRouting', entCalls);
@@ -312,7 +315,7 @@ async function generateRoute(payload, res, db) {
         success: true, 
         status: 'queued',
         processUsed: routingMethod,
-        backendVersion: 'V15.3'
+        backendVersion: 'V15.4'
     });
 }
 
@@ -495,11 +498,15 @@ async function calculate(payload, res, db) {
     let nextState = hasRouted ? 'Ready' : 'Pending';
 
     const batch = db.batch();
-    batch.update(driverRef, { 
-        'activeStaging.orders': JSON.stringify(finalBay), 
-        'activeStaging.status': nextState,
-        'activeStaging.polylines': JSON.stringify(polylines)
-    });
+    
+    // Protection Rule: Only update the Manager's Staging bay if this is NOT an Inspector recalculating a Dispatch doc!
+    if (!payload.routeId) {
+        batch.update(driverRef, { 
+            'activeStaging.orders': JSON.stringify(finalBay), 
+            'activeStaging.status': nextState,
+            'activeStaging.polylines': JSON.stringify(polylines)
+        });
+    }
     
     if (stdCalls > 0) incrementApiUsage(batch, driverRef, compRef, 'apiUsage_StandardRouting', stdCalls);
     
@@ -565,7 +572,7 @@ async function calculate(payload, res, db) {
         updatedStops: responseBay,
         polylines: formattedPolys, // Return polylines to frontend
         processUsed: calcMethod,
-        backendVersion: 'V15.3'
+        backendVersion: 'V15.4'
     });
 }
 
