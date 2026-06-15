@@ -1,13 +1,10 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.7
+ * VERSION: V15.8
  * CHANGES:
- * V15.7 - Email Styling Update
- * 1. Made list header text bold (#, ETA, APP, etc.).
- * 2. Darkened the background of Route subheaders to distinguish them better.
- * 3. Added alternating row backgrounds (zebra striping) for readability.
- * 4. Made the stop # in the list bold.
- * 5. Changed addresses to blue and underlined to indicate they are clickable links.
+ * V15.8 - Email Contrast Update
+ * 1. Increased contrast of table borders and zebra striping to prevent them from washing out on bright desktop monitors in light mode.
+ * 2. Added color-scheme meta tags to the HTML string to help email clients adapt the colors more gracefully between light and dark modes.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -230,16 +227,16 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                 let shortAddr = addr ? addr.split(',')[0] : '--'; 
                 let mapsLink = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr || '')}`;
                 let addrHtml = `<a href="${mapsLink}" style="color:#2563eb; text-decoration:underline; font-weight:400;">${shortAddr}</a>`;
-                let rowBg = localSeq % 2 === 0 ? '#f9fafb' : '#ffffff';
+                let rowBg = localSeq % 2 === 0 ? '#f3f4f6' : '#ffffff'; // Darkened zebra stripe for better contrast
 
                 tableRows += `<tr style="background-color: ${rowBg};">
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; text-align:center; color:#111827; font-weight:bold;">${localSeq}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; white-space:nowrap; font-weight:400;">${eta || '--'}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; text-align:center;">${appHtml}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; white-space:nowrap;">${dueHtml}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb;">${addrHtml}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; font-weight:400;">${client || '--'}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #e5e7eb; font-weight:400;">${type || '--'}</td>
+                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; text-align:center; color:#111827; font-weight:bold;">${localSeq}</td>
+                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; white-space:nowrap; font-weight:400;">${eta || '--'}</td>
+                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; text-align:center;">${appHtml}</td>
+                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; white-space:nowrap;">${dueHtml}</td>
+                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db;">${addrHtml}</td>
+                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; font-weight:400;">${client || '--'}</td>
+                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; font-weight:400;">${type || '--'}</td>
                 </tr>`;
                 localSeq++;
             });
@@ -251,7 +248,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         const customBodyText = payload.customBody || comp.defaultEmailMessage || "";
 
         let htmlSignature = `
-        <table style="border-collapse: collapse; width: 100%; border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 20px;"><tr>
+        <table style="border-collapse: collapse; width: 100%; border-bottom: 1px solid #d1d5db; padding-bottom: 15px; margin-bottom: 20px;"><tr>
             ${comp.logoUrl ? `<td style="padding-right: 15px; width: 60px; vertical-align: middle;"><img src="${comp.logoUrl}" width="60" style="border-radius: 4px; display: block;"></td>` : ''}
             <td style="padding-left: 0px; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.4; color: #333; vertical-align: middle;">
                 <span style="color: #111; font-size: 16px; font-weight: 500;">${comp.name || 'Your Company'}</span><br><span style="color: #666;">${comp.address || ''}</span><br><a href="mailto:${comp.email}" style="color: #4E764D; text-decoration: none;">${comp.email || ''}</a>
@@ -264,45 +261,60 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             <div style="margin-bottom: 25px;">
                 <a href="${dashboardLink}" target="_blank" style="text-decoration:none; display:block; text-align:center;">
                     <div style="font-size: 15px; font-weight: 500; color: #4E764D; margin-bottom: 10px; font-family: Arial, sans-serif;">Click to open your interactive route ➔</div>
-                    <img src="cid:routeMap" style="width: 100%; max-width: 600px; border-radius: 8px; border: 1px solid #d1d5db; margin: 0 auto; display: block;" alt="Route Map">
+                    <img src="cid:routeMap" style="width: 100%; max-width: 600px; border-radius: 8px; border: 1px solid #9ca3af; margin: 0 auto; display: block;" alt="Route Map">
                 </a>
             </div>`;
         }
 
         let htmlBody = `
-        <div style="font-family: Arial, sans-serif; font-size: 14px; font-weight: 400; color: #333; max-width: 800px;">
-            ${htmlSignature}
-            <p>${driverName},</p>
-            <p>${customBodyText.replace(/\n/g, '<br>')}</p>
-            ${mapImageHtml}
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <meta name="color-scheme" content="light dark">
+            <meta name="supported-color-schemes" content="light dark">
+        </head>
+        <body style="margin: 0; padding: 0;">
+            <div style="font-family: Arial, sans-serif; font-size: 14px; font-weight: 400; color: #333; max-width: 800px; margin: 0 auto; padding: 15px;">
+                ${htmlSignature}
+                <p>${driverName},</p>
+                <p>${customBodyText.replace(/\n/g, '<br>')}</p>
+                ${mapImageHtml}
 
-            <div style="background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px;">
-                <table style="width: 100%; font-family: Arial, sans-serif; font-size: 13px; font-weight: 400; color: #374151; margin-bottom: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px;">
-                    <tr>
-                        <td style="text-align: left; vertical-align: top;">
-                            <div style="margin-bottom: 6px;">TOTAL MILES: <span style="color:#111827">${totalMiles.toFixed(1)} mi</span></div>
-                            <div>EST TIME: <span style="color:#111827">${totalHrs} hrs</span></div>
-                        </td>
-                        <td style="text-align: right; vertical-align: top;">
-                            <div style="margin-bottom: 6px;">ORDERS: <span style="background-color:#111827; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${totalOrders}</span></div>
-                            ${(dueToday > 0 || pastDue > 0) ? `<div>${dueToday > 0 ? `<span style="margin-right: ${pastDue > 0 ? '10px' : '0'};">DUE TODAY: <span style="background-color:#f59e0b; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${dueToday}</span></span>` : ''}${pastDue > 0 ? `<span>PAST DUE: <span style="background-color:#ef4444; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${pastDue}</span></span>` : ''}</div>` : ''}
-                        </td>
-                    </tr>
-                </table>
-                <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; color: #374151;">
-                    <thead><tr style="background-color: #f3f4f6; text-align: left;">
-                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold; text-align:center;">#</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">ETA</th>
-                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold; text-align:center;">APP</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">DUE</th>
-                        <th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">ADDRESS</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">CLIENT</th><th style="padding: 10px 8px; border-bottom: 1px solid #d1d5db; font-weight: bold;">ORDER TYPE</th>
-                    </tr></thead>
-                    <tbody>${tableRows}</tbody>
-                </table>
+                <div style="background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; padding: 15px;">
+                    <table style="width: 100%; font-family: Arial, sans-serif; font-size: 13px; font-weight: 400; color: #374151; margin-bottom: 15px; border-bottom: 1px solid #d1d5db; padding-bottom: 10px;">
+                        <tr>
+                            <td style="text-align: left; vertical-align: top;">
+                                <div style="margin-bottom: 6px;">TOTAL MILES: <span style="color:#111827">${totalMiles.toFixed(1)} mi</span></div>
+                                <div>EST TIME: <span style="color:#111827">${totalHrs} hrs</span></div>
+                            </td>
+                            <td style="text-align: right; vertical-align: top;">
+                                <div style="margin-bottom: 6px;">ORDERS: <span style="background-color:#111827; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${totalOrders}</span></div>
+                                ${(dueToday > 0 || pastDue > 0) ? `<div>${dueToday > 0 ? `<span style="margin-right: ${pastDue > 0 ? '10px' : '0'};">DUE TODAY: <span style="background-color:#f59e0b; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${dueToday}</span></span>` : ''}${pastDue > 0 ? `<span>PAST DUE: <span style="background-color:#ef4444; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${pastDue}</span></span>` : ''}</div>` : ''}
+                            </td>
+                        </tr>
+                    </table>
+                    <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; color: #374151;">
+                        <thead><tr style="background-color: #f3f4f6; text-align: left;">
+                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">#</th>
+                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ETA</th>
+                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">APP</th>
+                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">DUE</th>
+                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ADDRESS</th>
+                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">CLIENT</th>
+                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ORDER TYPE</th>
+                        </tr></thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+                <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #6b7280; font-family: Arial, sans-serif;">
+                    Generated by<br>
+                    <a href="https://sprouteapp.com" target="_blank"><img src="${sprouteLogoUrl}" alt="Sproute" style="height: 20px; margin-top: 8px; opacity: 0.8;"></a>
+                </div>
             </div>
-            <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #6b7280; font-family: Arial, sans-serif;">
-                Generated by<br>
-                <a href="https://sprouteapp.com" target="_blank"><img src="${sprouteLogoUrl}" alt="Sproute" style="height: 20px; margin-top: 8px; opacity: 0.8;"></a>
-            </div>
-        </div>`;
+        </body>
+        </html>`;
 
         // 7. Build ZeptoMail Payload
         const toList = [{ email_address: { address: driverEmail, name: driverName } }];
