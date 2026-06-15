@@ -1,11 +1,11 @@
 /**
  * initialization.js
- * VERSION: V15.1
+ * VERSION: V15.2
  * * CHANGES:
- * V15.1 - Polyline Extraction Integration. The endpoint now extracts the activeStaging.polylines 
- * object, formats the keys to include the driverId (driverId_routeNum) to prevent collisions 
- * in Manager view, and includes them in the response payload. Also added support for extracting 
- * polylines from intercepted Dispatch documents.
+ * V15.2 - Dynamic Inspector Permissions. Updated both the Dispatch Intercept (Path 1) 
+ * and Standard Load (Path 2) to dynamically extract the `modifyRoutes` and `reoptimize` 
+ * booleans directly from the Inspector's Firestore document instead of using hardcoded defaults.
+ * V15.1 - Polyline Extraction Integration. 
  * V1.37 - Inspector "Dead Link" Fix. 
  */
 
@@ -52,6 +52,10 @@ async function getDashboardInit(req, res, db) {
                 for (let k in pParsed) { interceptPolys[`${dispatchDriverId}_${k}`] = pParsed[k]; }
             }
 
+            // Dynamically extract permissions from the driver's document
+            let inspectorModify = driverData.modifyRoutes === true || String(driverData.modifyRoutes).toLowerCase() === 'true';
+            let inspectorReoptimize = driverData.reoptimize === true || String(driverData.reoptimize).toLowerCase() === 'true';
+
             return res.status(200).json({
                 routeId: explicitRouteId,
                 stops: activeStops,
@@ -65,7 +69,7 @@ async function getDashboardInit(req, res, db) {
                 companyAddress: companyData.address || "",
                 companyEmail: companyData.email || "",
                 defaultEmailMessage: companyData.defaultEmailMessage || "",
-                permissions: { modify: false, reoptimize: false, useExactApi: companyData.useExactApi }, 
+                permissions: { modify: inspectorModify, reoptimize: inspectorReoptimize, useExactApi: companyData.useExactApi }, 
                 displayName: driverData.name || "Inspector",
                 isAlteredRoute: isAlteredRoute,
                 needsRecalculation: false,
@@ -118,6 +122,9 @@ async function getDashboardInit(req, res, db) {
         let globalRouteStart = null, globalRouteEnd = null, globalRouteState = 'Pending', foundDriverName = '';
         let globalPolylines = {}; // Store master polylines map
         
+        let specificInspectorModify = false;
+        let specificInspectorReoptimize = false;
+        
         usersSnap.forEach(doc => {
             const uData = doc.data();
             
@@ -164,6 +171,9 @@ async function getDashboardInit(req, res, db) {
                     activeStops = stagingBay.map(obj => formatStopForManager(obj, doc.id, resolvedCompanyId, rState));
                     globalRouteState = rState;
                     foundDriverName = driverName;
+                    
+                    specificInspectorModify = uData.modifyRoutes === true || String(uData.modifyRoutes).toLowerCase() === 'true';
+                    specificInspectorReoptimize = uData.reoptimize === true || String(uData.reoptimize).toLowerCase() === 'true';
                     
                     globalRouteStart = null;
                     globalRouteEnd = null;
@@ -212,6 +222,10 @@ async function getDashboardInit(req, res, db) {
             responseObj.routeState = globalRouteState;
             responseObj.driverId = driverId;
             if (foundDriverName) responseObj.driverName = foundDriverName;
+            
+            // Override the default permissions with the specific Inspector's Firestore settings
+            responseObj.permissions.modify = specificInspectorModify;
+            responseObj.permissions.reoptimize = specificInspectorReoptimize;
         }
 
         if (adminId) {
