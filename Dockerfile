@@ -1,13 +1,16 @@
 # File: Dockerfile
-# Version: V1.2
+# Version: V1.3
 # Changes from previous version:
-# - Added 'RUN apk update && apk upgrade --no-cache' to force Alpine to patch the libcrypto3 and libssl3 vulnerabilities before building the app.
+# - Added 'RUN npm install -g npm@latest' immediately after the OS update to patch the global NPM vulnerabilities that ship by default within the Node Alpine base image.
 
 # Use the official, modern Node 20 alpine image
 FROM node:20-alpine
 
 # Force Alpine package updates for security patches
 RUN apk update && apk upgrade --no-cache
+
+# Update the global npm package manager to the latest version to clear base image CVEs
+RUN npm install -g npm@latest
 
 # Create and change to the app directory
 WORKDIR /usr/src/app
