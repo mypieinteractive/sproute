@@ -1,11 +1,10 @@
 /**
  * postOptimization.js
- * VERSION: V15.1
+ * VERSION: V15.2
  * * CHANGES:
- * V15.1 - Polyline Dispatch Support. dispatchRoute now explicitly copies the activeStaging.polylines
- * data into the newly created Dispatch document. This ensures that inspectors clicking the emailed
- * dispatch link will successfully load the actual physical driving path instead of straight lines.
- * V1.46 - Disconnected Google Apps Script Webhook. Imported zeptoMailer.
+ * V15.2 - Implemented `currentPolylines` separation to support dirty states and the Reset button 
+ * safely without overwriting the master baseline route data in the Dispatch document.
+ * V15.1 - Polyline Dispatch Support. 
  */
 
 const { safeJsonParse } = require('./helpers');
@@ -18,7 +17,9 @@ async function saveRoute(payload, res, db) {
         const dispatchRef = db.collection('Dispatch').doc(String(payload.routeId));
         const dispatchDoc = await dispatchRef.get();
         if (dispatchDoc.exists) {
-            await dispatchRef.update({ currentRoute: JSON.stringify(payload.stops) });
+            let updates = { currentRoute: JSON.stringify(payload.stops) };
+            if (payload.polylines) updates.currentPolylines = JSON.stringify(payload.polylines);
+            await dispatchRef.update(updates);
             return res.status(200).json({ success: true });
         }
     } else if (payload.driverId) {
@@ -32,9 +33,13 @@ async function saveRoute(payload, res, db) {
             });
             let finalBay = payload.stops.concat(preservedPending);
 
-            await driverRef.update({ 
-                'activeStaging.orders': JSON.stringify(finalBay)
-            });
+            let updates = { 
+                'activeStaging.orders': JSON.stringify(finalBay),
+                'activeStaging.status': payload.routeState || 'Staging'
+            };
+            if (payload.polylines) updates['activeStaging.polylines'] = JSON.stringify(payload.polylines);
+
+            await driverRef.update(updates);
             return res.status(200).json({ success: true });
         }
     }
@@ -98,7 +103,12 @@ async function restoreOriginalRoute(payload, res, db) {
         
         if (dispatchDoc.exists) {
             const origJson = dispatchDoc.data().originalRoute || "[]";
-            await dispatchRef.update({ currentRoute: origJson });
+            const origPolys = dispatchDoc.data().polylines || "{}";
+            
+            await dispatchRef.update({ 
+                currentRoute: origJson, 
+                currentPolylines: origPolys 
+            });
             return res.status(200).json({ success: true });
         }
         return res.status(404).json({ error: "Route ID not found to restore." });
@@ -156,13 +166,17 @@ async function dispatchRoute(payload, res, db, admin) {
     const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
     const dispatchRef = db.collection('Dispatch').doc(routeId);
     
+    // Grab the baseline polylines at the time of dispatch
+    const baselinePolys = driverData.activeStaging?.polylines || "{}";
+
     await dispatchRef.set({
         routeId: routeId,
         driverId: payload.driverId || "",
         companyId: payload.companyId || "",
         currentRoute: stagingJsonStr,
         originalRoute: stagingJsonStr,
-        polylines: driverData.activeStaging?.polylines || "{}", // SAVE THE PATH TO THE NEW DOC
+        polylines: baselinePolys, 
+        currentPolylines: baselinePolys, 
         mapBase64: payload.mapBase64 || "",
         customBody: payload.customBody || "",
         ccCompany: payload.ccCompany || false,
