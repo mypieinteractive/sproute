@@ -1,7 +1,8 @@
-/* Dashboard - V18.12 */
+/* Dashboard - V18.13 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added UI synchronization blocks inside loadData() and handleStartOver() to automatically select the correct [X Routes] button based on the data state, ensuring the UI doesn't visually hang onto old selections. */
+/* 1. Updated handleStartOver() to reassign reset orders to Route 1 (cluster = 0) instead of the unrouted limbo state ('X'). */
+/* 2. Added setRoutes(1) to handleStartOver() to automatically sync the UI buttons and safely run the baseline clustering math to prevent the backend from getting stuck in an infinite polling loop. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -277,6 +278,7 @@ export function markRouteDirty(driverId, clusterIdx) {
     const cIdx = clusterIdx === 'X' ? 0 : (clusterIdx || 0);
     AppState.dirtyRoutes.add(`${dId}_${cIdx}`); 
     
+    // Immediately clear the stored polyline so local math correctly falls back to straight lines
     const routeKeyNum = cIdx + 1;
     delete AppState.polylines[`${dId}_${routeKeyNum}`];
     delete AppState.polylines[routeKeyNum];
@@ -509,26 +511,27 @@ export async function handleStartOver() {
         
         routedStops.forEach(s => {
             markRouteDirty(s.driverId, s.cluster);
-            s.status = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
+            s.status = 'Pending'; 
+            s.cluster = 0; // Fixes 'X' limbo state
+            s.manualCluster = false; 
+            s.eta = ''; 
+            s.dist = 0; 
+            s.durationSecs = 0;
             if (Config.viewMode === 'inspector') s.hiddenInInspector = true; 
             updatesArray.push({ rowId: s.id, driverId: s.driverId });
         });
         
         if (updatesArray.length > 0) {
-            let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
+            // Save routeNum 1 to backend to match cluster 0
+            let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 1 }, adminId: Config.adminParam };
             if (!Config.isManagerView) payload.routeId = Config.routeId;
             await apiFetch(payload); 
         }
         
         AppState.selectedIds.clear(); 
         
-        // Reset route count to 1 visually and in state
-        AppState.currentRouteCount = 1;
-        document.body.setAttribute('data-route-count', 1);
-        for(let i=1; i<=3; i++) {
-            const btn = document.getElementById(`rbtn-${i}`);
-            if(btn) btn.classList.toggle('active', i === 1);
-        }
+        // Use setRoutes(1) to safely sync math and UI together for Route 1
+        setRoutes(1);
 
         UI.reorderStopsFromDOM(); 
         triggerFullRender(); 
