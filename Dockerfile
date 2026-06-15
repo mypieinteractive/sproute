@@ -1,5 +1,10 @@
-# Use the official, modern Node 20 minimal image
-FROM node:20-slim
+# File: Dockerfile
+# Version: V1.1
+# Changes from previous version:
+# - Swapped base image from `node:20-slim` to `node:20-alpine` to eliminate the 16 OS-level Debian vulnerabilities detected by Trivy.
+
+# Use the official, modern Node 20 alpine image
+FROM node:20-alpine
 
 # Create and change to the app directory
 WORKDIR /usr/src/app
