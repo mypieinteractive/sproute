@@ -1,7 +1,8 @@
-/* Dashboard - V20.1 */
+/* Dashboard - V20.2 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated syncBodyHeight() to default to 'inspector' view if no URL parameter is present, fixing the height calculation race condition on standalone pages. */
+/* 1. Updated render() to toggle Add button visibility in Inspector view based on AppState.PERMISSION_MODIFY. */
+/* 2. Modified the Add button behavior in Inspector view to bypass the dropdown and directly trigger showAddOrderModal(). */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -314,7 +315,23 @@ export function render() {
     document.body.classList.toggle('has-orders', activeStops.length > 0);
     
     const addMenuWrapper = document.getElementById('add-menu-wrapper');
-    if (addMenuWrapper) addMenuWrapper.style.display = Config.viewMode === 'inspector' ? 'none' : 'block';
+    if (addMenuWrapper) {
+        if (Config.viewMode === 'inspector') {
+            addMenuWrapper.style.display = AppState.PERMISSION_MODIFY ? 'block' : 'none';
+            const addMainBtn = addMenuWrapper.querySelector('.header-action-btn');
+            if (addMainBtn) {
+                addMainBtn.onclick = showAddOrderModal;
+                addMainBtn.style.cursor = 'pointer';
+            }
+        } else {
+            addMenuWrapper.style.display = 'block';
+            const addMainBtn = addMenuWrapper.querySelector('.header-action-btn');
+            if (addMainBtn) {
+                addMainBtn.onclick = null;
+                addMainBtn.style.cursor = 'default';
+            }
+        }
+    }
 
     updateRoutingUI();
 
@@ -1562,7 +1579,7 @@ window.syncBodyHeight = function() {
     } else if (isInspector) {
         document.body.style.height = window.innerHeight + 'px';
     } else {
-        document.body.style.height = (window.innerHeight - 300) + 'px';
+        document.body.style.height = (window.innerHeight - 320) + 'px';
     }
     
     const mapWrapper = document.getElementById('map-wrapper');
