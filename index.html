@@ -25,6 +25,11 @@
 
 <div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box; position: relative;">
     
+    <div class="inspector-only-info">
+        <div id="insp-name"></div>
+        <div id="insp-dispatch-date"></div>
+    </div>
+
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; transition: opacity 0.2s;">
         <div id="header-action-container" style="display: flex; gap: 8px;">
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
@@ -289,7 +294,7 @@
         } else if (isInspector) {
             document.body.style.height = window.innerHeight + 'px';
         } else {
-            document.body.style.height = (window.innerHeight - 300) + 'px';
+            document.body.style.height = (window.innerHeight - 320) + 'px';
         }
         
         const mapWrapper = document.getElementById('map-wrapper');
