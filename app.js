@@ -1,8 +1,7 @@
-/* Dashboard - V18.13 */
+/* Dashboard - V18.14 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated handleStartOver() to reassign reset orders to Route 1 (cluster = 0) instead of the unrouted limbo state ('X'). */
-/* 2. Added setRoutes(1) to handleStartOver() to automatically sync the UI buttons and safely run the baseline clustering math to prevent the backend from getting stuck in an infinite polling loop. */
+/* 1. Updated loadData() to safely extract 'modifyRoutes' and 'reoptimize' fields from the backend payload and assign them to AppState.PERMISSION_MODIFY and AppState.PERMISSION_REOPTIMIZE. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -252,10 +251,16 @@ export async function loadData() {
             AppState.inspectors = data.inspectors || []; 
             AppState.inspectors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             if (data.serviceDelay !== undefined) AppState.COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
+            
+            // Extract nested permissions (legacy structure)
             if (data.permissions) {
                 if (typeof data.permissions.modify !== 'undefined') AppState.PERMISSION_MODIFY = data.permissions.modify;
                 if (typeof data.permissions.reoptimize !== 'undefined') AppState.PERMISSION_REOPTIMIZE = data.permissions.reoptimize;
             }
+            // Safely parse flat booleans if backend provides them directly on the root object (updated structure)
+            if (typeof data.modifyRoutes !== 'undefined') AppState.PERMISSION_MODIFY = data.modifyRoutes;
+            if (typeof data.reoptimize !== 'undefined') AppState.PERMISSION_REOPTIMIZE = data.reoptimize;
+
             UI.updateInspectorDropdown(); UI.updateRouteButtonColors();
             let hasValidStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat).length > 0;
             if (!hasValidStops && data.companyAddress) {
