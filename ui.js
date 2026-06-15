@@ -1,8 +1,7 @@
-/* Dashboard - V18.57 */
+/* Dashboard - V20.0 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Increased html2canvas scale from 1 to 2 in handleOpenEmailModal for higher resolution map images. */
-/* 2. Increased map.fitBounds padding from 50 to 120 during the screenshot process to prevent curved polyline paths from clipping outside the frame. */
+/* 1. syncBodyHeight calculation updated for Inspector view. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -1551,9 +1550,12 @@ window.handleMapModeChange = function(mode) {
 window.syncBodyHeight = function() {
     const urlParams = new URLSearchParams(window.location.search);
     const isMobile = urlParams.get('view') === 'managersmall' || document.body.classList.contains('view-managersmall');
+    const isInspector = urlParams.get('view') === 'inspector' || document.body.classList.contains('view-inspector');
     
     if (isMobile) {
         document.body.style.height = ''; 
+    } else if (isInspector) {
+        document.body.style.height = window.innerHeight + 'px';
     } else {
         document.body.style.height = (window.innerHeight - 320) + 'px';
     }
