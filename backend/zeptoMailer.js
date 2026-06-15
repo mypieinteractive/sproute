@@ -1,12 +1,11 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.9
+ * VERSION: V15.10
  * CHANGES:
- * V15.9 - Mobile Width Compression
- * 1. Reduced table paddings from 10px 8px down to 6px 3px.
- * 2. Reduced global table font size from 12px down to 11px.
- * 3. Renamed the "ORDER TYPE" header to "TYPE".
- * These changes ensure the dispatch email table fully fits within standard mobile screens without needing a scrollable wrapper or forcing overflow.
+ * V15.10 - Structural Hierarchy Update
+ * 1. Extracted the Summary stats out of the global white container, making it a standalone element between the map and the routes to improve visibility.
+ * 2. Updated the route rendering loop to enclose each individual route inside its own independent white rounded container.
+ * 3. Injected the table header column labels (#, ETA, APP, etc.) into the top of every individual route card.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -164,10 +163,9 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         const totalOrders = stagingStops.length;
         const totalHrs = totalOrders > 0 ? ((totalSecs + (totalOrders * serviceDelay * 60)) / 3600).toFixed(1) : 0;
 
-        // 5. Build the HTML Table Rows
-        let tableRows = "";
-        // Match standard route colors (Indexed at 0)
+        // 5. Build the HTML Blocks for the Summary and Routes
         const hexColors = ["#000075", "#4363d8", "#469990"]; 
+        let routesHtmlBlocks = "";
         
         Object.keys(routesMap).sort().forEach(rKey => {
             let rStops = routesMap[rKey];
@@ -187,23 +185,24 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             let hrs = stats.count > 0 ? ((stats.secs + (stats.count * serviceDelay * 60)) / 3600).toFixed(1) : 0;
             let dueText = stats.pastDue > 0 ? `<span style="color:#ef4444">${stats.pastDue} Past Due</span>` : (stats.dueToday > 0 ? `<span style="color:#f59e0b">${stats.dueToday} Due Today</span>` : `0 Due`);
             
-            let routeSubInfo = `<span style="color:#6b7280; font-weight:400; text-transform:none;">${stats.miles.toFixed(1)} mi  |  ${hrs} hrs  |  ${stats.count} stops  |  ${dueText}</span>`;
+            let routeSubInfo = `<span style="color:#6b7280; font-weight:400; text-transform:none;">${stats.miles.toFixed(1)} mi &nbsp;|&nbsp; ${hrs} hrs &nbsp;|&nbsp; ${stats.count} stops &nbsp;|&nbsp; ${dueText}</span>`;
 
+            let routeHeaderHtml = "";
             if (Object.keys(routesMap).length > 1) {
-                tableRows += `
-                <tr style="background-color: #e5e7eb;">
-                    <td colspan="7" style="padding: 6px 10px; border-bottom: 1px solid #9ca3af;">
-                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                            <tr>
-                                <td style="font-weight: 500; color: ${rColor}; font-size: 11px; text-align: left; letter-spacing: 0.5px;">ROUTE ${displayRouteNum}</td>
-                                <td style="text-align: right; font-size: 11px;">${routeSubInfo}</td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>`;
+                routeHeaderHtml = `
+                <div style="background-color: #e5e7eb; padding: 12px 15px; border-bottom: 1px solid #9ca3af;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, sans-serif;">
+                        <tr>
+                            <td style="font-weight: bold; color: ${rColor}; font-size: 13px; text-align: left; letter-spacing: 0.5px;">ROUTE ${displayRouteNum}</td>
+                            <td style="text-align: right; font-size: 12px;">${routeSubInfo}</td>
+                        </tr>
+                    </table>
+                </div>`;
             }
 
+            let currentRouteRows = "";
             let localSeq = 1;
+            
             rStops.forEach((s) => {
                 let rawDate = Array.isArray(s) ? s[5] : s.dueDate;
                 let app = Array.isArray(s) ? s[4] : s.app;
@@ -231,7 +230,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                 let addrHtml = `<a href="${mapsLink}" style="color:#2563eb; text-decoration:underline; font-weight:400;">${shortAddr}</a>`;
                 let rowBg = localSeq % 2 === 0 ? '#f3f4f6' : '#ffffff'; 
 
-                tableRows += `<tr style="background-color: ${rowBg};">
+                currentRouteRows += `<tr style="background-color: ${rowBg};">
                     <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; text-align:center; color:#111827; font-weight:bold;">${localSeq}</td>
                     <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; white-space:nowrap; font-weight:400;">${eta || '--'}</td>
                     <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; text-align:center;">${appHtml}</td>
@@ -242,6 +241,26 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                 </tr>`;
                 localSeq++;
             });
+
+            // Enclose this specific route inside its own rounded white box
+            routesHtmlBlocks += `
+            <div style="background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 24px; overflow: hidden;">
+                ${routeHeaderHtml}
+                <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; color: #374151;">
+                    <thead style="background-color: #f3f4f6;">
+                        <tr>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center; width: 20px;">#</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:left;">ETA</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center; width: 36px;">APP</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:left;">DUE</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:left;">ADDRESS</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:left;">CLIENT</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:left;">TYPE</th>
+                        </tr>
+                    </thead>
+                    <tbody>${currentRouteRows}</tbody>
+                </table>
+            </div>`;
         });
 
         // 6. Construct the Full HTML Body
@@ -260,13 +279,29 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
         let mapImageHtml = "";
         if (payload.mapBase64) {
             mapImageHtml = `
-            <div style="margin-bottom: 25px;">
+            <div style="margin-bottom: 20px;">
                 <a href="${dashboardLink}" target="_blank" style="text-decoration:none; display:block; text-align:center;">
                     <div style="font-size: 15px; font-weight: 500; color: #4E764D; margin-bottom: 10px; font-family: Arial, sans-serif;">Click to open your interactive route ➔</div>
                     <img src="cid:routeMap" style="width: 100%; max-width: 600px; border-radius: 8px; border: 1px solid #9ca3af; margin: 0 auto; display: block;" alt="Route Map">
                 </a>
             </div>`;
         }
+
+        let summaryHtml = `
+        <div style="padding: 10px 0 20px 0;">
+            <table style="width: 100%; font-family: Arial, sans-serif; font-size: 13px; font-weight: 500; color: #374151;">
+                <tr>
+                    <td style="text-align: left; vertical-align: top;">
+                        <div style="margin-bottom: 8px;"><span style="color:#6b7280; font-size:12px;">TOTAL MILES:</span> <span style="color:#111827; font-size:15px; font-weight:bold;">${totalMiles.toFixed(1)} mi</span></div>
+                        <div><span style="color:#6b7280; font-size:12px;">EST TIME:</span> <span style="color:#111827; font-size:15px; font-weight:bold;">${totalHrs} hrs</span></div>
+                    </td>
+                    <td style="text-align: right; vertical-align: top;">
+                        <div style="margin-bottom: 8px;"><span style="color:#6b7280; font-size:12px;">ORDERS:</span> <span style="background-color:#111827; color:#ffffff; padding: 3px 8px; border-radius: 4px; font-size:14px; font-weight:bold;">${totalOrders}</span></div>
+                        ${(dueToday > 0 || pastDue > 0) ? `<div>${dueToday > 0 ? `<span style="margin-right: ${pastDue > 0 ? '10px' : '0'};"><span style="color:#6b7280; font-size:12px;">DUE TODAY:</span> <span style="background-color:#f59e0b; color:#ffffff; padding: 3px 8px; border-radius: 4px; font-size:14px; font-weight:bold;">${dueToday}</span></span>` : ''}${pastDue > 0 ? `<span><span style="color:#6b7280; font-size:12px;">PAST DUE:</span> <span style="background-color:#ef4444; color:#ffffff; padding: 3px 8px; border-radius: 4px; font-size:14px; font-weight:bold;">${pastDue}</span></span>` : ''}</div>` : ''}
+                    </td>
+                </tr>
+            </table>
+        </div>`;
 
         let htmlBody = `
         <!DOCTYPE html>
@@ -283,34 +318,10 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                 <p>${driverName},</p>
                 <p>${customBodyText.replace(/\n/g, '<br>')}</p>
                 ${mapImageHtml}
+                ${summaryHtml}
+                ${routesHtmlBlocks}
 
-                <div style="background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; padding: 15px;">
-                    <table style="width: 100%; font-family: Arial, sans-serif; font-size: 13px; font-weight: 400; color: #374151; margin-bottom: 15px; border-bottom: 1px solid #d1d5db; padding-bottom: 10px;">
-                        <tr>
-                            <td style="text-align: left; vertical-align: top;">
-                                <div style="margin-bottom: 6px;">TOTAL MILES: <span style="color:#111827">${totalMiles.toFixed(1)} mi</span></div>
-                                <div>EST TIME: <span style="color:#111827">${totalHrs} hrs</span></div>
-                            </td>
-                            <td style="text-align: right; vertical-align: top;">
-                                <div style="margin-bottom: 6px;">ORDERS: <span style="background-color:#111827; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${totalOrders}</span></div>
-                                ${(dueToday > 0 || pastDue > 0) ? `<div>${dueToday > 0 ? `<span style="margin-right: ${pastDue > 0 ? '10px' : '0'};">DUE TODAY: <span style="background-color:#f59e0b; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${dueToday}</span></span>` : ''}${pastDue > 0 ? `<span>PAST DUE: <span style="background-color:#ef4444; color:#ffffff; padding: 2px 6px; border-radius: 4px;">${pastDue}</span></span>` : ''}</div>` : ''}
-                            </td>
-                        </tr>
-                    </table>
-                    <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; color: #374151;">
-                        <thead><tr style="background-color: #f3f4f6; text-align: left;">
-                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">#</th>
-                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ETA</th>
-                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">APP</th>
-                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">DUE</th>
-                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ADDRESS</th>
-                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">CLIENT</th>
-                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">TYPE</th>
-                        </tr></thead>
-                        <tbody>${tableRows}</tbody>
-                    </table>
-                </div>
-                <div style="text-align: center; margin-top: 20px; font-size: 11px; color: #6b7280; font-family: Arial, sans-serif;">
+                <div style="text-align: center; margin-top: 10px; font-size: 11px; color: #6b7280; font-family: Arial, sans-serif;">
                     Generated by<br>
                     <a href="https://sprouteapp.com" target="_blank"><img src="${sprouteLogoUrl}" alt="Sproute" style="height: 20px; margin-top: 8px; opacity: 0.8;"></a>
                 </div>
