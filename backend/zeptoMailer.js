@@ -1,10 +1,12 @@
 /**
  * zeptoMailer.js
- * VERSION: V15.8
+ * VERSION: V15.9
  * CHANGES:
- * V15.8 - Email Contrast Update
- * 1. Increased contrast of table borders and zebra striping to prevent them from washing out on bright desktop monitors in light mode.
- * 2. Added color-scheme meta tags to the HTML string to help email clients adapt the colors more gracefully between light and dark modes.
+ * V15.9 - Mobile Width Compression
+ * 1. Reduced table paddings from 10px 8px down to 6px 3px.
+ * 2. Reduced global table font size from 12px down to 11px.
+ * 3. Renamed the "ORDER TYPE" header to "TYPE".
+ * These changes ensure the dispatch email table fully fits within standard mobile screens without needing a scrollable wrapper or forcing overflow.
  */
 
 const { safeJsonParse } = require('./helpers'); 
@@ -190,7 +192,7 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
             if (Object.keys(routesMap).length > 1) {
                 tableRows += `
                 <tr style="background-color: #e5e7eb;">
-                    <td colspan="7" style="padding: 8px 10px; border-bottom: 1px solid #9ca3af;">
+                    <td colspan="7" style="padding: 6px 10px; border-bottom: 1px solid #9ca3af;">
                         <table width="100%" cellpadding="0" cellspacing="0" border="0">
                             <tr>
                                 <td style="font-weight: 500; color: ${rColor}; font-size: 11px; text-align: left; letter-spacing: 0.5px;">ROUTE ${displayRouteNum}</td>
@@ -223,20 +225,20 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
 
                 let appVal = (app || '--').substring(0,2).toUpperCase();
                 let appHtml = `<div style="background-color:#374151; color:#ffffff; width:28px; height:28px; border-radius:4px; text-align:center; line-height:28px; font-size:11px; font-weight:400; margin:0 auto;">${appVal}</div>`;
-                let dueHtml = `<div style="background-color:${dueBg}; color:#ffffff; padding:4px 8px; border-radius:4px; text-align:center; font-size:11px; display:inline-block; font-weight:400;">${dueFmt}</div>`;
+                let dueHtml = `<div style="background-color:${dueBg}; color:#ffffff; padding:4px 6px; border-radius:4px; text-align:center; font-size:11px; display:inline-block; font-weight:400;">${dueFmt}</div>`;
                 let shortAddr = addr ? addr.split(',')[0] : '--'; 
                 let mapsLink = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr || '')}`;
                 let addrHtml = `<a href="${mapsLink}" style="color:#2563eb; text-decoration:underline; font-weight:400;">${shortAddr}</a>`;
-                let rowBg = localSeq % 2 === 0 ? '#f3f4f6' : '#ffffff'; // Darkened zebra stripe for better contrast
+                let rowBg = localSeq % 2 === 0 ? '#f3f4f6' : '#ffffff'; 
 
                 tableRows += `<tr style="background-color: ${rowBg};">
-                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; text-align:center; color:#111827; font-weight:bold;">${localSeq}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; white-space:nowrap; font-weight:400;">${eta || '--'}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; text-align:center;">${appHtml}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; white-space:nowrap;">${dueHtml}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db;">${addrHtml}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; font-weight:400;">${client || '--'}</td>
-                    <td style="padding:10px 8px; border-bottom:1px solid #d1d5db; font-weight:400;">${type || '--'}</td>
+                    <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; text-align:center; color:#111827; font-weight:bold;">${localSeq}</td>
+                    <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; white-space:nowrap; font-weight:400;">${eta || '--'}</td>
+                    <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; text-align:center;">${appHtml}</td>
+                    <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; white-space:nowrap;">${dueHtml}</td>
+                    <td style="padding:6px 3px; border-bottom:1px solid #d1d5db;">${addrHtml}</td>
+                    <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; font-weight:400;">${client || '--'}</td>
+                    <td style="padding:6px 3px; border-bottom:1px solid #d1d5db; font-weight:400;">${type || '--'}</td>
                 </tr>`;
                 localSeq++;
             });
@@ -295,15 +297,15 @@ async function sendRouteEmail(db, payload, routeId, driverData) {
                             </td>
                         </tr>
                     </table>
-                    <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; color: #374151;">
+                    <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; color: #374151;">
                         <thead><tr style="background-color: #f3f4f6; text-align: left;">
-                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">#</th>
-                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ETA</th>
-                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">APP</th>
-                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">DUE</th>
-                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ADDRESS</th>
-                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">CLIENT</th>
-                            <th style="padding: 10px 8px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ORDER TYPE</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">#</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ETA</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold; text-align:center;">APP</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">DUE</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">ADDRESS</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">CLIENT</th>
+                            <th style="padding: 8px 4px; border-bottom: 1px solid #9ca3af; font-weight: bold;">TYPE</th>
                         </tr></thead>
                         <tbody>${tableRows}</tbody>
                     </table>
