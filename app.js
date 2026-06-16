@@ -1,7 +1,9 @@
-/* Dashboard - V18.16 */
+/* Dashboard - V18.20 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
+/* 1. Added displayName, companyLogo, and originalRouteJson extraction mapping directly into AppState. */
+/* 2. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
+/* 3. Updated sortTable() to dynamically fetch driver names from AppState.inspectors instead of trusting the row data, ensuring a perfect alphabetical Inspector column sort. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -52,6 +54,9 @@ export const AppState = {
     managerEmail: "",
     adminEmail: "",
     driverName: "",
+    displayName: "",
+    companyLogo: "",
+    originalRouteJson: "[]",
     ccCompanyDefault: true,
     isAlteredRoute: false,
     unmatchedAddressesQueue: [],
@@ -172,9 +177,12 @@ export async function loadData() {
         
         if (data.adminEmail) AppState.adminEmail = data.adminEmail;
         if (data.driverName) AppState.driverName = data.driverName;
+        if (data.displayName) AppState.displayName = data.displayName;
+        if (data.companyLogo) AppState.companyLogo = data.companyLogo;
+        if (data.originalRoute) AppState.originalRouteJson = data.originalRoute;
+        
         if (data.csvTypes && Array.isArray(data.csvTypes)) AppState.availableCsvTypes = data.csvTypes;
 
-        // SAFELY PARSE POLYLINES
         let polyData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
         if (polyData) {
             if (typeof polyData === 'string') {
@@ -239,7 +247,6 @@ export async function loadData() {
         document.body.classList.toggle('manager-all-inspectors', AppState.currentInspectorFilter === 'all');
         document.body.classList.toggle('manager-single-inspector', AppState.currentInspectorFilter !== 'all');
 
-        // Force UI buttons to match currentRouteCount loaded from backend
         for(let i=1; i<=3; i++) {
             const btn = document.getElementById(`rbtn-${i}`);
             if(btn) btn.classList.toggle('active', i === AppState.currentRouteCount);
@@ -254,12 +261,10 @@ export async function loadData() {
             AppState.inspectors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             if (data.serviceDelay !== undefined) AppState.COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
             
-            // Extract nested permissions (legacy structure)
             if (data.permissions) {
                 if (typeof data.permissions.modify !== 'undefined') AppState.PERMISSION_MODIFY = data.permissions.modify;
                 if (typeof data.permissions.reoptimize !== 'undefined') AppState.PERMISSION_REOPTIMIZE = data.permissions.reoptimize;
             }
-            // Safely parse flat booleans if backend provides them directly on the root object (updated structure)
             if (typeof data.modifyRoutes !== 'undefined') AppState.PERMISSION_MODIFY = data.modifyRoutes;
             if (typeof data.reoptimize !== 'undefined') AppState.PERMISSION_REOPTIMIZE = data.reoptimize;
 
@@ -285,7 +290,6 @@ export function markRouteDirty(driverId, clusterIdx) {
     const cIdx = clusterIdx === 'X' ? 0 : (clusterIdx || 0);
     AppState.dirtyRoutes.add(`${dId}_${cIdx}`); 
     
-    // Immediately clear the stored polyline so local math correctly falls back to straight lines
     const routeKeyNum = cIdx + 1;
     delete AppState.polylines[`${dId}_${routeKeyNum}`];
     delete AppState.polylines[routeKeyNum];
@@ -321,7 +325,6 @@ export function silentSaveRouteState() {
     else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
     
-    // NEW: Pass AppState.polylines inside the payload so deletions are reliably saved
     let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState, polylines: AppState.polylines };
     if (!Config.isManagerView) payload.routeId = Config.routeId;
     apiFetch(payload).catch(e => console.log(e));
@@ -479,6 +482,7 @@ export async function triggerBulkDelete() {
         let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete }; if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); AppState.selectedIds.clear(); 
+        if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
         UI.updateInspectorDropdown(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error deleting orders. Please try again."); } finally { UI.hideOverlay(); }
@@ -504,7 +508,9 @@ export async function triggerBulkUnroute() {
         let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
-        await apiFetch(payload); AppState.selectedIds.clear(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
+        await apiFetch(payload); AppState.selectedIds.clear(); 
+        if (!Config.isManagerView) AppState.isAlteredRoute = true;
+        UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error removing orders from the route. Please try again."); } finally { UI.hideOverlay(); }
 }
 
@@ -620,17 +626,26 @@ export function sortTable(col) {
 
     AppState.stops.sort((a, b) => {
         let valA = a[col] || ''; let valB = b[col] || '';
-        if (col === 'dueDate') {
+        
+        if (col === 'driverName') {
+            const inspA = AppState.inspectors.find(i => String(i.id) === String(a.driverId));
+            const inspB = AppState.inspectors.find(i => String(i.id) === String(b.driverId));
+            valA = (inspA ? inspA.name : (a.driverName || 'Unassigned')).toLowerCase();
+            valB = (inspB ? inspB.name : (b.driverName || 'Unassigned')).toLowerCase();
+        } else if (col === 'dueDate') {
             valA = valA ? new Date(valA).getTime() : Number.MAX_SAFE_INTEGER;
             valB = valB ? new Date(valB).getTime() : Number.MAX_SAFE_INTEGER;
         } else {
             valA = String(valA).toLowerCase(); valB = String(valB).toLowerCase();
         }
+        
         if (valA < valB) return AppState.currentSort.asc ? -1 : 1;
         if (valA > valB) return AppState.currentSort.asc ? 1 : -1;
         return 0;
     });
-    UI.render(); 
+    
+    // Explicitly call the functions exported from ui.js locally
+    render(); 
 }
 
 export function setRoutes(num) {
@@ -650,10 +665,10 @@ export function setRoutes(num) {
     if(activeStops.length > 0) {
         calculateClusters(activeStops, num, parseInt(document.getElementById('slider-priority')?.value || 0));
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
-        UI.updateRouteTimes();
+        updateRouteTimes();
     }
-    UI.updateSelectionUI(); 
-    UI.updatePrioritySliderUI();
+    updateSelectionUI(); 
+    updatePrioritySliderUI();
 }
 
 export function moveSelectedToRoute(cIdx) {
@@ -669,7 +684,7 @@ export function moveSelectedToRoute(cIdx) {
     });
     
     AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); AppState.stops.push(...movedStops); AppState.selectedIds.clear();
-    triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
+    triggerFullRender(); updateRouteTimes(); silentSaveRouteState();
 }
 
 export function liveClusterUpdate() {
@@ -677,8 +692,8 @@ export function liveClusterUpdate() {
     if(activeStops.length > 0 && AppState.currentRouteCount > 1) {
         calculateClusters(activeStops, AppState.currentRouteCount, parseInt(document.getElementById('slider-priority')?.value || 0));
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
-        UI.updateRouteTimes();
-        UI.render();
+        updateRouteTimes();
+        render();
     }
 }
 
