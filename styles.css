@@ -1,9 +1,10 @@
-/* Dashboard - V20.5 */
+/* Dashboard - V20.9 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Implemented Grid structure for body.view-inspector #global-header to construct the top and bottom rows. */
-/* 2. Added .inspector-only class control to safely isolate the Reset button and Inspector labels. */
-/* 3. Restricted the manager-all-inspectors routing module hiding behavior strictly to body.view-manager to prevent false hiding in the Inspector view. */
+/* 1. Implemented Grid structure for body.view-inspector #global-header to construct a 3-column, 2-row layout perfectly centered. */
+/* 2. Scaled Reset, Undo, and Add buttons symmetrically with exactly 30px height in Inspector View. */
+/* 3. Hid text on Undo/Add buttons via .hide-inspector specifically for Inspector view to prevent wrapping. */
+/* 4. Added custom WebKit scrollbar rules targeted to .view-managersmall #email-body-text (overflow-y: hidden) for auto-expanding. */
 
 :root { 
     /* Base / Accent */
@@ -87,6 +88,9 @@ body {
 #stop-list::-webkit-scrollbar-thumb { background: transparent; }
 #stop-list:hover::-webkit-scrollbar-thumb { background: var(--row-border); }
 
+/* Email Modal Scrollbar Force - Hide entirely on ManagerSmall for Auto-Expand */
+body.view-managersmall #email-body-text { overflow-y: hidden !important; }
+
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
@@ -111,7 +115,6 @@ body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab
 /* Inspector Unique Elements Isolation */
 .inspector-only { display: none !important; }
 body.view-inspector .inspector-only { display: block !important; }
-body.view-inspector #btn-inspector-reset { display: flex !important; }
 
 /* --- Inspector View Shell Layout --- */
 body.view-inspector { 
@@ -141,11 +144,11 @@ body.view-inspector .list-subheading {
 /* --- Inspector Header Reorganization via CSS Grid --- */
 body.view-inspector #global-header {
     display: grid !important;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     grid-template-rows: auto auto;
     padding: 10px 15px !important;
     height: auto !important;
-    gap: 10px 15px;
+    gap: 10px 8px;
 }
 
 body.view-inspector #header-map-zone,
@@ -162,13 +165,42 @@ body.view-inspector .add-dropdown-menu {
 }
 
 /* Row 1: Inspector Name & Date */
-body.view-inspector #insp-name { grid-column: 1; grid-row: 1; align-self: center; font-weight: 600; color: var(--text-main); font-size: 16px; }
-body.view-inspector #insp-dispatch-date { grid-column: 2; grid-row: 1; align-self: center; justify-self: end; color: var(--text-muted); font-size: 13px; }
+body.view-inspector #insp-name { grid-column: 1; grid-row: 1; justify-self: start; align-self: center; font-weight: 600; color: var(--text-main); font-size: 16px; display: flex; align-items: center; line-height: 1; }
+body.view-inspector #insp-dispatch-date { grid-column: 2 / span 2; grid-row: 1; justify-self: end; align-self: center; color: var(--text-muted); font-size: clamp(10px, 3.5vw, 13px); white-space: nowrap; line-height: 1; }
 
 /* Row 2: Rocker & Action Buttons */
-body.view-inspector #contextual-rocker-wrapper { grid-column: 1; grid-row: 2; justify-self: start; order: unset !important; margin: 0 !important; }
-body.view-inspector #header-action-container { grid-column: 2; grid-row: 2; justify-self: end; order: unset !important; margin: 0 !important; display: flex; gap: 8px; }
-body.view-inspector #header-right-controls { order: 3 !important; }
+body.view-inspector #contextual-rocker-wrapper { grid-column: 1; grid-row: 2; justify-self: start; align-self: center; height: 30px; margin: 0 !important; }
+body.view-inspector #header-action-container { grid-column: 2; grid-row: 2; justify-self: end; align-self: center; display: flex; gap: 8px; margin: 0 !important; }
+body.view-inspector #header-right-controls { grid-column: 3; grid-row: 2; justify-self: end; align-self: center; margin: 0 !important; }
+
+/* Hide text in action buttons to save space on Inspector view */
+body.view-inspector .hide-inspector { display: none !important; }
+
+body.view-inspector #btn-undo-incremental,
+body.view-inspector #add-menu-wrapper .header-action-btn {
+    width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.view-inspector #btn-undo-incremental i,
+body.view-inspector #add-menu-wrapper .header-action-btn i { margin: 0 !important; }
+
+body.view-inspector #btn-inspector-reset {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 10px !important;
+}
+
+/* Force Re-Calculate and Re-Optimize to match Inspector header height */
+body.view-inspector #action-group-staging .module-action-btn {
+    height: 30px !important;
+    min-height: 30px !important;
+}
 
 /* --- Manager Shell Layout --- */
 body.view-manager #map-wrapper { flex: 1; height: 100%; width: auto; position: relative; }
@@ -508,13 +540,33 @@ body.view-managersmall .module-action-btn { min-height: 38px; }
 .module-action-btn:active { opacity: 0.8; }
 .module-action-btn:hover { filter: brightness(1.1); }
 .module-action-btn.outline-btn { border: 1px solid rgba(255,255,255,0.25) !important; color: white; background: rgba(255,255,255,0.1); }
-.module-action-btn.danger-btn { border: 1px solid var(--red) !important; color: var(--red); background: transparent; }
-.module-action-btn.danger-btn:hover { background: rgba(231, 76, 60, 0.1) !important; color: var(--red) !important; }
+
+/* Global Danger/Reset Button Styling */
+.module-action-btn.danger-btn, .header-action-btn.danger-btn { border: 1px solid var(--red) !important; color: var(--red) !important; background: transparent !important; }
+.module-action-btn.danger-btn:hover:not(:disabled), .header-action-btn.danger-btn:hover:not(:disabled) { background: rgba(231, 76, 60, 0.1) !important; }
+.header-action-btn.danger-btn i { color: var(--red) !important; }
+
 .module-action-btn.filled-green { border: 1px solid var(--accent) !important; background: var(--accent); color: white; }
 .module-action-btn.filled-green:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }
 
 /* MODAL ACTION BUTTONS */
-.modal-box { max-height: 90%; overflow-y: auto; margin: auto; }
+#modal-overlay { 
+    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
+    background: rgba(0,0,0,0.6); z-index: 100000; align-items: center; justify-content: center; 
+    overflow: hidden;
+}
+.modal-box { 
+    max-height: 90%; 
+    overflow-y: auto; 
+    margin: auto; 
+    position: relative;
+}
+
+.modal-box::-webkit-scrollbar { width: 8px; }
+.modal-box::-webkit-scrollbar-track { background: var(--bg-base); border-radius: 4px; }
+.modal-box::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+.modal-box::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
 .modal-box input::placeholder { color: rgba(160, 160, 160, 0.3) !important; font-weight: 400; }
 .modal-primary-btn {
     background: var(--accent) !important; color: white !important; border: none; border-radius: 6px; 
@@ -721,13 +773,6 @@ body.view-manager #resizer { display: block; border-top: none; }
 .marker-warning { position: absolute; top: -10px; right: -10px; font-size: 16px; pointer-events: none; z-index: 5; }
 
 .boxdraw { background: rgba(96, 132, 95, 0.3); border: 1px solid var(--accent); position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; z-index: 999; }
-
-#modal-overlay { 
-    display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; 
-    background: rgba(0,0,0,0.6); z-index: 100000; align-items: center; justify-content: center; 
-}
-.modal-box { max-height: 90%; overflow-y: auto; margin: auto; }
-.modal-box input { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); }
 
 .grey-checkbox { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; background-color: transparent; border: 2px solid var(--row-text-muted); border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0; transition: 0.2s; }
 .grey-checkbox:checked { background-color: var(--accent); border-color: var(--accent); }
