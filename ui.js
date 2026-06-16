@@ -1,10 +1,10 @@
-/* Dashboard - V20.7 */
+/* Dashboard - V20.8 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. handleOpenEmailModal: Reduced padding on map snapshot from 120 to 40. */
-/* 2. handleOpenEmailModal: Temporarily forces map container to display block if hidden in mobile list view for html2canvas. */
-/* 3. updateHeaderUI: Added dynamic injection of AppState.companyLogo into the header. */
-/* 4. updateHeaderUI: Switched Reset button visibility to use strict structural comparison against originalRoute instead of the boolean flag. */
+/* 1. Added dynamic auto-expanding textarea logic to handleOpenEmailModal for managersmall views. */
+/* 2. Added smart-hiding logic to handleOpenEmailModal to omit redundant CC checkboxes. */
+/* 3. Updated updateSelectionUI to automatically advance the mobile map selection index when a new pin is tapped. */
+/* 4. Swapped Reset button comparison logic in updateHeaderUI to a simple stringified JSON comparison mirroring the backend. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -78,18 +78,6 @@ export function updateUndoUI() {
     }
 }
 
-function compareRoutes(liveStops, originalStops) {
-    if (!originalStops || originalStops.length === 0) return false;
-    let liveRouted = liveStops.filter(s => isRouteAssigned(s.status)).map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
-    if (liveRouted.length !== originalStops.length) return true;
-    for (let i = 0; i < liveRouted.length; i++) {
-        let l = liveRouted[i];
-        let o = originalStops[i];
-        if (String(l[0]) !== String(o[0]) || String(l[1]) !== String(o[1])) return true;
-    }
-    return false;
-}
-
 export function updateHeaderUI() {
     if (Config.viewMode === 'inspector') {
         const inspNameEl = document.getElementById('insp-name');
@@ -108,6 +96,7 @@ export function updateHeaderUI() {
             let displayDate = new Date();
             const activeStops = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
             if (activeStops.length > 0 && activeStops[0].dueDate) {
+                // Safely parse dueDate (YYYY-MM-DD) to prevent timezone shifts
                 const [y, m, d] = activeStops[0].dueDate.split('-');
                 if (y && m && d) displayDate = new Date(y, m - 1, d);
             }
@@ -116,13 +105,19 @@ export function updateHeaderUI() {
         }
 
         if (resetBtn) {
-            let isStructurallyAltered = false;
-            try {
-                if (AppState.originalRouteJson) {
-                    const originalArr = JSON.parse(AppState.originalRouteJson);
-                    isStructurallyAltered = compareRoutes(AppState.stops, originalArr);
-                }
-            } catch(e) {}
+            let isStructurallyAltered = AppState.isAlteredRoute;
+            if (AppState.originalRouteJson) {
+                // Replicate the exact minified payload string generation for a true 1:1 match
+                const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+                let routedStops = AppState.stops.filter(s => { 
+                    if (!isRouteAssigned(s.status)) return false; 
+                    if (Config.isManagerView) return String(s.driverId) === String(inspId); 
+                    return s.routeTargetId === String(Config.routeId); 
+                });
+                
+                let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
+                isStructurallyAltered = (JSON.stringify(minified) !== AppState.originalRouteJson);
+            }
             
             resetBtn.style.display = isStructurallyAltered ? 'flex' : 'none';
         }
@@ -339,13 +334,17 @@ export function updateRoutingUI() {
         if (!AppState.PERMISSION_REOPTIMIZE) {
             if (routingControls) routingControls.style.display = 'none';
         } else {
-            let isStructurallyAltered = false;
-            try {
-                if (AppState.originalRouteJson) {
-                    const originalArr = JSON.parse(AppState.originalRouteJson);
-                    isStructurallyAltered = compareRoutes(AppState.stops, originalArr);
-                }
-            } catch(e) {}
+            let isStructurallyAltered = AppState.isAlteredRoute;
+            if (AppState.originalRouteJson) {
+                const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+                let routedStops = AppState.stops.filter(s => { 
+                    if (!isRouteAssigned(s.status)) return false; 
+                    if (Config.isManagerView) return String(s.driverId) === String(inspId); 
+                    return s.routeTargetId === String(Config.routeId); 
+                });
+                let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
+                isStructurallyAltered = (JSON.stringify(minified) !== AppState.originalRouteJson);
+            }
 
             if (isStructurallyAltered && currentState === 'Ready') {
                 currentState = 'Staging';
@@ -928,6 +927,14 @@ export function updateSelectionUI() {
         const previewContainer = document.getElementById('mobile-map-selection-preview');
         if (previewContainer) {
             if (hasSelection) {
+                if (window.lastSelectionSize === undefined) window.lastSelectionSize = 0;
+                
+                // If selection increased, automatically jump to the newest item at the end
+                if (AppState.selectedIds.size > window.lastSelectionSize) {
+                    window.mobilePreviewIndex = AppState.selectedIds.size - 1;
+                }
+                window.lastSelectionSize = AppState.selectedIds.size;
+                
                 if (window.mobilePreviewIndex === undefined || window.mobilePreviewIndex >= AppState.selectedIds.size) {
                     window.mobilePreviewIndex = 0;
                 }
@@ -984,6 +991,7 @@ export function updateSelectionUI() {
                 }
             } else {
                 window.mobilePreviewIndex = 0;
+                window.lastSelectionSize = 0;
                 previewContainer.innerHTML = '';
             }
         }
@@ -1331,16 +1339,40 @@ export function handleOpenEmailModal() {
     const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
     mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
     
+    let inspEmail = (insp.email || '').toLowerCase().trim();
+    let compEmail = (AppState.companyEmail || '').toLowerCase().trim();
+    let adminEmail = (AppState.adminEmail || '').toLowerCase().trim();
+
+    let ccCompanyHtml = '';
+    if (compEmail && inspEmail !== compEmail) {
+        ccCompanyHtml = `<div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail}</span></label></div>`;
+    }
+
+    let ccMeHtml = '';
+    if (adminEmail && inspEmail !== adminEmail) {
+        ccMeHtml = `<div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail}</span></label></div>`;
+    }
+
     mc.innerHTML = `
         <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 400;">Customize Email Message</h3>
             <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none; overflow-y: auto;">${AppState.defaultEmailMessage}</textarea>
             <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--accent); font-weight: 400;">${insp.name}</span> at <span style="color: var(--accent); font-weight: 400;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
+            ${ccCompanyHtml}
+            ${ccMeHtml}
             <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
             <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" class="modal-primary-btn">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button></div>
         </div>`;
+
+    const emailBody = document.getElementById('email-body-text');
+    if (emailBody && Config.viewMode === 'managersmall') {
+        emailBody.style.height = 'auto';
+        emailBody.style.height = (emailBody.scrollHeight) + 'px';
+        emailBody.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    }
 
     document.getElementById('btn-cancel-dispatch').onclick = () => m.style.display = 'none';
 
@@ -1399,7 +1431,7 @@ export function handleOpenEmailModal() {
         try {
             const res = await apiFetch({
                 action: "dispatchRoute", driverId: AppState.currentInspectorFilter, companyId: Config.companyParam || '', routeId: Config.isManagerView ? null : Config.routeId,
-                customBody: document.getElementById('email-body-text').value, ccCompany: document.getElementById('cc-company-checkbox').checked, addCc: document.getElementById('cc-me-checkbox').checked ? AppState.adminEmail : '', ccEmail: document.getElementById('additional-cc-email').value, mapBase64
+                customBody: document.getElementById('email-body-text').value, ccCompany: document.getElementById('cc-company-checkbox') ? document.getElementById('cc-company-checkbox').checked : false, addCc: document.getElementById('cc-me-checkbox') && document.getElementById('cc-me-checkbox').checked ? AppState.adminEmail : '', ccEmail: document.getElementById('additional-cc-email').value, mapBase64
             });
             const result = await res.json();
             
@@ -1689,9 +1721,6 @@ window.syncBodyHeight = function() {
     const sidebar = document.getElementById('sidebar');
     if (mapWrapper) mapWrapper.style.minHeight = '0';
     if (sidebar) sidebar.style.minHeight = '0';
-    
-    const map = getMapInstance();
-    if (map) map.resize();
     
     if (typeof adjustSummaryTextSize === 'function') adjustSummaryTextSize();
 }
