@@ -1,7 +1,8 @@
-/* Dashboard - V18.16 */
+/* Dashboard - V18.18 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
+/* 1. Added displayName extraction mapping directly into AppState to reliably display the driverName returned from the Dispatch document. */
+/* 2. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -52,6 +53,7 @@ export const AppState = {
     managerEmail: "",
     adminEmail: "",
     driverName: "",
+    displayName: "",
     ccCompanyDefault: true,
     isAlteredRoute: false,
     unmatchedAddressesQueue: [],
@@ -172,9 +174,9 @@ export async function loadData() {
         
         if (data.adminEmail) AppState.adminEmail = data.adminEmail;
         if (data.driverName) AppState.driverName = data.driverName;
+        if (data.displayName) AppState.displayName = data.displayName;
         if (data.csvTypes && Array.isArray(data.csvTypes)) AppState.availableCsvTypes = data.csvTypes;
 
-        // SAFELY PARSE POLYLINES
         let polyData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
         if (polyData) {
             if (typeof polyData === 'string') {
@@ -239,7 +241,6 @@ export async function loadData() {
         document.body.classList.toggle('manager-all-inspectors', AppState.currentInspectorFilter === 'all');
         document.body.classList.toggle('manager-single-inspector', AppState.currentInspectorFilter !== 'all');
 
-        // Force UI buttons to match currentRouteCount loaded from backend
         for(let i=1; i<=3; i++) {
             const btn = document.getElementById(`rbtn-${i}`);
             if(btn) btn.classList.toggle('active', i === AppState.currentRouteCount);
@@ -321,7 +322,6 @@ export function silentSaveRouteState() {
     else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
     
-    // NEW: Pass AppState.polylines inside the payload so deletions are reliably saved
     let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState, polylines: AppState.polylines };
     if (!Config.isManagerView) payload.routeId = Config.routeId;
     apiFetch(payload).catch(e => console.log(e));
@@ -479,6 +479,7 @@ export async function triggerBulkDelete() {
         let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete }; if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); AppState.selectedIds.clear(); 
+        if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
         UI.updateInspectorDropdown(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error deleting orders. Please try again."); } finally { UI.hideOverlay(); }
@@ -504,7 +505,9 @@ export async function triggerBulkUnroute() {
         let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
-        await apiFetch(payload); AppState.selectedIds.clear(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
+        await apiFetch(payload); AppState.selectedIds.clear(); 
+        if (!Config.isManagerView) AppState.isAlteredRoute = true;
+        UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error removing orders from the route. Please try again."); } finally { UI.hideOverlay(); }
 }
 
