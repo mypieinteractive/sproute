@@ -1,9 +1,10 @@
 /**
  * initialization.js
- * VERSION: V15.5
+ * VERSION: V15.3
  * * CHANGES:
- * V15.5 - Added explicitly parsed `originalRoute` to the Dispatch intercept return payload 
- * so the frontend can securely perform a structural comparison for the Reset button.
+ * V15.3 - Updated Dispatch Link Intercept to correctly read from `currentPolylines` first,
+ * falling back to `polylines`, ensuring the browser refresh respects the dirty/cleared polyline state.
+ * V15.2 - Dynamic Inspector Permissions extraction added. 
  */
 
 const { safeJsonParse, formatStopForManager } = require('./helpers');
@@ -38,6 +39,7 @@ async function getDashboardInit(req, res, db) {
             let activeStops = currentRoute.map(obj => formatStopForManager(obj, dispatchDriverId, resolvedCompanyId, 'Dispatched', explicitRouteId));
             let isAlteredRoute = dData.currentRoute !== originalRoute;
 
+            // EXTRACT AND FORMAT DISPATCH POLYLINES (Read currentPolylines first!)
             let interceptPolys = {};
             let pRaw = dData.currentPolylines || dData.polylines;
             if (pRaw) {
@@ -50,13 +52,10 @@ async function getDashboardInit(req, res, db) {
 
             let inspectorModify = driverData.modifyRoutes === true || String(driverData.modifyRoutes).toLowerCase() === 'true';
             let inspectorReoptimize = driverData.reoptimize === true || String(driverData.reoptimize).toLowerCase() === 'true';
-            
-            let dispName = dData.driverName || driverData.name || "Inspector";
 
             return res.status(200).json({
                 routeId: explicitRouteId,
                 stops: activeStops,
-                originalRoute: originalRoute, 
                 polylines: interceptPolys, 
                 routeStart: driverData.startAddress ? { address: driverData.startAddress, lat: driverData.startLat, lng: driverData.startLng } : null,
                 routeEnd: driverData.endAddress ? { address: driverData.endAddress, lat: driverData.endLat, lng: driverData.endLng } : null,
@@ -68,7 +67,7 @@ async function getDashboardInit(req, res, db) {
                 companyEmail: companyData.email || "",
                 defaultEmailMessage: companyData.defaultEmailMessage || "",
                 permissions: { modify: inspectorModify, reoptimize: inspectorReoptimize, useExactApi: companyData.useExactApi }, 
-                displayName: dispName,
+                displayName: driverData.name || "Inspector",
                 isAlteredRoute: isAlteredRoute,
                 needsRecalculation: false,
                 csvTypes: [], 
