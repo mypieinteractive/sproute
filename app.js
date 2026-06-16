@@ -1,8 +1,9 @@
-/* Dashboard - V18.18 */
+/* Dashboard - V18.19 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added displayName extraction mapping directly into AppState to reliably display the driverName returned from the Dispatch document. */
-/* 2. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
+/* 1. Added displayName and companyLogo extraction mapping directly into AppState. */
+/* 2. Added originalRoute extraction mapping to AppState.originalRouteJson for strict Reset button comparison. */
+/* 3. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -54,6 +55,8 @@ export const AppState = {
     adminEmail: "",
     driverName: "",
     displayName: "",
+    companyLogo: "",
+    originalRouteJson: "[]",
     ccCompanyDefault: true,
     isAlteredRoute: false,
     unmatchedAddressesQueue: [],
@@ -175,6 +178,9 @@ export async function loadData() {
         if (data.adminEmail) AppState.adminEmail = data.adminEmail;
         if (data.driverName) AppState.driverName = data.driverName;
         if (data.displayName) AppState.displayName = data.displayName;
+        if (data.companyLogo) AppState.companyLogo = data.companyLogo;
+        if (data.originalRoute) AppState.originalRouteJson = data.originalRoute;
+        
         if (data.csvTypes && Array.isArray(data.csvTypes)) AppState.availableCsvTypes = data.csvTypes;
 
         let polyData = data.polylines || (data.activeStaging && data.activeStaging.polylines);
@@ -255,12 +261,10 @@ export async function loadData() {
             AppState.inspectors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             if (data.serviceDelay !== undefined) AppState.COMPANY_SERVICE_DELAY = parseInt(data.serviceDelay) || 0; 
             
-            // Extract nested permissions (legacy structure)
             if (data.permissions) {
                 if (typeof data.permissions.modify !== 'undefined') AppState.PERMISSION_MODIFY = data.permissions.modify;
                 if (typeof data.permissions.reoptimize !== 'undefined') AppState.PERMISSION_REOPTIMIZE = data.permissions.reoptimize;
             }
-            // Safely parse flat booleans if backend provides them directly on the root object (updated structure)
             if (typeof data.modifyRoutes !== 'undefined') AppState.PERMISSION_MODIFY = data.modifyRoutes;
             if (typeof data.reoptimize !== 'undefined') AppState.PERMISSION_REOPTIMIZE = data.reoptimize;
 
@@ -286,7 +290,6 @@ export function markRouteDirty(driverId, clusterIdx) {
     const cIdx = clusterIdx === 'X' ? 0 : (clusterIdx || 0);
     AppState.dirtyRoutes.add(`${dId}_${cIdx}`); 
     
-    // Immediately clear the stored polyline so local math correctly falls back to straight lines
     const routeKeyNum = cIdx + 1;
     delete AppState.polylines[`${dId}_${routeKeyNum}`];
     delete AppState.polylines[routeKeyNum];
@@ -479,7 +482,6 @@ export async function triggerBulkDelete() {
         let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete }; if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); AppState.selectedIds.clear(); 
-        if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
         UI.updateInspectorDropdown(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error deleting orders. Please try again."); } finally { UI.hideOverlay(); }
@@ -505,9 +507,7 @@ export async function triggerBulkUnroute() {
         let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
-        await apiFetch(payload); AppState.selectedIds.clear(); 
-        if (!Config.isManagerView) AppState.isAlteredRoute = true;
-        UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
+        await apiFetch(payload); AppState.selectedIds.clear(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error removing orders from the route. Please try again."); } finally { UI.hideOverlay(); }
 }
 
