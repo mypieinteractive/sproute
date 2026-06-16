@@ -1,7 +1,7 @@
-/* Dashboard - V18.15 */
+/* Dashboard - V18.16 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added driverName to AppState and configured loadData() to extract it to guarantee the Inspector view accurately resolves the user's name. */
+/* 1. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -321,7 +321,8 @@ export function silentSaveRouteState() {
     else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
     
-    let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState };
+    // NEW: Pass AppState.polylines inside the payload so deletions are reliably saved
+    let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState, polylines: AppState.polylines };
     if (!Config.isManagerView) payload.routeId = Config.routeId;
     apiFetch(payload).catch(e => console.log(e));
 }
