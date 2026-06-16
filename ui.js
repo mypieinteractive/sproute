@@ -1,10 +1,9 @@
-/* Dashboard - V20.4 */
+/* Dashboard - V20.5 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added population of Inspector Name and Dispatch Date to updateHeaderUI() for the new Inspector 2-row header. */
-/* 2. Modified updateRoutingUI() to ensure route-view-toggles are visible for multiple routes regardless of reoptimize permissions. */
-/* 3. Restricted only the #routing-controls module based on AppState.PERMISSION_REOPTIMIZE, showing Re-Calculate/Re-Optimize when dirty. */
-/* 4. Added dynamic border removal on route-view-toggles to fix the sticky subheading scrolling gap. */
+/* 1. Added population of Inspector Name and Dispatch Date to updateHeaderUI() and bound the Reset button visibility to AppState.isAlteredRoute. */
+/* 2. Restricted updateRoutingUI() for the inspector view to explicitly force 'Staging' state when altered, and hide the 'Start Over' button, leaving only Re-Calculate/Re-Optimize. */
+/* 3. Injected AppState.isAlteredRoute = true into drag-and-drop, bulk-delete, and bulk-unroute to ensure the Reset button triggers correctly. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
@@ -82,12 +81,10 @@ export function updateHeaderUI() {
     if (Config.viewMode === 'inspector') {
         const inspNameEl = document.getElementById('insp-name');
         const inspDateEl = document.getElementById('insp-dispatch-date');
-        
-        const inspId = Config.driverParam;
-        const insp = AppState.inspectors.find(i => String(i.id) === String(inspId));
+        const resetBtn = document.getElementById('btn-inspector-reset');
         
         if (inspNameEl) {
-            inspNameEl.innerText = insp ? insp.name : (AppState.displayName || 'Inspector');
+            inspNameEl.innerText = AppState.displayName || AppState.driverName || 'Inspector';
         }
         
         if (inspDateEl) {
@@ -100,6 +97,10 @@ export function updateHeaderUI() {
             }
             const dateStr = displayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             inspDateEl.innerText = `Dispatched: ${dateStr}`;
+        }
+
+        if (resetBtn) {
+            resetBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
         }
     }
 
@@ -312,14 +313,24 @@ export function updateRoutingUI() {
         if (!AppState.PERMISSION_REOPTIMIZE) {
             if (routingControls) routingControls.style.display = 'none';
         } else {
+            // Force Staging state if route is altered so we only see Re-Calculate / Re-Optimize
+            if (AppState.isAlteredRoute && currentState === 'Ready') {
+                currentState = 'Staging';
+                if (routingControls) routingControls.setAttribute('data-state', currentState);
+            }
+
             if (currentState === 'Staging') {
                 if (routingControls) routingControls.style.display = 'flex';
                 if (actionBtns) actionBtns.style.width = '100%';
-                if (btnStaging) btnStaging.style.display = 'flex';
-            } else if (AppState.isAlteredRoute && currentState === 'Ready') {
-                if (routingControls) routingControls.style.display = 'flex';
-                if (actionBtns) actionBtns.style.width = '100%';
-                if (btnReady) btnReady.style.display = 'flex';
+                if (btnStaging) {
+                    btnStaging.style.display = 'flex';
+                    // Explicitly hide the Start Over button for the inspector
+                    const startOverBtn = btnStaging.querySelector('.danger-btn');
+                    if (startOverBtn) startOverBtn.style.display = 'none';
+                }
+            } else {
+                // Hide the controls completely in Pending or Ready state (no Start Over / Optimize / Send Routes)
+                if (routingControls) routingControls.style.display = 'none';
             }
         }
     }
@@ -1046,6 +1057,9 @@ export function initSortable() {
                             if (hasActiveRoutes) { stop.status = 'Routed'; stop.routeState = 'Staging'; markRouteDirty(dId, stop.cluster); }
                         }
                     }
+                    
+                    if (!Config.isManagerView) AppState.isAlteredRoute = true;
+                    
                     reorderStopsFromDOM(); triggerFullRender(); updateRouteTimes(); silentSaveRouteState();
                 }
             });
