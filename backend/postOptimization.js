@@ -1,10 +1,8 @@
 /**
  * postOptimization.js
- * VERSION: V15.2
+ * VERSION: V15.3
  * * CHANGES:
- * V15.2 - Implemented `currentPolylines` separation to support dirty states and the Reset button 
- * safely without overwriting the master baseline route data in the Dispatch document.
- * V15.1 - Polyline Dispatch Support. 
+ * V15.3 - Updated dispatchRoute to explicitly capture and store `driverName` into the Dispatch document.
  */
 
 const { safeJsonParse } = require('./helpers');
@@ -161,18 +159,17 @@ async function dispatchRoute(payload, res, db, admin) {
     
     if (stagingJson.length === 0) return res.status(400).json({ error: "No orders found to dispatch." });
 
-    // 1. Create the persistent Route ID and save the payload into Firestore
     const routeId = new Date().getTime().toString();
     const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
     const dispatchRef = db.collection('Dispatch').doc(routeId);
     
-    // Grab the baseline polylines at the time of dispatch
     const baselinePolys = driverData.activeStaging?.polylines || "{}";
 
     await dispatchRef.set({
         routeId: routeId,
         driverId: payload.driverId || "",
         companyId: payload.companyId || "",
+        driverName: driverData.name || "Inspector",
         currentRoute: stagingJsonStr,
         originalRoute: stagingJsonStr,
         polylines: baselinePolys, 
@@ -187,14 +184,12 @@ async function dispatchRoute(payload, res, db, admin) {
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 2. Clear the Driver's Staging Bay
     await driverRef.update({
         lockedBy: null,
         'activeStaging.orders': '[]',
         'activeStaging.status': null
     });
 
-    // 3. Immediately compile and send the ZeptoMail
     try {
         await sendRouteEmail(db, payload, routeId, driverData);
         return res.status(200).json({ success: true, routeId: routeId });
@@ -204,6 +199,4 @@ async function dispatchRoute(payload, res, db, admin) {
     }
 }
 
-module.exports = {
-    saveRoute, recreateOrders, restoreOriginalRoute, resetRoute, dispatchRoute
-};
+module.exports = { saveRoute, recreateOrders, restoreOriginalRoute, resetRoute, dispatchRoute };
