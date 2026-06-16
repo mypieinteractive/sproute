@@ -482,6 +482,7 @@ export async function triggerBulkDelete() {
         let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete }; if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); AppState.selectedIds.clear(); 
+        if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
         UI.updateInspectorDropdown(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error deleting orders. Please try again."); } finally { UI.hideOverlay(); }
@@ -507,7 +508,9 @@ export async function triggerBulkUnroute() {
         let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
-        await apiFetch(payload); AppState.selectedIds.clear(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
+        await apiFetch(payload); AppState.selectedIds.clear(); 
+        if (!Config.isManagerView) AppState.isAlteredRoute = true;
+        UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
     } catch (err) { UI.hideOverlay(); await UI.customAlert("Error removing orders from the route. Please try again."); } finally { UI.hideOverlay(); }
 }
 
