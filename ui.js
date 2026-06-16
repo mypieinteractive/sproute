@@ -1,13 +1,13 @@
-/* Dashboard - V20.4 */
+/* Dashboard - V20.9 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added population of Inspector Name and Dispatch Date to updateHeaderUI() for the new Inspector 2-row header. */
-/* 2. Modified updateRoutingUI() to ensure route-view-toggles are visible for multiple routes regardless of reoptimize permissions. */
-/* 3. Restricted only the #routing-controls module based on AppState.PERMISSION_REOPTIMIZE, showing Re-Calculate/Re-Optimize when dirty. */
-/* 4. Added dynamic border removal on route-view-toggles to fix the sticky subheading scrolling gap. */
+/* 1. handleOpenEmailModal: Converted the inline ternary operators for CC checkboxes into bulletproof variable assignments to prevent null reference failures when the elements are hidden. */
+/* 2. handleOpenEmailModal: Added auto-expanding scrollHeight logic for the textarea specifically for the managersmall view. */
+/* 3. updateHeaderUI: Simplified the Reset button logic to use a direct JSON.stringify comparison against AppState.originalRouteJson. */
+/* 4. Massive Code Cleanup: Scrubbed duplicated app.js logic (sortTable, performUpload, setRoutes, drag-and-drop listeners) from the bottom of the file to fix global scope collisions and restore sorting functionality. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
-import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
+import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
 
 // --- Overlays & Modals ---
@@ -82,24 +82,44 @@ export function updateHeaderUI() {
     if (Config.viewMode === 'inspector') {
         const inspNameEl = document.getElementById('insp-name');
         const inspDateEl = document.getElementById('insp-dispatch-date');
-        
-        const inspId = Config.driverParam;
-        const insp = AppState.inspectors.find(i => String(i.id) === String(inspId));
+        const resetBtn = document.getElementById('btn-inspector-reset');
         
         if (inspNameEl) {
-            inspNameEl.innerText = insp ? insp.name : (AppState.displayName || 'Inspector');
+            let logoHtml = '';
+            if (AppState.companyLogo) {
+                logoHtml = `<img src="${AppState.companyLogo}" style="max-height: 24px; border-radius: 4px; object-fit: contain; margin-right: 10px;">`;
+            }
+            inspNameEl.innerHTML = `${logoHtml}<span>${AppState.displayName || AppState.driverName || 'Inspector'}</span>`;
         }
         
         if (inspDateEl) {
             let displayDate = new Date();
             const activeStops = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
             if (activeStops.length > 0 && activeStops[0].dueDate) {
-                // Safely parse dueDate (YYYY-MM-DD) to prevent timezone shifts
                 const [y, m, d] = activeStops[0].dueDate.split('-');
                 if (y && m && d) displayDate = new Date(y, m - 1, d);
             }
             const dateStr = displayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             inspDateEl.innerText = `Dispatched: ${dateStr}`;
+        }
+
+        if (resetBtn) {
+            let isStructurallyAltered = false;
+            try {
+                if (AppState.originalRouteJson) {
+                    const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+                    let routedStops = AppState.stops.filter(s => { 
+                        if (!isRouteAssigned(s.status)) return false; 
+                        if (Config.isManagerView) return String(s.driverId) === String(inspId); 
+                        return s.routeTargetId === String(Config.routeId); 
+                    });
+                    
+                    let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
+                    isStructurallyAltered = (JSON.stringify(minified) !== AppState.originalRouteJson);
+                }
+            } catch(e) {}
+            
+            resetBtn.style.display = isStructurallyAltered ? 'flex' : 'none';
         }
     }
 
@@ -226,6 +246,10 @@ export function updateRoutingUI() {
     
     updatePrioritySliderUI();
 
+    if (Config.viewMode === 'inspector' && !AppState.PERMISSION_REOPTIMIZE) {
+        return; 
+    }
+
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const routeToggles = document.getElementById('route-view-toggles');
         if (routeToggles) routeToggles.style.display = 'none';
@@ -272,7 +296,6 @@ export function updateRoutingUI() {
     if (maxCluster > 0) {
         if (togglesEl) {
             togglesEl.style.display = 'flex';
-            // Workaround to remove visual border collision when route buttons are visible
             togglesEl.style.borderBottom = 'none'; 
         }
         if (document.getElementById('view-r1-btn')) document.getElementById('view-r1-btn').style.display = maxCluster >= 1 ? 'block' : 'none';
@@ -308,18 +331,38 @@ export function updateRoutingUI() {
             if (restoreBtn) restoreBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
         }
     } else {
-        // INSPECTOR VIEW: Only hide the Routing Module if they don't have reoptimize permissions
         if (!AppState.PERMISSION_REOPTIMIZE) {
             if (routingControls) routingControls.style.display = 'none';
         } else {
+            let isStructurallyAltered = false;
+            try {
+                if (AppState.originalRouteJson) {
+                    const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+                    let routedStops = AppState.stops.filter(s => { 
+                        if (!isRouteAssigned(s.status)) return false; 
+                        if (Config.isManagerView) return String(s.driverId) === String(inspId); 
+                        return s.routeTargetId === String(Config.routeId); 
+                    });
+                    let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
+                    isStructurallyAltered = (JSON.stringify(minified) !== AppState.originalRouteJson);
+                }
+            } catch(e) {}
+
+            if (isStructurallyAltered && currentState === 'Ready') {
+                currentState = 'Staging';
+                if (routingControls) routingControls.setAttribute('data-state', currentState);
+            }
+
             if (currentState === 'Staging') {
                 if (routingControls) routingControls.style.display = 'flex';
                 if (actionBtns) actionBtns.style.width = '100%';
-                if (btnStaging) btnStaging.style.display = 'flex';
-            } else if (AppState.isAlteredRoute && currentState === 'Ready') {
-                if (routingControls) routingControls.style.display = 'flex';
-                if (actionBtns) actionBtns.style.width = '100%';
-                if (btnReady) btnReady.style.display = 'flex';
+                if (btnStaging) {
+                    btnStaging.style.display = 'flex';
+                    const startOverBtn = btnStaging.querySelector('.danger-btn');
+                    if (startOverBtn) startOverBtn.style.display = 'none';
+                }
+            } else {
+                if (routingControls) routingControls.style.display = 'none';
             }
         }
     }
@@ -886,6 +929,14 @@ export function updateSelectionUI() {
         const previewContainer = document.getElementById('mobile-map-selection-preview');
         if (previewContainer) {
             if (hasSelection) {
+                if (window.lastSelectionSize === undefined) window.lastSelectionSize = 0;
+                
+                // If selection increased, automatically jump to the newest item at the end
+                if (AppState.selectedIds.size > window.lastSelectionSize) {
+                    window.mobilePreviewIndex = AppState.selectedIds.size - 1;
+                }
+                window.lastSelectionSize = AppState.selectedIds.size;
+                
                 if (window.mobilePreviewIndex === undefined || window.mobilePreviewIndex >= AppState.selectedIds.size) {
                     window.mobilePreviewIndex = 0;
                 }
@@ -942,6 +993,7 @@ export function updateSelectionUI() {
                 }
             } else {
                 window.mobilePreviewIndex = 0;
+                window.lastSelectionSize = 0;
                 previewContainer.innerHTML = '';
             }
         }
@@ -1046,6 +1098,7 @@ export function initSortable() {
                             if (hasActiveRoutes) { stop.status = 'Routed'; stop.routeState = 'Staging'; markRouteDirty(dId, stop.cluster); }
                         }
                     }
+                    
                     reorderStopsFromDOM(); triggerFullRender(); updateRouteTimes(); silentSaveRouteState();
                 }
             });
@@ -1227,57 +1280,6 @@ export function showAddOrderModal() {
     checkValidity();
 }
 
-export function showUploadModal(file) {
-    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
-    mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
-
-    let isIndividual = document.body.classList.contains('tier-individual');
-    let selectedInspector = isIndividual ? (Config.adminParam || Config.driverParam) : (Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? AppState.currentInspectorFilter : (!Config.isManagerView ? Config.driverParam : null));
-    let selectedCsvType = null;
-
-    let inspectorHtml = '';
-    if (Config.isManagerView && !isIndividual) {
-        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => {
-            let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
-            return `<div class="pill-btn insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
-        }).join('');
-        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 400;">Inspector</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
-    }
-
-    let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
-
-    mc.innerHTML = `
-        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 400;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="upload-close-icon"></i></div>
-            ${inspectorHtml}
-            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 400;">App</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
-            <div style="display: flex; gap: 12px; justify-content: flex-start;">
-                <button id="btn-submit-upload" class="modal-primary-btn" disabled>Submit</button>
-                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button>
-            </div>
-        </div>`;
-    m.style.display = 'flex';
-
-    const checkValidity = () => {
-        const btn = document.getElementById('btn-submit-upload');
-        if (selectedInspector && selectedCsvType) { btn.disabled = false; } 
-        else { btn.disabled = true; }
-    };
-
-    document.querySelectorAll('.insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
-    document.querySelectorAll('.app-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.app-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedCsvType = el.getAttribute('data-val'); checkValidity(); }; });
-    document.getElementById('upload-close-icon').onclick = () => m.style.display = 'none'; document.getElementById('btn-cancel-upload').onclick = () => m.style.display = 'none';
-
-    document.getElementById('btn-submit-upload').onclick = () => {
-        m.style.display = 'none';
-        
-        const uploadEvent = new CustomEvent('sproute-trigger-upload', {
-            detail: { file: file, inspectorId: selectedInspector, csvType: selectedCsvType }
-        });
-        document.dispatchEvent(uploadEvent);
-    };
-}
-
 export function handleOpenEmailModal() {
     if (AppState.currentRouteViewFilter !== 'all') { window.setRouteViewFilter('all'); }
     const insp = AppState.inspectors.find(i => String(i.id) === String(AppState.currentInspectorFilter));
@@ -1286,16 +1288,40 @@ export function handleOpenEmailModal() {
     const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
     mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none'; m.style.display = 'flex';
     
+    let inspEmail = (insp.email || '').toLowerCase().trim();
+    let compEmail = (AppState.companyEmail || '').toLowerCase().trim();
+    let adminEmail = (AppState.adminEmail || '').toLowerCase().trim();
+
+    let ccCompanyHtml = '';
+    if (compEmail && inspEmail !== compEmail) {
+        ccCompanyHtml = `<div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail}</span></label></div>`;
+    }
+
+    let ccMeHtml = '';
+    if (adminEmail && inspEmail !== adminEmail) {
+        ccMeHtml = `<div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail}</span></label></div>`;
+    }
+
     mc.innerHTML = `
         <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 400;">Customize Email Message</h3>
-            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
-            <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
-            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
+            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none; overflow-y: auto;">${AppState.defaultEmailMessage}</textarea>
             <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--accent); font-weight: 400;">${insp.name}</span> at <span style="color: var(--accent); font-weight: 400;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
+            ${ccCompanyHtml}
+            ${ccMeHtml}
+            <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
             <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" class="modal-primary-btn">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button></div>
         </div>`;
+
+    const emailBody = document.getElementById('email-body-text');
+    if (emailBody && Config.viewMode === 'managersmall') {
+        emailBody.style.height = 'auto';
+        emailBody.style.height = (emailBody.scrollHeight) + 'px';
+        emailBody.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    }
 
     document.getElementById('btn-cancel-dispatch').onclick = () => m.style.display = 'none';
 
@@ -1304,10 +1330,15 @@ export function handleOpenEmailModal() {
         btn.innerText = 'Dispatching...'; btn.disabled = true;
 
         const mapContainer = document.getElementById('map-container');
+        
+        const isMobileListHidden = window.getComputedStyle(mapContainer).display === 'none';
+        if (isMobileListHidden) {
+            mapContainer.style.setProperty('display', 'flex', 'important');
+        }
+
         const overlaysToHide = mapContainer.querySelectorAll('.map-overlay-btns, #map-hint');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
 
-        // Add Sproute logo over the Mapbox attribution area
         const sprouteLogoBar = document.createElement('div');
         sprouteLogoBar.style.cssText = 'position: absolute; bottom: 0; left: 0; width: 140px; height: 40px; background-color: #171717; z-index: 10; display: flex; align-items: center; justify-content: center;';
         sprouteLogoBar.innerHTML = `<img src="https://raw.githubusercontent.com/mypieinteractive/Sproute/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 22px; opacity: 0.9;">`;
@@ -1328,7 +1359,7 @@ export function handleOpenEmailModal() {
         mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
         const map = getMapInstance();
         if (map) {
-            map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 120, animate: false });
+            map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 40, animate: false });
             await new Promise(resolve => { map.once('idle', resolve); setTimeout(resolve, 1200); });
         }
 
@@ -1339,18 +1370,57 @@ export function handleOpenEmailModal() {
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
         overlaysToHide.forEach((el, index) => el.style.display = originalDisplays[index]);
         sprouteLogoBar.remove();
+        
+        if (isMobileListHidden) {
+            mapContainer.style.removeProperty('display');
+        }
+
+        let ccCompanyVal = false;
+        const ccCompanyEl = document.getElementById('cc-company-checkbox');
+        if (ccCompanyEl) ccCompanyVal = ccCompanyEl.checked;
+        
+        let addCcVal = '';
+        const ccMeEl = document.getElementById('cc-me-checkbox');
+        if (ccMeEl && ccMeEl.checked) addCcVal = AppState.adminEmail;
+
+        const effectiveDriverId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
 
         try {
             const res = await apiFetch({
-                action: "dispatchRoute", driverId: AppState.currentInspectorFilter, companyId: Config.companyParam || '', routeId: Config.isManagerView ? null : Config.routeId,
-                customBody: document.getElementById('email-body-text').value, ccCompany: document.getElementById('cc-company-checkbox').checked, addCc: document.getElementById('cc-me-checkbox').checked ? AppState.adminEmail : '', ccEmail: document.getElementById('additional-cc-email').value, mapBase64
+                action: "dispatchRoute", 
+                driverId: effectiveDriverId, 
+                companyId: Config.companyParam || '', 
+                routeId: Config.isManagerView ? null : Config.routeId,
+                customBody: document.getElementById('email-body-text').value, 
+                ccCompany: ccCompanyVal, 
+                addCc: addCcVal, 
+                ccEmail: document.getElementById('additional-cc-email').value, 
+                mapBase64
             });
             const result = await res.json();
             
             if (result.success) {
                 m.style.display = 'none';
-                AppState.stops.forEach(s => { if (String(s.driverId) === String(AppState.currentInspectorFilter) && isRouteAssigned(s.status)) { s.routeState = 'Dispatched'; s.status = 'Dispatched'; } });
-                if (Config.isManagerView) { const filterEl = document.getElementById('inspector-filter'); if (filterEl) filterEl.value = 'all'; window.handleInspectorFilterChange('all'); } else { triggerFullRender(); }
+                AppState.stops.forEach(s => { if (String(s.driverId) === String(effectiveDriverId) && isRouteAssigned(s.status)) { s.routeState = 'Dispatched'; s.status = 'Dispatched'; } });
+                if (Config.isManagerView) { 
+                    const filterEl = document.getElementById('inspector-filter'); 
+                    if (filterEl) filterEl.value = 'all'; 
+                    
+                    // Directly call functions from app.js instead of looking for them on window
+                    AppState.currentInspectorFilter = 'all'; 
+                    sessionStorage.setItem('sproute_inspector_filter', 'all');
+                    document.body.classList.add('manager-all-inspectors'); 
+                    document.body.classList.remove('manager-single-inspector');
+                    AppState.selectedIds.clear(); 
+                    AppState.currentRouteViewFilter = 'all';
+                    document.getElementById('view-rall-btn')?.classList.add('active');
+                    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
+                    updateInspectorDropdown(); 
+                    updateRouteButtonColors(); 
+                    triggerFullRender();
+                } else { 
+                    triggerFullRender(); 
+                }
                 const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
                 setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
             } else throw new Error("Dispatch failed");
@@ -1408,238 +1478,3 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-
-window.setDisplayMode = function(mode) {
-    AppState.currentDisplayMode = mode;
-    document.querySelectorAll('.stop-item:not(.static-endpoint), .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
-    document.body.classList.remove('display-compact', 'display-detailed');
-    document.body.classList.add(`display-${mode}`);
-};
-
-window.setRouteViewFilter = function(val) {
-    AppState.currentRouteViewFilter = val;
-    document.getElementById('view-rall-btn')?.classList.toggle('active', val === 'all');
-    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.toggle('active', val === i);
-    if (val !== 'all') {
-        const hiddenIds = [];
-        AppState.selectedIds.forEach(id => {
-            const s = AppState.stops.find(st => String(st.id) === String(id));
-            if (s && isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster !== val) hiddenIds.push(id);
-        });
-        hiddenIds.forEach(id => AppState.selectedIds.delete(id));
-    }
-    triggerFullRender();
-};
-
-window.handleInspectorFilterChange = function(val) {
-    AppState.currentInspectorFilter = val; sessionStorage.setItem('sproute_inspector_filter', val);
-    document.body.classList.toggle('manager-all-inspectors', val === 'all'); document.body.classList.toggle('manager-single-inspector', val !== 'all');
-    AppState.selectedIds.clear(); AppState.currentRouteViewFilter = 'all';
-    document.getElementById('view-rall-btn')?.classList.add('active');
-    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
-    updateInspectorDropdown(); 
-    updateRouteButtonColors(); triggerFullRender();
-};
-
-window.toggleSelectAll = function(cb) {
-    AppState.selectedIds.clear();
-    if (cb.checked) AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter)).forEach(s => AppState.selectedIds.add(s.id));
-    updateSelectionUI();
-};
-
-window.handleInspectorChange = async function(e, rowId, selectEl) {
-    e.stopPropagation(); 
-    const newDriverId = selectEl.value; const newDriverName = selectEl.options[selectEl.selectedIndex].text;
-    let idsToUpdate = [rowId];
-    if (AppState.selectedIds.has(rowId) && AppState.selectedIds.size > 1) {
-        if (await customConfirm(`Reassign all ${AppState.selectedIds.size} selected orders to ${newDriverName}?`)) idsToUpdate = Array.from(AppState.selectedIds); else return;
-    }
-    pushToHistory(); showOverlay();
-    try { 
-        idsToUpdate.forEach(id => {
-            const s = AppState.stops.find(st => String(st.id) === String(id));
-            if (s) {
-                if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
-                s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
-            }
-        });
-        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
-        if (!Config.isManagerView) payload.routeId = Config.routeId;
-        await apiFetch(payload); AppState.selectedIds.clear(); updateInspectorDropdown(); triggerFullRender(); silentSaveRouteState();
-    } catch (err) { hideOverlay(); await customAlert("Error reassigning orders. Please try again."); } 
-    finally { hideOverlay(); }
-};
-
-window.clearSelection = function() {
-    AppState.selectedIds.clear();
-    updateSelectionUI();
-};
-
-window.openNav = function(e, la, ln, addr) { e.stopPropagation(); let p = localStorage.getItem('navPref'); if (!p) { const m = document.getElementById('modal-overlay'); m.style.display = 'flex'; document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;"><h3 style="margin-top:0; font-weight:400;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button class="modal-primary-btn" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:10px 24px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight:400;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; } else { window.launchMaps(p, la, ln, addr); } };
-window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; window.launchMaps(p, la, ln, addr); };
-window.launchMaps = function(p, la, ln, addr) { let safeAddr = encodeURIComponent(addr || "Destination"); if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; };
-
-window.handleEndpointInput = handleEndpointInput;
-window.handleEndpointKeyDown = function(e, type) { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
-window.handleEndpointBlur = function(type, inputEl) { setTimeout(() => { document.getElementById(`autocomplete-${type}`)?.remove(); }, 200); };
-window.showAddOrderModal = showAddOrderModal;
-window.handleOpenEmailModal = handleOpenEmailModal;
-window.resetMapView = resetMapBounds;
-
-window.filterListDOM = function(val) {
-    window.lastAddressSearchValue = val; 
-    const q = val.toLowerCase();
-    document.querySelectorAll('.stop-item, .glide-row').forEach(el => {
-        const searchAttr = el.getAttribute('data-search') || '';
-        el.style.display = searchAttr.includes(q) ? 'flex' : 'none';
-    });
-    const clearIcon = document.getElementById('clear-search-icon');
-    const glassIcon = document.getElementById('search-glass-icon');
-    if(clearIcon) clearIcon.style.display = q ? 'block' : 'none';
-    if(glassIcon) glassIcon.style.display = q ? 'none' : 'block';
-    filterMarkersMap(q);
-};
-
-window.clearAddressSearch = function() {
-    window.lastAddressSearchValue = '';
-    const inp = document.getElementById('address-search-input');
-    if(inp) inp.value = '';
-    window.filterListDOM('');
-};
-
-const mainDropzone = document.getElementById('main-dropzone'); 
-const mainInput = document.getElementById('main-file-input');
-const hiddenFileInput = document.getElementById('hidden-global-file-input');
-
-function handleFileSelection(file) {
-    if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { 
-        customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings.")
-        .then(() => {
-            window.top.location.href = "https://sproute.glide.page/dl/012f16/m/55cb4d";
-        });
-        return; 
-    }
-    if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
-}
-
-if (mainDropzone && mainInput) {
-    mainDropzone.onclick = () => mainInput.click();
-    mainDropzone.ondragover = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--accent)'; mainDropzone.style.backgroundColor = 'var(--bg-hover)'; };
-    mainDropzone.ondragleave = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; };
-    mainDropzone.ondrop = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]); };
-    mainInput.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); mainInput.value = ''; } };
-}
-
-if (hiddenFileInput) {
-    hiddenFileInput.addEventListener('change', (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-            handleFileSelection(e.target.files[0]);
-            hiddenFileInput.value = '';
-        }
-    });
-}
-
-let dragCounter = 0;
-document.addEventListener('dragenter', (e) => {
-    e.preventDefault();
-    dragCounter++;
-    if (dragCounter === 1) document.body.classList.add('drag-override-empty');
-});
-
-document.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    dragCounter--;
-    if (dragCounter === 0) document.body.classList.remove('drag-override-empty');
-});
-
-document.addEventListener('dragover', (e) => { e.preventDefault(); });
-
-document.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dragCounter = 0;
-    document.body.classList.remove('drag-override-empty');
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]);
-});
-
-const resizerEl = document.getElementById('resizer'); const sidebarEl = document.getElementById('sidebar'); const mapWrapEl = document.getElementById('map-wrapper');
-let isResizing = false;
-function startResize(e) { 
-    if(!Config.isManagerView || Config.viewMode === 'managersmall') return; 
-    if (e && e.cancelable && e.type !== 'touchstart') e.preventDefault();
-    isResizing = true; 
-    resizerEl.classList.add('active'); 
-    document.body.style.cursor = 'col-resize'; 
-    document.body.style.userSelect = 'none';
-    mapWrapEl.style.pointerEvents = 'none'; 
-}
-resizerEl.addEventListener('mousedown', startResize); resizerEl.addEventListener('touchstart', (e) => { startResize(e.touches[0]); }, {passive: false});
-
-function performResize(e) {
-    if (!isResizing) return;
-    let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); 
-    
-    let newWidth = window.innerWidth - clientX; 
-    
-    let maxListWidth = Math.max(450, window.innerWidth - 620);
-    if (newWidth > maxListWidth) newWidth = maxListWidth;
-    if (newWidth < 450) newWidth = 450;
-    
-    sidebarEl.style.width = newWidth + 'px';
-    
-    const hlZone = document.getElementById('header-list-zone');
-    if (hlZone) hlZone.style.width = newWidth + 'px';
-}
-
-document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
-function stopResize() { 
-    if (isResizing) { 
-        isResizing = false; 
-        document.body.style.cursor = ''; 
-        document.body.style.userSelect = '';
-        resizerEl.classList.remove('active'); 
-        mapWrapEl.style.pointerEvents = 'auto'; 
-        resizeMap(); 
-    } 
-}
-document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
-
-window.currentMobileMapMode = 'pan';
-window.handleMapModeChange = function(mode) {
-    if (mode !== window.currentMobileMapMode) {
-        if (typeof window.toggleMobileLasso === 'function') window.toggleMobileLasso();
-        window.currentMobileMapMode = mode;
-    }
-};
-
-window.syncBodyHeight = function() {
-    const urlParams = new URLSearchParams(window.location.search);
-    let viewParam = urlParams.get('view');
-    
-    // If no view is provided, safely default to 'inspector' to match app.js behavior
-    if (!viewParam) viewParam = 'inspector';
-    
-    const isMobile = viewParam === 'managersmall' || document.body.classList.contains('view-managersmall');
-    const isInspector = viewParam === 'inspector' || document.body.classList.contains('view-inspector');
-    
-    if (isMobile) {
-        document.body.style.height = ''; 
-    } else if (isInspector) {
-        document.body.style.height = window.innerHeight + 'px';
-    } else {
-        document.body.style.height = (window.innerHeight - 320) + 'px';
-    }
-    
-    const mapWrapper = document.getElementById('map-wrapper');
-    const sidebar = document.getElementById('sidebar');
-    if (mapWrapper) mapWrapper.style.minHeight = '0';
-    if (sidebar) sidebar.style.minHeight = '0';
-    
-    const map = getMapInstance();
-    if (map) map.resize();
-    
-    if (typeof adjustSummaryTextSize === 'function') adjustSummaryTextSize();
-}
-
-window.addEventListener('resize', window.syncBodyHeight);
-document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
-window.syncBodyHeight();
