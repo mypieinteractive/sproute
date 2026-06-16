@@ -1,9 +1,10 @@
-/* Dashboard - V20.6 */
+/* Dashboard - V20.8 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Implemented Grid structure for body.view-inspector #global-header to construct the top and bottom rows via grid-template-areas. */
-/* 2. Added .inspector-only class control to safely isolate the Reset button and Inspector labels. */
-/* 3. Formatted Reset button with danger-btn class styling and hid text on Undo/Add buttons in Inspector view. */
+/* 1. Implemented Grid structure for body.view-inspector #global-header to construct a 4-column, 2-row layout. */
+/* 2. Grouped Reset, Undo, and Add buttons in the bottom right corner with exactly 30px height. */
+/* 3. Formatted Reset button with danger-btn class styling. */
+/* 4. Added custom WebKit scrollbar rules for the Email textarea to permanently paint the thumb. */
 
 :root { 
     /* Base / Accent */
@@ -87,6 +88,12 @@ body {
 #stop-list::-webkit-scrollbar-thumb { background: transparent; }
 #stop-list:hover::-webkit-scrollbar-thumb { background: var(--row-border); }
 
+/* Email Modal Scrollbar Force */
+#email-body-text::-webkit-scrollbar { width: 8px; }
+#email-body-text::-webkit-scrollbar-track { background: var(--bg-base); border-radius: 4px; }
+#email-body-text::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+#email-body-text::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
 #empty-state-container { display: none; }
 body.empty-state-active #empty-state-container,
 body.drag-override-empty #empty-state-container { 
@@ -140,14 +147,11 @@ body.view-inspector .list-subheading {
 /* --- Inspector Header Reorganization via CSS Grid --- */
 body.view-inspector #global-header {
     display: grid !important;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: auto 1fr auto auto;
     grid-template-rows: auto auto;
     padding: 10px 15px !important;
     height: auto !important;
     gap: 10px 8px;
-    grid-template-areas: 
-        "name name date"
-        "rocker actions add";
 }
 
 body.view-inspector #header-map-zone,
@@ -164,23 +168,18 @@ body.view-inspector .add-dropdown-menu {
 }
 
 /* Row 1: Inspector Name & Date */
-body.view-inspector #insp-name { grid-area: name; align-self: center; justify-self: start; font-weight: 600; color: var(--text-main); font-size: 16px; }
-body.view-inspector #insp-dispatch-date { grid-area: date; align-self: center; justify-self: end; color: var(--text-muted); font-size: 13px; }
+body.view-inspector #insp-name { grid-column: 1 / span 3; grid-row: 1; align-self: center; font-weight: 600; color: var(--text-main); font-size: 16px; display: flex; align-items: center; }
+body.view-inspector #insp-dispatch-date { grid-column: 4; grid-row: 1; align-self: center; justify-self: end; color: var(--text-muted); font-size: clamp(10px, 3.5vw, 13px); white-space: nowrap; }
 
 /* Row 2: Rocker & Action Buttons */
-body.view-inspector #contextual-rocker-wrapper { grid-area: rocker; justify-self: start; order: unset !important; margin: 0 !important; }
-body.view-inspector #header-action-container { grid-area: actions; justify-self: end; order: unset !important; margin: 0 !important; display: flex; gap: 8px; }
-body.view-inspector #header-right-controls { grid-area: add; justify-self: end; order: unset !important; margin: 0 !important; }
+body.view-inspector #contextual-rocker-wrapper { grid-column: 1; grid-row: 2; align-self: center; height: 30px; order: unset !important; margin: 0 !important; }
+body.view-inspector #header-action-container { grid-column: 3; grid-row: 2; align-self: center; display: flex; gap: 8px; margin: 0 !important; order: unset !important; }
+body.view-inspector #header-right-controls { grid-column: 4; grid-row: 2; align-self: center; margin: 0 !important; order: unset !important; }
 
 /* Hide text in action buttons to save space on Inspector view */
-body.view-inspector #btn-undo-incremental span,
-body.view-inspector #add-menu-wrapper .header-action-btn span { display: none !important; }
-body.view-inspector #btn-undo-incremental i { margin-right: 0 !important; }
-body.view-inspector #add-menu-wrapper .header-action-btn i { margin-right: 0 !important; margin-left: 0 !important; }
-
-/* Ensure Add Button matches small size when text is hidden */
-body.view-inspector #add-menu-wrapper .header-action-btn { padding: 0 12px !important; }
-body.view-inspector #btn-undo-incremental { padding: 0 12px !important; }
+body.view-inspector .hide-inspector { display: none !important; }
+body.view-inspector .header-action-btn { height: 30px !important; min-height: 30px !important; padding: 0 10px; border-radius: 6px; }
+body.view-inspector .header-action-btn i { margin: 0 !important; }
 
 
 /* --- Manager Shell Layout --- */
