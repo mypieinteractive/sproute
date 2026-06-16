@@ -1,8 +1,9 @@
 /**
  * initialization.js
- * VERSION: V15.4
+ * VERSION: V15.5
  * * CHANGES:
- * V15.4 - Updated Dispatch Link Intercept to safely extract the actual stored driverName from the Dispatch document.
+ * V15.5 - Added explicitly parsed `originalRoute` to the Dispatch intercept return payload 
+ * so the frontend can securely perform a structural comparison for the Reset button.
  */
 
 const { safeJsonParse, formatStopForManager } = require('./helpers');
@@ -55,6 +56,7 @@ async function getDashboardInit(req, res, db) {
             return res.status(200).json({
                 routeId: explicitRouteId,
                 stops: activeStops,
+                originalRoute: originalRoute, 
                 polylines: interceptPolys, 
                 routeStart: driverData.startAddress ? { address: driverData.startAddress, lat: driverData.startLat, lng: driverData.startLng } : null,
                 routeEnd: driverData.endAddress ? { address: driverData.endAddress, lat: driverData.endLat, lng: driverData.endLng } : null,
