@@ -1,12 +1,13 @@
-/* Dashboard - V20.5 */
+/* Dashboard - V20.7 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added population of Inspector Name and Dispatch Date to updateHeaderUI() and bound the Reset button visibility to AppState.isAlteredRoute. */
-/* 2. Restricted updateRoutingUI() for the inspector view to explicitly force 'Staging' state when altered, and hide the 'Start Over' button, leaving only Re-Calculate/Re-Optimize. */
-/* 3. Injected AppState.isAlteredRoute = true into drag-and-drop, bulk-delete, and bulk-unroute to ensure the Reset button triggers correctly. */
+/* 1. handleOpenEmailModal: Reduced padding on map snapshot from 120 to 40. */
+/* 2. handleOpenEmailModal: Temporarily forces map container to display block if hidden in mobile list view for html2canvas. */
+/* 3. updateHeaderUI: Added dynamic injection of AppState.companyLogo into the header. */
+/* 4. updateHeaderUI: Switched Reset button visibility to use strict structural comparison against originalRoute instead of the boolean flag. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
-import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector } from './logic.js';
+import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
 
 // --- Overlays & Modals ---
@@ -77,6 +78,18 @@ export function updateUndoUI() {
     }
 }
 
+function compareRoutes(liveStops, originalStops) {
+    if (!originalStops || originalStops.length === 0) return false;
+    let liveRouted = liveStops.filter(s => isRouteAssigned(s.status)).map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
+    if (liveRouted.length !== originalStops.length) return true;
+    for (let i = 0; i < liveRouted.length; i++) {
+        let l = liveRouted[i];
+        let o = originalStops[i];
+        if (String(l[0]) !== String(o[0]) || String(l[1]) !== String(o[1])) return true;
+    }
+    return false;
+}
+
 export function updateHeaderUI() {
     if (Config.viewMode === 'inspector') {
         const inspNameEl = document.getElementById('insp-name');
@@ -84,14 +97,17 @@ export function updateHeaderUI() {
         const resetBtn = document.getElementById('btn-inspector-reset');
         
         if (inspNameEl) {
-            inspNameEl.innerText = AppState.displayName || AppState.driverName || 'Inspector';
+            let logoHtml = '';
+            if (AppState.companyLogo) {
+                logoHtml = `<img src="${AppState.companyLogo}" style="max-height: 24px; border-radius: 4px; object-fit: contain; margin-right: 10px;">`;
+            }
+            inspNameEl.innerHTML = `${logoHtml}<span>${AppState.displayName || AppState.driverName || 'Inspector'}</span>`;
         }
         
         if (inspDateEl) {
             let displayDate = new Date();
             const activeStops = AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter));
             if (activeStops.length > 0 && activeStops[0].dueDate) {
-                // Safely parse dueDate (YYYY-MM-DD) to prevent timezone shifts
                 const [y, m, d] = activeStops[0].dueDate.split('-');
                 if (y && m && d) displayDate = new Date(y, m - 1, d);
             }
@@ -100,7 +116,15 @@ export function updateHeaderUI() {
         }
 
         if (resetBtn) {
-            resetBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
+            let isStructurallyAltered = false;
+            try {
+                if (AppState.originalRouteJson) {
+                    const originalArr = JSON.parse(AppState.originalRouteJson);
+                    isStructurallyAltered = compareRoutes(AppState.stops, originalArr);
+                }
+            } catch(e) {}
+            
+            resetBtn.style.display = isStructurallyAltered ? 'flex' : 'none';
         }
     }
 
@@ -227,6 +251,10 @@ export function updateRoutingUI() {
     
     updatePrioritySliderUI();
 
+    if (Config.viewMode === 'inspector' && !AppState.PERMISSION_REOPTIMIZE) {
+        return; 
+    }
+
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') {
         const routeToggles = document.getElementById('route-view-toggles');
         if (routeToggles) routeToggles.style.display = 'none';
@@ -273,7 +301,6 @@ export function updateRoutingUI() {
     if (maxCluster > 0) {
         if (togglesEl) {
             togglesEl.style.display = 'flex';
-            // Workaround to remove visual border collision when route buttons are visible
             togglesEl.style.borderBottom = 'none'; 
         }
         if (document.getElementById('view-r1-btn')) document.getElementById('view-r1-btn').style.display = maxCluster >= 1 ? 'block' : 'none';
@@ -309,12 +336,18 @@ export function updateRoutingUI() {
             if (restoreBtn) restoreBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
         }
     } else {
-        // INSPECTOR VIEW: Only hide the Routing Module if they don't have reoptimize permissions
         if (!AppState.PERMISSION_REOPTIMIZE) {
             if (routingControls) routingControls.style.display = 'none';
         } else {
-            // Force Staging state if route is altered so we only see Re-Calculate / Re-Optimize
-            if (AppState.isAlteredRoute && currentState === 'Ready') {
+            let isStructurallyAltered = false;
+            try {
+                if (AppState.originalRouteJson) {
+                    const originalArr = JSON.parse(AppState.originalRouteJson);
+                    isStructurallyAltered = compareRoutes(AppState.stops, originalArr);
+                }
+            } catch(e) {}
+
+            if (isStructurallyAltered && currentState === 'Ready') {
                 currentState = 'Staging';
                 if (routingControls) routingControls.setAttribute('data-state', currentState);
             }
@@ -324,12 +357,10 @@ export function updateRoutingUI() {
                 if (actionBtns) actionBtns.style.width = '100%';
                 if (btnStaging) {
                     btnStaging.style.display = 'flex';
-                    // Explicitly hide the Start Over button for the inspector
                     const startOverBtn = btnStaging.querySelector('.danger-btn');
                     if (startOverBtn) startOverBtn.style.display = 'none';
                 }
             } else {
-                // Hide the controls completely in Pending or Ready state (no Start Over / Optimize / Send Routes)
                 if (routingControls) routingControls.style.display = 'none';
             }
         }
@@ -1303,11 +1334,11 @@ export function handleOpenEmailModal() {
     mc.innerHTML = `
         <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 400;">Customize Email Message</h3>
-            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none;">${AppState.defaultEmailMessage}</textarea>
+            <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none; overflow-y: auto;">${AppState.defaultEmailMessage}</textarea>
+            <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--accent); font-weight: 400;">${insp.name}</span> at <span style="color: var(--accent); font-weight: 400;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-company-checkbox" ${AppState.ccCompanyDefault ? 'checked' : ''} style="margin-top: 4px; transform: scale(1.2);"><label for="cc-company-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC the Company Email<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.companyEmail || 'Company Email Not Found'}</span></label></div>
             <div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail || '[Email not provided]'}</span></label></div>
             <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 10px;"><label for="additional-cc-email" style="font-size: 16px; color: var(--text-main);">Additional CC</label><input type="email" id="additional-cc-email" placeholder="email@example.com" style="width: 100%; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; font-size: 15px; box-sizing: border-box;"></div>
-            <div style="background: var(--bg-hover); border: 1px solid var(--border-color); padding: 16px; border-radius: 6px; font-size: 15px; color: var(--text-main); margin-bottom: 24px; line-height: 1.5;">A list of orders and the map image will be sent to <span style="color: var(--accent); font-weight: 400;">${insp.name}</span> at <span style="color: var(--accent); font-weight: 400;">${insp.email || '[Email not provided]'}</span>, along with a direct link to open the interactive map on their device.</div>
             <div style="display: flex; gap: 12px; justify-content: flex-start;"><button id="btn-submit-dispatch" class="modal-primary-btn">Submit</button><button id="btn-cancel-dispatch" style="padding: 12px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 15px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button></div>
         </div>`;
 
@@ -1318,6 +1349,13 @@ export function handleOpenEmailModal() {
         btn.innerText = 'Dispatching...'; btn.disabled = true;
 
         const mapContainer = document.getElementById('map-container');
+        
+        // Force map container to display so html2canvas can read it even if in mobile list view
+        const isMobileListHidden = window.getComputedStyle(mapContainer).display === 'none';
+        if (isMobileListHidden) {
+            mapContainer.style.setProperty('display', 'flex', 'important');
+        }
+
         const overlaysToHide = mapContainer.querySelectorAll('.map-overlay-btns, #map-hint');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
 
@@ -1342,7 +1380,7 @@ export function handleOpenEmailModal() {
         mapWrapper.style.cssText = `width: ${finalWidth}px !important; height: ${finalHeight}px !important; position: absolute !important; top: 0; left: 0; z-index: 0;`;
         const map = getMapInstance();
         if (map) {
-            map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 120, animate: false });
+            map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 40, animate: false });
             await new Promise(resolve => { map.once('idle', resolve); setTimeout(resolve, 1200); });
         }
 
@@ -1353,6 +1391,10 @@ export function handleOpenEmailModal() {
         if (map) { map.resize(); if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50, animate: false }); }
         overlaysToHide.forEach((el, index) => el.style.display = originalDisplays[index]);
         sprouteLogoBar.remove();
+        
+        if (isMobileListHidden) {
+            mapContainer.style.removeProperty('display');
+        }
 
         try {
             const res = await apiFetch({
