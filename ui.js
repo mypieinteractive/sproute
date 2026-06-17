@@ -1,10 +1,10 @@
-/* Dashboard - V20.9 */
+/* Dashboard - V20.10 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. handleOpenEmailModal: Converted the inline ternary operators for CC checkboxes into bulletproof variable assignments to prevent null reference failures when the elements are hidden. */
-/* 2. handleOpenEmailModal: Added auto-expanding scrollHeight logic for the textarea specifically for the managersmall view. */
-/* 3. updateHeaderUI: Simplified the Reset button logic to use a direct JSON.stringify comparison against AppState.originalRouteJson. */
-/* 4. Massive Code Cleanup: Scrubbed duplicated app.js logic (sortTable, performUpload, setRoutes, drag-and-drop listeners) from the bottom of the file to fix global scope collisions and restore sorting functionality. */
+/* 1. CRITICAL REPAIR: Restored all critical DOM event listeners and purely UI-driven functions (Rocker toggles, Resizer, Drag-and-Drop Uploader, Address Search, Map Nav, and syncBodyHeight) that were accidentally removed in V20.9. */
+/* 2. handleOpenEmailModal: Retained the auto-expanding scrollHeight logic for the textarea on managersmall view. */
+/* 3. handleOpenEmailModal: Retained the smart-hiding logic to omit redundant CC checkboxes. */
+/* 4. updateHeaderUI: Retained the simplified JSON.stringify comparison logic for the Reset button. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -852,7 +852,7 @@ export function createEndpointRow(type, endpointData) {
     return el;
 }
 
-window.prevMobilePreview = function(e) {
+export function prevMobilePreview(e) {
     e.stopPropagation();
     if (window.mobilePreviewIndex > 0) {
         window.mobilePreviewIndex--;
@@ -860,9 +860,9 @@ window.prevMobilePreview = function(e) {
         window.mobilePreviewIndex = AppState.selectedIds.size - 1;
     }
     updateSelectionUI();
-};
+}
 
-window.nextMobilePreview = function(e) {
+export function nextMobilePreview(e) {
     e.stopPropagation();
     if (window.mobilePreviewIndex < AppState.selectedIds.size - 1) {
         window.mobilePreviewIndex++;
@@ -870,7 +870,7 @@ window.nextMobilePreview = function(e) {
         window.mobilePreviewIndex = 0;
     }
     updateSelectionUI();
-};
+}
 
 export function updateSelectionUI() { 
     document.querySelectorAll('.stop-item, .glide-row').forEach(el=>el.classList.remove('selected')); 
@@ -1280,6 +1280,57 @@ export function showAddOrderModal() {
     checkValidity();
 }
 
+export function showUploadModal(file) {
+    const m = document.getElementById('modal-overlay'); const mc = document.getElementById('modal-content');
+    mc.style.padding = '0'; mc.style.background = 'transparent'; mc.style.border = 'none';
+
+    let isIndividual = document.body.classList.contains('tier-individual');
+    let selectedInspector = isIndividual ? (Config.adminParam || Config.driverParam) : (Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? AppState.currentInspectorFilter : (!Config.isManagerView ? Config.driverParam : null));
+    let selectedCsvType = null;
+
+    let inspectorHtml = '';
+    if (Config.isManagerView && !isIndividual) {
+        let inspBtns = AppState.inspectors.filter(i => isTrueInspector(i.isInspector)).map(insp => {
+            let activeClass = (AppState.currentInspectorFilter !== 'all' && String(insp.id) === String(AppState.currentInspectorFilter)) ? 'active' : '';
+            return `<div class="pill-btn insp-pill ${activeClass}" data-val="${insp.id}">${insp.name}</div>`;
+        }).join('');
+        inspectorHtml = `<div style="margin-bottom: 20px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 400;">Inspector</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-insp-container">${inspBtns}</div></div>`;
+    }
+
+    let appBtns = AppState.availableCsvTypes.map(app => `<div class="pill-btn app-pill" data-val="${app}">${app}</div>`).join('');
+
+    mc.innerHTML = `
+        <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 500px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;"><h3 style="margin: 0; font-size: 18px; font-weight: 400;">CSV Import: ${file.name}</h3><i class="fa-solid fa-xmark" style="cursor:pointer; color: var(--text-muted); font-size: 20px;" id="upload-close-icon"></i></div>
+            ${inspectorHtml}
+            <div style="margin-bottom: 30px;"><div style="font-size: 14px; color: var(--text-muted); margin-bottom: 8px; font-weight: 400;">App</div><div style="display: flex; gap: 10px; flex-wrap: wrap;" id="upload-app-container">${appBtns}</div></div>
+            <div style="display: flex; gap: 12px; justify-content: flex-start;">
+                <button id="btn-submit-upload" class="modal-primary-btn" disabled>Submit</button>
+                <button id="btn-cancel-upload" style="padding: 10px 24px; background: transparent; color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; font-weight: 400; cursor: pointer; transition: 0.2s;">Cancel</button>
+            </div>
+        </div>`;
+    m.style.display = 'flex';
+
+    const checkValidity = () => {
+        const btn = document.getElementById('btn-submit-upload');
+        if (selectedInspector && selectedCsvType) { btn.disabled = false; } 
+        else { btn.disabled = true; }
+    };
+
+    document.querySelectorAll('.insp-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.insp-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedInspector = el.getAttribute('data-val'); checkValidity(); }; });
+    document.querySelectorAll('.app-pill').forEach(el => { el.onclick = () => { document.querySelectorAll('.app-pill').forEach(e => e.classList.remove('active')); el.classList.add('active'); selectedCsvType = el.getAttribute('data-val'); checkValidity(); }; });
+    document.getElementById('upload-close-icon').onclick = () => m.style.display = 'none'; document.getElementById('btn-cancel-upload').onclick = () => m.style.display = 'none';
+
+    document.getElementById('btn-submit-upload').onclick = () => {
+        m.style.display = 'none';
+        
+        const uploadEvent = new CustomEvent('sproute-trigger-upload', {
+            detail: { file: file, inspectorId: selectedInspector, csvType: selectedCsvType }
+        });
+        document.dispatchEvent(uploadEvent);
+    };
+}
+
 export function handleOpenEmailModal() {
     if (AppState.currentRouteViewFilter !== 'all') { window.setRouteViewFilter('all'); }
     const insp = AppState.inspectors.find(i => String(i.id) === String(AppState.currentInspectorFilter));
@@ -1331,6 +1382,7 @@ export function handleOpenEmailModal() {
 
         const mapContainer = document.getElementById('map-container');
         
+        // Force map container to display so html2canvas can read it even if in mobile list view
         const isMobileListHidden = window.getComputedStyle(mapContainer).display === 'none';
         if (isMobileListHidden) {
             mapContainer.style.setProperty('display', 'flex', 'important');
@@ -1339,6 +1391,7 @@ export function handleOpenEmailModal() {
         const overlaysToHide = mapContainer.querySelectorAll('.map-overlay-btns, #map-hint');
         const originalDisplays = []; overlaysToHide.forEach((el, index) => { originalDisplays[index] = el.style.display; el.style.display = 'none'; });
 
+        // Add Sproute logo over the Mapbox attribution area
         const sprouteLogoBar = document.createElement('div');
         sprouteLogoBar.style.cssText = 'position: absolute; bottom: 0; left: 0; width: 140px; height: 40px; background-color: #171717; z-index: 10; display: flex; align-items: center; justify-content: center;';
         sprouteLogoBar.innerHTML = `<img src="https://raw.githubusercontent.com/mypieinteractive/Sproute/809b30bc160d3e353020425ce349c77544ed0452/Sproute%20Logo.png" style="height: 22px; opacity: 0.9;">`;
@@ -1406,7 +1459,6 @@ export function handleOpenEmailModal() {
                     const filterEl = document.getElementById('inspector-filter'); 
                     if (filterEl) filterEl.value = 'all'; 
                     
-                    // Directly call functions from app.js instead of looking for them on window
                     AppState.currentInspectorFilter = 'all'; 
                     sessionStorage.setItem('sproute_inspector_filter', 'all');
                     document.body.classList.add('manager-all-inspectors'); 
@@ -1478,3 +1530,250 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+
+// ---------------------------------------------------------
+// CRITICAL REPAIR: RESTORED DOM AND PURE UI BINDINGS
+// ---------------------------------------------------------
+
+window.setDisplayMode = function(mode) {
+    AppState.currentDisplayMode = mode;
+    document.querySelectorAll('.stop-item:not(.static-endpoint), .glide-row').forEach(el => { el.classList.remove('compact', 'detailed'); el.classList.add(mode); });
+    document.body.classList.remove('display-compact', 'display-detailed');
+    document.body.classList.add(`display-${mode}`);
+};
+
+window.setRouteViewFilter = function(val) {
+    AppState.currentRouteViewFilter = val;
+    document.getElementById('view-rall-btn')?.classList.toggle('active', val === 'all');
+    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.toggle('active', val === i);
+    if (val !== 'all') {
+        const hiddenIds = [];
+        AppState.selectedIds.forEach(id => {
+            const s = AppState.stops.find(st => String(st.id) === String(id));
+            if (s && isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster !== val) hiddenIds.push(id);
+        });
+        hiddenIds.forEach(id => AppState.selectedIds.delete(id));
+    }
+    triggerFullRender();
+};
+
+window.handleInspectorFilterChange = function(val) {
+    AppState.currentInspectorFilter = val; sessionStorage.setItem('sproute_inspector_filter', val);
+    document.body.classList.toggle('manager-all-inspectors', val === 'all'); document.body.classList.toggle('manager-single-inspector', val !== 'all');
+    AppState.selectedIds.clear(); AppState.currentRouteViewFilter = 'all';
+    document.getElementById('view-rall-btn')?.classList.add('active');
+    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
+    updateInspectorDropdown(); 
+    updateRouteButtonColors(); triggerFullRender();
+};
+
+window.toggleSelectAll = function(cb) {
+    AppState.selectedIds.clear();
+    if (cb.checked) AppState.stops.filter(s => isStopVisible(s, true, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter)).forEach(s => AppState.selectedIds.add(s.id));
+    updateSelectionUI();
+};
+
+window.handleInspectorChange = async function(e, rowId, selectEl) {
+    e.stopPropagation(); 
+    const newDriverId = selectEl.value; const newDriverName = selectEl.options[selectEl.selectedIndex].text;
+    let idsToUpdate = [rowId];
+    if (AppState.selectedIds.has(rowId) && AppState.selectedIds.size > 1) {
+        if (await customConfirm(`Reassign all ${AppState.selectedIds.size} selected orders to ${newDriverName}?`)) idsToUpdate = Array.from(AppState.selectedIds); else return;
+    }
+    pushToHistory(); showOverlay();
+    try { 
+        idsToUpdate.forEach(id => {
+            const s = AppState.stops.find(st => String(st.id) === String(id));
+            if (s) {
+                if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
+                s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
+            }
+        });
+        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
+        if (!Config.isManagerView) payload.routeId = Config.routeId;
+        await apiFetch(payload); AppState.selectedIds.clear(); updateInspectorDropdown(); triggerFullRender(); silentSaveRouteState();
+    } catch (err) { hideOverlay(); await customAlert("Error reassigning orders. Please try again."); } 
+    finally { hideOverlay(); }
+};
+
+window.clearSelection = function() {
+    AppState.selectedIds.clear();
+    updateSelectionUI();
+};
+
+window.openNav = function(e, la, ln, addr) { 
+    e.stopPropagation(); 
+    let p = localStorage.getItem('navPref'); 
+    if (!p) { 
+        const m = document.getElementById('modal-overlay'); 
+        m.style.display = 'flex'; 
+        document.getElementById('modal-content').innerHTML = `<div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;"><h3 style="margin-top:0; font-weight:400;">Maps Preference:</h3><div style="display:flex; flex-direction:column; gap:8px;"><button class="modal-primary-btn" onclick="setNavPref('google','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Google Maps</button><button style="padding:10px 24px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-hover); color:var(--text-main); cursor:pointer; font-weight:400;" onclick="setNavPref('apple','${la}','${ln}','${(addr||'').replace(/'/g,"\\'")}')">Apple Maps</button></div></div>`; 
+    } else { 
+        window.launchMaps(p, la, ln, addr); 
+    } 
+};
+window.setNavPref = function(p, la, ln, addr) { localStorage.setItem('navPref', p); document.getElementById('modal-overlay').style.display = 'none'; window.launchMaps(p, la, ln, addr); };
+window.launchMaps = function(p, la, ln, addr) { let safeAddr = encodeURIComponent(addr || "Destination"); if (p === 'google') window.location.href = `comgooglemaps://?daddr=${la},${ln}+(${safeAddr})&directionsmode=driving`; else window.location.href = `http://maps.apple.com/?daddr=${la},${ln}&dirflg=d`; };
+
+window.handleEndpointInput = handleEndpointInput;
+window.handleEndpointKeyDown = function(e, type) { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
+window.handleEndpointBlur = function(type, inputEl) { setTimeout(() => { document.getElementById(`autocomplete-${type}`)?.remove(); }, 200); };
+window.showAddOrderModal = showAddOrderModal;
+window.handleOpenEmailModal = handleOpenEmailModal;
+window.resetMapView = resetMapBounds;
+
+window.filterListDOM = function(val) {
+    window.lastAddressSearchValue = val; 
+    const q = val.toLowerCase();
+    document.querySelectorAll('.stop-item, .glide-row').forEach(el => {
+        const searchAttr = el.getAttribute('data-search') || '';
+        el.style.display = searchAttr.includes(q) ? 'flex' : 'none';
+    });
+    const clearIcon = document.getElementById('clear-search-icon');
+    const glassIcon = document.getElementById('search-glass-icon');
+    if(clearIcon) clearIcon.style.display = q ? 'block' : 'none';
+    if(glassIcon) glassIcon.style.display = q ? 'none' : 'block';
+    filterMarkersMap(q);
+};
+
+window.clearAddressSearch = function() {
+    window.lastAddressSearchValue = '';
+    const inp = document.getElementById('address-search-input');
+    if(inp) inp.value = '';
+    window.filterListDOM('');
+};
+
+const mainDropzone = document.getElementById('main-dropzone'); 
+const mainInput = document.getElementById('main-file-input');
+const hiddenFileInput = document.getElementById('hidden-global-file-input');
+
+function handleFileSelection(file) {
+    if (AppState.inspectors.length === 0 || AppState.availableCsvTypes.length === 0) { 
+        customAlert("Before you can upload your first CSV file, you need to set up your Inspector and CSV Column Matching Settings.")
+        .then(() => {
+            window.top.location.href = "https://sproute.glide.page/dl/012f16/m/55cb4d";
+        });
+        return; 
+    }
+    if (file.name.toLowerCase().endsWith('.csv')) showUploadModal(file); else customAlert("Please upload a valid CSV file.");
+}
+
+if (mainDropzone && mainInput) {
+    mainDropzone.onclick = () => mainInput.click();
+    mainDropzone.ondragover = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--accent)'; mainDropzone.style.backgroundColor = 'var(--bg-hover)'; };
+    mainDropzone.ondragleave = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; };
+    mainDropzone.ondrop = (e) => { e.preventDefault(); mainDropzone.style.borderColor = 'var(--border-color)'; mainDropzone.style.backgroundColor = 'transparent'; if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]); };
+    mainInput.onchange = (e) => { if (e.target.files && e.target.files.length > 0) { handleFileSelection(e.target.files[0]); mainInput.value = ''; } };
+}
+
+if (hiddenFileInput) {
+    hiddenFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            handleFileSelection(e.target.files[0]);
+            hiddenFileInput.value = '';
+        }
+    });
+}
+
+let dragCounter = 0;
+document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    if (dragCounter === 1) document.body.classList.add('drag-override-empty');
+});
+
+document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter === 0) document.body.classList.remove('drag-override-empty');
+});
+
+document.addEventListener('dragover', (e) => { e.preventDefault(); });
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    document.body.classList.remove('drag-override-empty');
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]);
+});
+
+const resizerEl = document.getElementById('resizer'); const sidebarEl = document.getElementById('sidebar'); const mapWrapEl = document.getElementById('map-wrapper');
+let isResizing = false;
+function startResize(e) { 
+    if(!Config.isManagerView || Config.viewMode === 'managersmall') return; 
+    if (e && e.cancelable && e.type !== 'touchstart') e.preventDefault();
+    isResizing = true; 
+    resizerEl.classList.add('active'); 
+    document.body.style.cursor = 'col-resize'; 
+    document.body.style.userSelect = 'none';
+    mapWrapEl.style.pointerEvents = 'none'; 
+}
+resizerEl.addEventListener('mousedown', startResize); resizerEl.addEventListener('touchstart', (e) => { startResize(e.touches[0]); }, {passive: false});
+
+function performResize(e) {
+    if (!isResizing) return;
+    let clientX = e.clientX ?? (e.touches ? e.touches[0].clientX : 0); 
+    
+    let newWidth = window.innerWidth - clientX; 
+    
+    let maxListWidth = Math.max(450, window.innerWidth - 620);
+    if (newWidth > maxListWidth) newWidth = maxListWidth;
+    if (newWidth < 450) newWidth = 450;
+    
+    sidebarEl.style.width = newWidth + 'px';
+    
+    const hlZone = document.getElementById('header-list-zone');
+    if (hlZone) hlZone.style.width = newWidth + 'px';
+}
+
+document.addEventListener('mousemove', performResize); document.addEventListener('touchmove', performResize, {passive: false});
+function stopResize() { 
+    if (isResizing) { 
+        isResizing = false; 
+        document.body.style.cursor = ''; 
+        document.body.style.userSelect = '';
+        resizerEl.classList.remove('active'); 
+        mapWrapEl.style.pointerEvents = 'auto'; 
+        resizeMap(); 
+    } 
+}
+document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
+
+window.currentMobileMapMode = 'pan';
+window.handleMapModeChange = function(mode) {
+    if (mode !== window.currentMobileMapMode) {
+        if (typeof window.toggleMobileLasso === 'function') window.toggleMobileLasso();
+        window.currentMobileMapMode = mode;
+    }
+};
+
+window.syncBodyHeight = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    let viewParam = urlParams.get('view');
+    
+    // If no view is provided, safely default to 'inspector' to match app.js behavior
+    if (!viewParam) viewParam = 'inspector';
+    
+    const isMobile = viewParam === 'managersmall' || document.body.classList.contains('view-managersmall');
+    const isInspector = viewParam === 'inspector' || document.body.classList.contains('view-inspector');
+    
+    if (isMobile) {
+        document.body.style.height = ''; 
+    } else if (isInspector) {
+        document.body.style.height = window.innerHeight + 'px';
+    } else {
+        document.body.style.height = (window.innerHeight - 320) + 'px';
+    }
+    
+    const mapWrapper = document.getElementById('map-wrapper');
+    const sidebar = document.getElementById('sidebar');
+    if (mapWrapper) mapWrapper.style.minHeight = '0';
+    if (sidebar) sidebar.style.minHeight = '0';
+    
+    if (typeof adjustSummaryTextSize === 'function') adjustSummaryTextSize();
+}
+
+window.addEventListener('resize', window.syncBodyHeight);
+document.addEventListener('DOMContentLoaded', window.syncBodyHeight);
+window.syncBodyHeight();
