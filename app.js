@@ -644,8 +644,7 @@ export function sortTable(col) {
         return 0;
     });
     
-    // Explicitly call the functions exported from ui.js locally
-    render(); 
+    UI.render(); 
 }
 
 export function setRoutes(num) {
@@ -667,8 +666,8 @@ export function setRoutes(num) {
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
         updateRouteTimes();
     }
-    updateSelectionUI(); 
-    updatePrioritySliderUI();
+    UI.updateSelectionUI(); 
+    UI.updatePrioritySliderUI();
 }
 
 export function moveSelectedToRoute(cIdx) {
@@ -693,7 +692,7 @@ export function liveClusterUpdate() {
         calculateClusters(activeStops, AppState.currentRouteCount, parseInt(document.getElementById('slider-priority')?.value || 0));
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
         updateRouteTimes();
-        render();
+        UI.render();
     }
 }
 
