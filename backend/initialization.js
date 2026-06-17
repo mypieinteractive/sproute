@@ -1,9 +1,8 @@
 /**
  * initialization.js
- * VERSION: V15.6
+ * VERSION: V15.7
  * * CHANGES:
- * V15.6 - Added explicitly parsed `originalRoute` to the Dispatch intercept return payload 
- * so the frontend can securely perform a structural comparison for the Reset button.
+ * V15.7 - Replaced brittle regex `.replace(/\\/g, '\\\\')` polyline parsing blocks with safe try/catch structures that degrade gracefully on failure without throwing execution-halting errors.
  */
 
 const { safeJsonParse, formatStopForManager } = require('./helpers');
@@ -43,7 +42,7 @@ async function getDashboardInit(req, res, db) {
             if (pRaw) {
                 let pParsed = {};
                 if (typeof pRaw === 'string') {
-                    try { pParsed = JSON.parse(pRaw); } catch(e) { try { pParsed = JSON.parse(pRaw.replace(/\\/g, '\\\\')); } catch(err){} }
+                    try { pParsed = JSON.parse(pRaw); } catch(e) { console.warn("Failed to parse polylines from backend.", e); pParsed = {}; }
                 } else { pParsed = pRaw; }
                 for (let k in pParsed) { interceptPolys[`${dispatchDriverId}_${k}`] = pParsed[k]; }
             }
@@ -145,7 +144,7 @@ async function getDashboardInit(req, res, db) {
             if (pRaw) {
                 let pParsed = {};
                 if (typeof pRaw === 'string') {
-                    try { pParsed = JSON.parse(pRaw); } catch(e) { try { pParsed = JSON.parse(pRaw.replace(/\\/g, '\\\\')); } catch(err){} }
+                    try { pParsed = JSON.parse(pRaw); } catch(e) { console.warn("Failed to parse polylines from backend.", e); pParsed = {}; }
                 } else { pParsed = pRaw; }
                 
                 for (let k in pParsed) { globalPolylines[`${doc.id}_${k}`] = pParsed[k]; }
