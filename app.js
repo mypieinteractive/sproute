@@ -1,9 +1,9 @@
-/* Dashboard - V18.20 */
+/* Dashboard - V18.21 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added displayName, companyLogo, and originalRouteJson extraction mapping directly into AppState. */
-/* 2. Updated silentSaveRouteState() to include `polylines: AppState.polylines` in the payload, ensuring that when the frontend deletes a polyline (dirty state), that deletion is synced to the database. */
-/* 3. Updated sortTable() to dynamically fetch driver names from AppState.inspectors instead of trusting the row data, ensuring a perfect alphabetical Inspector column sort. */
+/* 1. Removed brittle regex fallback for parsing polylines in loadData, handleGenerateRoute, and handleCalculate, replacing it with a safe try/catch wrapper that degrades gracefully on malformed payloads. */
+/* 2. Upgraded pushToHistory() to deep clone current endpoints (start and end). */
+/* 3. Upgraded undoLastAction() to compare history endpoints against current endpoints and silently fire a background sync to the backend to maintain UI-Database harmony. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -187,10 +187,7 @@ export async function loadData() {
         if (polyData) {
             if (typeof polyData === 'string') {
                 try { AppState.polylines = JSON.parse(polyData); } 
-                catch (e) {
-                    try { AppState.polylines = JSON.parse(polyData.replace(/\\/g, '\\\\')); } 
-                    catch (err) { AppState.polylines = {}; }
-                }
+                catch (e) { console.warn("Failed to parse polylines from backend.", e); AppState.polylines = {}; }
             } else {
                 AppState.polylines = polyData;
             }
@@ -296,13 +293,52 @@ export function markRouteDirty(driverId, clusterIdx) {
     delete AppState.polylines[String(routeKeyNum)];
 }
 
-export function pushToHistory() { AppState.historyStack.push({ stops: JSON.parse(JSON.stringify(AppState.stops)), dirty: new Set(AppState.dirtyRoutes) }); if (AppState.historyStack.length > 20) AppState.historyStack.shift(); UI.updateUndoUI(); }
+export function pushToHistory() { 
+    AppState.historyStack.push({ 
+        stops: JSON.parse(JSON.stringify(AppState.stops)), 
+        dirty: new Set(AppState.dirtyRoutes),
+        endpoints: {
+            start: AppState.routeStart ? { ...AppState.routeStart } : null,
+            end: AppState.routeEnd ? { ...AppState.routeEnd } : null
+        }
+    }); 
+    if (AppState.historyStack.length > 20) AppState.historyStack.shift(); 
+    UI.updateUndoUI(); 
+}
 
 export async function undoLastAction() {
     if (AppState.historyStack.length === 0) return;
     const last = AppState.historyStack.pop();
     const resurrectedStops = last.stops.filter(oldStop => !AppState.stops.some(currentStop => String(currentStop.id) === String(oldStop.id)));
-    AppState.stops = last.stops; AppState.dirtyRoutes = new Set(last.dirty);
+    AppState.stops = last.stops; 
+    AppState.dirtyRoutes = new Set(last.dirty);
+    
+    let startChanged = JSON.stringify(AppState.routeStart) !== JSON.stringify(last.endpoints?.start);
+    let endChanged = JSON.stringify(AppState.routeEnd) !== JSON.stringify(last.endpoints?.end);
+
+    if (startChanged) AppState.routeStart = last.endpoints?.start || null;
+    if (endChanged) AppState.routeEnd = last.endpoints?.end || null;
+
+    if (startChanged || endChanged) {
+        const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+        if (inspId && inspId !== 'all') {
+            const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView));
+            const hasRouted = activeStops.some(s => String(s.driverId) === String(inspId) && isRouteAssigned(s.status));
+            const targetAction = hasRouted ? 'updateEndpoint' : 'updateInspectorDefault';
+            
+            if (startChanged) {
+                let payload = { action: targetAction, type: 'start', address: AppState.routeStart?.address || '', lat: AppState.routeStart?.lat || null, lng: AppState.routeStart?.lng || null, driverId: inspId };
+                if (!Config.isManagerView) payload.routeId = Config.routeId;
+                apiFetch(payload).catch(e => console.error(e));
+            }
+            if (endChanged) {
+                let payload = { action: targetAction, type: 'end', address: AppState.routeEnd?.address || '', lat: AppState.routeEnd?.lat || null, lng: AppState.routeEnd?.lng || null, driverId: inspId };
+                if (!Config.isManagerView) payload.routeId = Config.routeId;
+                apiFetch(payload).catch(e => console.error(e));
+            }
+        }
+    }
+
     if (resurrectedStops.length > 0) {
         UI.showOverlay();
         try {
@@ -396,7 +432,7 @@ export async function handleGenerateRoute() {
                 let parsed = {};
                 if (typeof pData === 'string') {
                     try { parsed = JSON.parse(pData); } 
-                    catch (e) { try { parsed = JSON.parse(pData.replace(/\\/g, '\\\\')); } catch (err) {} }
+                    catch (e) { console.warn("Failed to parse polylines from backend.", e); parsed = {}; }
                 } else { parsed = pData; }
                 AppState.polylines = { ...AppState.polylines, ...parsed }; // MERGE
             }
@@ -458,7 +494,7 @@ export async function handleCalculate() {
             let parsed = {};
             if (typeof pData === 'string') {
                 try { parsed = JSON.parse(pData); } 
-                catch (e) { try { parsed = JSON.parse(pData.replace(/\\/g, '\\\\')); } catch (err) {} }
+                catch (e) { console.warn("Failed to parse polylines from backend.", e); parsed = {}; }
             } else { parsed = pData; }
             AppState.polylines = { ...AppState.polylines, ...parsed }; // MERGE
         }
