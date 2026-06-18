@@ -1,7 +1,8 @@
 /**
  * postOptimization.js
- * VERSION: V15.5
+ * VERSION: V15.6
  * * CHANGES:
+ * V15.6 - Fixed "ghost" polylines bug: explicitly clear 'activeStaging.polylines' by setting it to '{}' in both resetRoute and dispatchRoute to prevent long-term data bloat in the Users collection.
  * V15.5 - Implemented Transaction Rollback for dispatchRoute. It now saves to the Dispatch document FIRST. If ZeptoMail fails, it deletes the newly created Dispatch document (rollback) and throws an error to the frontend, leaving the User's activeStaging perfectly intact so they can try again.
  */
 
@@ -140,7 +141,8 @@ async function resetRoute(payload, res, db) {
         
         await driverRef.update({ 
             'activeStaging.orders': JSON.stringify(resurrectedTuples),
-            'activeStaging.status': 'Pending' 
+            'activeStaging.status': 'Pending',
+            'activeStaging.polylines': '{}'
         });
         return res.status(200).json({ success: true });
     }
@@ -201,7 +203,8 @@ async function dispatchRoute(payload, res, db, admin) {
     await driverRef.update({
         lockedBy: null,
         'activeStaging.orders': '[]',
-        'activeStaging.status': null
+        'activeStaging.status': null,
+        'activeStaging.polylines': '{}'
     });
 
     return res.status(200).json({ success: true, routeId: routeId });
