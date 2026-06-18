@@ -1,9 +1,8 @@
-/* Dashboard - V20.11 */
+/* Dashboard - V20.12 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added explicit CSS scrollbar styling for #email-body-text in handleOpenEmailModal to ensure it remains persistently visible on WebKit browsers. */
-/* 2. Upgraded the CC checkbox hiding logic to also omit the "CC Me" checkbox if the Admin Email perfectly matches the Company Email. */
-/* 3. Modified the try/catch block in btn-submit-dispatch to capture and display the exact error message from the backend in the customAlert to aid debugging. */
+/* 1. Added nonDestructiveAlert() overlay. This allows us to display dispatch errors without overwriting the innerHTML of the core modal, preserving the user's custom email message if Zeptomail rejects it. */
+/* 2. Updated the btn-submit-dispatch try/catch block to utilize nonDestructiveAlert. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -36,12 +35,33 @@ export function customAlert(msg) {
         mc.innerHTML = `
             <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
                 <h3 style="margin-top:0; font-weight: 400;">Alert</h3>
-                <p style="font-size: 15px; margin-bottom: 20px; font-weight: 400;">${msg}</p>
+                <p style="font-size: 15px; margin-bottom: 20px; font-weight: 400; line-height: 1.5;">${msg}</p>
                 <div style="display:flex; justify-content:flex-end;">
                     <button class="modal-primary-btn" id="modal-alert-ok">OK</button>
                 </div>
             </div>`;
         document.getElementById('modal-alert-ok').onclick = () => { m.style.display = 'none'; resolve(); };
+    });
+}
+
+// A safe overlay alert that will not destroy existing modal HTML
+export function nonDestructiveAlert(msg) {
+    return new Promise(resolve => {
+        const alertDiv = document.createElement('div');
+        alertDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:99999; display:flex;";
+        alertDiv.innerHTML = `
+            <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
+                <h3 style="margin-top:0; font-weight: 400;">Alert</h3>
+                <p style="font-size: 15px; margin-bottom: 20px; font-weight: 400; line-height: 1.5;">${msg}</p>
+                <div style="display:flex; justify-content:flex-end;">
+                    <button class="modal-primary-btn" id="temp-alert-ok">OK</button>
+                </div>
+            </div>`;
+        document.body.appendChild(alertDiv);
+        document.getElementById('temp-alert-ok').onclick = () => {
+            alertDiv.remove();
+            resolve();
+        };
     });
 }
 
@@ -1493,7 +1513,8 @@ export function handleOpenEmailModal() {
             }
         } catch (e) {
             btn.innerText = 'Submit'; btn.disabled = false;
-            await customAlert(`Failed to dispatch route: ${e.message}`);
+            // Calls the new nonDestructiveAlert to keep the email text field untouched!
+            await nonDestructiveAlert(`Failed to dispatch route: ${e.message}`);
         }
     };
 }
