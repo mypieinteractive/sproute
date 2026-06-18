@@ -1,8 +1,9 @@
-/* Dashboard - V20.12 */
+/* Dashboard - V20.13 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added nonDestructiveAlert() overlay. This allows us to display dispatch errors without overwriting the innerHTML of the core modal, preserving the user's custom email message if Zeptomail rejects it. */
-/* 2. Updated the btn-submit-dispatch try/catch block to utilize nonDestructiveAlert. */
+/* 1. Fixed the "Ghost Name" dropdown bug by removing the zero-order filter in updateInspectorDropdown, ensuring all inspectors always appear. */
+/* 2. Fixed the "-- hrs" bug in updateRouteTimes by using a type-safe string comparison (String(s.cluster) === String(i)) so the math loop catches cluster indices formatted as strings. */
+/* 3. Fixed the Inspector State Memory bug in handleInspectorFilterChange by scanning the newly selected inspector's saved orders, calculating their maxCluster, and explicitly updating the global AppState.currentRouteCount and UI buttons to match their specific state. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -154,22 +155,10 @@ export function updateInspectorDropdown() {
     const filterSelect = document.getElementById('inspector-filter');
     if (!filterSelect || !Config.isManagerView) return;
 
-    const validInspectorIds = new Set();
-    AppState.stops.forEach(s => {
-        if (s.driverId) validInspectorIds.add(String(s.driverId));
-    });
-
-    if (AppState.currentInspectorFilter !== 'all' && !validInspectorIds.has(String(AppState.currentInspectorFilter))) {
-        AppState.currentInspectorFilter = 'all';
-        sessionStorage.setItem('sproute_inspector_filter', 'all');
-        document.body.classList.add('manager-all-inspectors');
-        document.body.classList.remove('manager-single-inspector');
-    }
-
     let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
     AppState.inspectors.forEach((i, idx) => { 
-        if (validInspectorIds.has(String(i.id)) && isTrueInspector(i.isInspector)) {
+        if (isTrueInspector(i.isInspector)) {
             const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
             filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 400;">${i.name}</option>`; 
         }
@@ -805,7 +794,8 @@ export function updateRouteTimes() {
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return;
     const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.cluster !== 'X');
     for(let i=0; i<3; i++) {
-        const clusterStops = activeStops.filter(s => s.cluster === i);
+        // FIX: Type safe cluster comparison
+        const clusterStops = activeStops.filter(s => String(s.cluster) === String(i));
         let totalSecs = 0;
         clusterStops.forEach(s => totalSecs += parseFloat(s.durationSecs || 0));
         const hrs = clusterStops.length > 0 ? ((totalSecs + (clusterStops.length * AppState.COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
@@ -1492,17 +1482,7 @@ export function handleOpenEmailModal() {
                     const filterEl = document.getElementById('inspector-filter'); 
                     if (filterEl) filterEl.value = 'all'; 
                     
-                    AppState.currentInspectorFilter = 'all'; 
-                    sessionStorage.setItem('sproute_inspector_filter', 'all');
-                    document.body.classList.add('manager-all-inspectors'); 
-                    document.body.classList.remove('manager-single-inspector');
-                    AppState.selectedIds.clear(); 
-                    AppState.currentRouteViewFilter = 'all';
-                    document.getElementById('view-rall-btn')?.classList.add('active');
-                    for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
-                    updateInspectorDropdown(); 
-                    updateRouteButtonColors(); 
-                    triggerFullRender();
+                    window.handleInspectorFilterChange('all'); 
                 } else { 
                     triggerFullRender(); 
                 }
@@ -1587,7 +1567,7 @@ window.setRouteViewFilter = function(val) {
         const hiddenIds = [];
         AppState.selectedIds.forEach(id => {
             const s = AppState.stops.find(st => String(st.id) === String(id));
-            if (s && isRouteAssigned(s.status) && s.cluster !== 'X' && s.cluster !== val) hiddenIds.push(id);
+            if (s && isRouteAssigned(s.status) && s.cluster !== 'X' && String(s.cluster) !== String(val)) hiddenIds.push(id);
         });
         hiddenIds.forEach(id => AppState.selectedIds.delete(id));
     }
@@ -1600,6 +1580,35 @@ window.handleInspectorFilterChange = function(val) {
     AppState.selectedIds.clear(); AppState.currentRouteViewFilter = 'all';
     document.getElementById('view-rall-btn')?.classList.add('active');
     for(let i=0; i<=2; i++) document.getElementById(`view-r${i}-btn`)?.classList.remove('active');
+    
+    // --- STATE MEMORY SYNC ---
+    let maxCluster = 0;
+    if (val !== 'all') {
+        AppState.stops.forEach(s => {
+            if (String(s.driverId) === String(val) && isRouteAssigned(s.status) && s.cluster !== 'X') {
+                let c = parseInt(s.cluster);
+                if (!isNaN(c) && c > maxCluster) maxCluster = c;
+            }
+        });
+    } else {
+        AppState.stops.forEach(s => {
+            if (isRouteAssigned(s.status) && s.cluster !== 'X') {
+                let c = parseInt(s.cluster);
+                if (!isNaN(c) && c > maxCluster) maxCluster = c;
+            }
+        });
+    }
+    
+    AppState.currentRouteCount = Math.max(1, maxCluster + 1);
+    document.body.setAttribute('data-route-count', AppState.currentRouteCount);
+    
+    for(let i=1; i<=3; i++) {
+        const btn = document.getElementById(`rbtn-${i}`);
+        if(btn) btn.classList.toggle('active', i === AppState.currentRouteCount);
+    }
+    updatePrioritySliderUI(); 
+    // -------------------------
+
     updateInspectorDropdown(); 
     updateRouteButtonColors(); triggerFullRender();
 };
@@ -1802,7 +1811,6 @@ window.syncBodyHeight = function() {
     const urlParams = new URLSearchParams(window.location.search);
     let viewParam = urlParams.get('view');
     
-    // If no view is provided, safely default to 'inspector' to match app.js behavior
     if (!viewParam) viewParam = 'inspector';
     
     const isMobile = viewParam === 'managersmall' || document.body.classList.contains('view-managersmall');
