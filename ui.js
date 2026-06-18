@@ -155,10 +155,22 @@ export function updateInspectorDropdown() {
     const filterSelect = document.getElementById('inspector-filter');
     if (!filterSelect || !Config.isManagerView) return;
 
+    const validInspectorIds = new Set();
+    AppState.stops.forEach(s => {
+        if (s.driverId) validInspectorIds.add(String(s.driverId));
+    });
+
+    if (AppState.currentInspectorFilter !== 'all' && !validInspectorIds.has(String(AppState.currentInspectorFilter))) {
+        AppState.currentInspectorFilter = 'all';
+        sessionStorage.setItem('sproute_inspector_filter', 'all');
+        document.body.classList.add('manager-all-inspectors');
+        document.body.classList.remove('manager-single-inspector');
+    }
+
     let filterHtml = '<option value="all" style="color: var(--text-main);">All Inspectors</option>';
     
     AppState.inspectors.forEach((i, idx) => { 
-        if (isTrueInspector(i.isInspector)) {
+        if (validInspectorIds.has(String(i.id)) && isTrueInspector(i.isInspector)) {
             const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
             filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 400;">${i.name}</option>`; 
         }
