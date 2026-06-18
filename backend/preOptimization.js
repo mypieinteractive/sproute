@@ -1,7 +1,8 @@
 /**
  * preOptimization.js
- * VERSION: V15.0
+ * VERSION: V15.1
  * * CHANGES:
+ * V15.1 - Wrapped CSV parse() in a try/catch block and added relax_quotes. Prevents the backend from crashing and hanging the frontend indefinitely if a user uploads a malformed CSV with unclosed quotes.
  * V1.42 - Active Array Evaluation. Re-introduced evaluateRouteState into the 
  * mutation endpoints. If a manager removes all routed ('R') orders but 'P' 
  * orders remain, the backend will now catch the array change and revert the 
@@ -105,7 +106,19 @@ async function uploadCsv(payload, res, db, admin) {
         }
     });
 
-    const records = parse(csvData, { skip_empty_lines: true, relax_column_count: true });
+    // CRITICAL FIX: Wrapped in a try/catch with relax_quotes to prevent backend crash loops!
+    let records = [];
+    try {
+        records = parse(csvData, { 
+            skip_empty_lines: true, 
+            relax_column_count: true,
+            relax_quotes: true
+        });
+    } catch (parseError) {
+        console.error("CSV Parse Error:", parseError);
+        return res.status(400).json({ error: `Failed to read CSV. Please check the file for formatting errors (e.g. unclosed quotation marks). Details: ${parseError.message}` });
+    }
+
     const fallbackState = 'TX';
     const mapsApiKey = process.env.MAPS_API_KEY;
     
