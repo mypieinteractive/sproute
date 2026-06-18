@@ -1618,19 +1618,33 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
         if (await customConfirm(`Reassign all ${AppState.selectedIds.size} selected orders to ${newDriverName}?`)) idsToUpdate = Array.from(AppState.selectedIds); else return;
     }
     pushToHistory(); showOverlay();
+    
+    let affectedDrivers = new Set();
+    affectedDrivers.add(String(newDriverId)); 
+    
     try { 
         idsToUpdate.forEach(id => {
             const s = AppState.stops.find(st => String(st.id) === String(id));
             if (s) {
+                if (s.driverId) affectedDrivers.add(String(s.driverId)); 
                 if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
                 s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
             }
         });
         let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
-        await apiFetch(payload); AppState.selectedIds.clear(); updateInspectorDropdown(); triggerFullRender(); silentSaveRouteState();
-    } catch (err) { hideOverlay(); await customAlert("Error reassigning orders. Please try again."); } 
-    finally { hideOverlay(); }
+        
+        await apiFetch(payload); 
+        AppState.selectedIds.clear(); 
+        updateInspectorDropdown(); 
+        triggerFullRender(); 
+        
+        affectedDrivers.forEach(dId => silentSaveRouteState(dId));
+    } catch (err) { 
+        hideOverlay(); await customAlert("Error reassigning orders. Please try again."); 
+    } finally { 
+        hideOverlay(); 
+    }
 };
 
 window.clearSelection = function() {
