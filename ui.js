@@ -1,10 +1,9 @@
-/* Dashboard - V20.10 */
+/* Dashboard - V20.11 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. CRITICAL REPAIR: Restored all critical DOM event listeners and purely UI-driven functions (Rocker toggles, Resizer, Drag-and-Drop Uploader, Address Search, Map Nav, and syncBodyHeight) that were accidentally removed in V20.9. */
-/* 2. handleOpenEmailModal: Retained the auto-expanding scrollHeight logic for the textarea on managersmall view. */
-/* 3. handleOpenEmailModal: Retained the smart-hiding logic to omit redundant CC checkboxes. */
-/* 4. updateHeaderUI: Retained the simplified JSON.stringify comparison logic for the Reset button. */
+/* 1. Added explicit CSS scrollbar styling for #email-body-text in handleOpenEmailModal to ensure it remains persistently visible on WebKit browsers. */
+/* 2. Upgraded the CC checkbox hiding logic to also omit the "CC Me" checkbox if the Admin Email perfectly matches the Company Email. */
+/* 3. Modified the try/catch block in btn-submit-dispatch to capture and display the exact error message from the backend in the customAlert to aid debugging. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -1349,11 +1348,25 @@ export function handleOpenEmailModal() {
     }
 
     let ccMeHtml = '';
-    if (adminEmail && inspEmail !== adminEmail) {
+    if (adminEmail && inspEmail !== adminEmail && adminEmail !== compEmail) {
         ccMeHtml = `<div style="margin-bottom: 24px; display: flex; align-items: flex-start; gap: 10px;"><input type="checkbox" id="cc-me-checkbox" checked style="margin-top: 4px; transform: scale(1.2);"><label for="cc-me-checkbox" style="font-size: 16px; cursor: pointer; color: var(--text-main);">CC Me<br><span style="font-size: 14px; color: var(--text-muted);">${AppState.adminEmail}</span></label></div>`;
     }
 
     mc.innerHTML = `
+        <style>
+            #email-body-text::-webkit-scrollbar {
+                width: 8px;
+                background-color: var(--bg-panel);
+            }
+            #email-body-text::-webkit-scrollbar-thumb {
+                background-color: var(--row-text-muted);
+                border-radius: 4px;
+            }
+            #email-body-text::-webkit-scrollbar-track {
+                background-color: var(--bg-base);
+                border-radius: 4px;
+            }
+        </style>
         <div style="background: var(--bg-panel); padding: 24px; border-radius: 8px; width: 600px; max-width: 90%; color: var(--text-main); text-align: left; box-sizing: border-box; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
             <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; font-weight: 400;">Customize Email Message</h3>
             <textarea id="email-body-text" style="width: 100%; min-height: 150px; background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; font-family: inherit; font-size: 15px; line-height: 1.5; margin-bottom: 24px; box-sizing: border-box; resize: none; overflow-y: auto;">${AppState.defaultEmailMessage}</textarea>
@@ -1475,10 +1488,12 @@ export function handleOpenEmailModal() {
                 }
                 const toast = document.createElement('div'); toast.innerText = 'Route Sent!'; toast.style.cssText = 'position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 20px; font-weight: 400; font-size: 14px; z-index: 9999; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: opacity 0.3s;'; document.body.appendChild(toast);
                 setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 1000);
-            } else throw new Error("Dispatch failed");
+            } else {
+                throw new Error(result.error || result.message || "Dispatch API returned failure status.");
+            }
         } catch (e) {
             btn.innerText = 'Submit'; btn.disabled = false;
-            await customAlert("Failed to dispatch route. Please try again.");
+            await customAlert(`Failed to dispatch route: ${e.message}`);
         }
     };
 }
