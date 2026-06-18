@@ -280,7 +280,7 @@ export function updateRoutingUI() {
     }
 
     let targetStops = Config.isManagerView ? AppState.stops.filter(s => String(s.driverId) === String(AppState.currentInspectorFilter)) : AppState.stops;
-    targetStops = targetStops.filter(s => s.status !== 'Deleted' && s.status !== 'Cancelled');
+    targetStops = targetStops.filter(s => isActiveStop(s, Config.isManagerView));
 
     if (targetStops.length === 0) {
         AppState.currentRoutingState = 'Pending';
@@ -492,7 +492,16 @@ export function render() {
         }
     }
 
-    const processStop = (s, displayIndex) => {
+    const clusterCounts = {};
+    const getDisplayIndex = (s) => {
+        const key = `${s.driverId || 'unassigned'}_${s.cluster}`;
+        if (!clusterCounts[key]) clusterCounts[key] = 0;
+        clusterCounts[key]++;
+        return clusterCounts[key];
+    };
+
+    const processStop = (s, passedDisplayIndex) => {
+        const displayIndex = passedDisplayIndex !== undefined ? passedDisplayIndex : getDisplayIndex(s);
         const item = document.createElement('div');
         item.id = `item-${s.id}`;
         item.setAttribute('data-search', `${(s.address||'').toLowerCase()} ${(s.client||'').toLowerCase()}`);
@@ -620,7 +629,7 @@ export function render() {
                 const el = document.createElement('div'); el.className = 'list-subheading'; el.innerText = 'UNROUTED ORDERS';
                 unroutedDiv.appendChild(el); 
             }
-            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s, i + 1)); });
+            unroutedStops.forEach((s, i) => { unroutedDiv.appendChild(processStop(s)); });
         }
         
         if (routedStops.length > 0) {
@@ -633,7 +642,7 @@ export function render() {
                     routedDiv.className = 'routed-group-container'; routedDiv.style.minHeight = '30px';
                     listContainer.appendChild(routedDiv);
                     routedDiv.appendChild(createRouteSubheading(clusterId, cStops)); 
-                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s, i + 1)); });
+                    cStops.forEach((s, i) => { routedDiv.appendChild(processStop(s)); });
                 }
             });
         }
@@ -642,7 +651,7 @@ export function render() {
         const mainDiv = document.createElement('div');
         mainDiv.id = 'main-list-container';
         listContainer.appendChild(mainDiv);
-        if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s, i + 1)));
+        if (activeStops.length > 0) activeStops.forEach((s, i) => mainDiv.appendChild(processStop(s)));
     }
 
     setTimeout(() => { 

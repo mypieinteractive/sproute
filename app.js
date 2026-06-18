@@ -732,7 +732,12 @@ export function sortTable(col) {
         
         if (valA < valB) return AppState.currentSort.asc ? -1 : 1;
         if (valA > valB) return AppState.currentSort.asc ? 1 : -1;
-        return 0;
+
+        // Secondary sort if primary matches (especially for Inspector column to group by Route -> Sequence)
+        let cA = a.cluster === 'X' ? 999 : (a.cluster || 0);
+        let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
+        if (cA !== cB) return cA - cB;
+        return timeToMins(a.eta) - timeToMins(b.eta);
     });
     
     UI.render(); 
