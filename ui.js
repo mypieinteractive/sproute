@@ -48,7 +48,7 @@ export function customAlert(msg) {
 export function nonDestructiveAlert(msg) {
     return new Promise(resolve => {
         const alertDiv = document.createElement('div');
-        alertDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:99999; display:flex;";
+        alertDiv.style.cssText = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:2147483647; display:flex;";
         alertDiv.innerHTML = `
             <div style="background: var(--bg-panel); padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; color: var(--text-main); text-align: left; box-shadow: 0 10px 25px rgba(0,0,0,0.5); margin: auto;">
                 <h3 style="margin-top:0; font-weight: 400;">Alert</h3>
