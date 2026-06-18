@@ -1,7 +1,8 @@
-/* Dashboard - V18.22 */
+/* Dashboard - V18.23 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Implemented "Polyline Detox" inside silentSaveRouteState(). It now intercepts AppState.polylines, filters out other inspectors' data, and permanently strips all Driver ID prefixes from the keys (eradicating the infinite string loop bug) before saving the clean data back to Firestore. */
+/* 1. Updated silentSaveRouteState to accept an explicit explicitDriverId parameter, allowing it to bypass the UI dropdown filter guard. */
+/* 2. Modified triggerBulkDelete, triggerBulkUnroute, handleStartOver, and moveSelectedToRoute to capture a Set of affected driver IDs before UI updates, explicitly calling silentSaveRouteState for each affected driver to guarantee polylines are erased even if the UI auto-switches to "All Inspectors". */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -347,10 +348,15 @@ export async function undoLastAction() {
     triggerFullRender(); UI.updateRouteTimes(); UI.updateUndoUI(); silentSaveRouteState(); 
 }
 
-export function silentSaveRouteState() {
-    const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+export function silentSaveRouteState(explicitDriverId = null) {
+    const inspId = explicitDriverId || (Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam);
     if (inspId === 'all' || !inspId) return;
-    let routedStops = AppState.stops.filter(s => { if (!isRouteAssigned(s.status)) return false; if (Config.isManagerView) return String(s.driverId) === String(inspId); return s.routeTargetId === String(Config.routeId); });
+    
+    let routedStops = AppState.stops.filter(s => { 
+        if (!isRouteAssigned(s.status)) return false; 
+        if (Config.isManagerView) return String(s.driverId) === String(inspId); 
+        return s.routeTargetId === String(Config.routeId); 
+    });
     
     let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
     let macroState = 'Ready';
@@ -360,14 +366,12 @@ export function silentSaveRouteState() {
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
     
     // POLYLINE DETOX SCRIPT
-    // Filters out other inspectors and aggressively scrubs Driver IDs from keys
     let sanitizedPolylines = {};
     if (AppState.polylines) {
         Object.keys(AppState.polylines).forEach(key => {
             const strKey = String(key);
-            const routeNum = strKey.split('_').pop(); // Safely pops off all prefixes, leaving just "1", "2", etc.
+            const routeNum = strKey.split('_').pop(); 
             
-            // Only keep it if it belongs to the current inspector (has their ID) OR has no ID prefix at all
             if (!strKey.includes('_') || strKey.includes(String(inspId))) {
                 sanitizedPolylines[routeNum] = AppState.polylines[key];
             }
@@ -527,14 +531,37 @@ export async function triggerBulkDelete() {
 
     try {
         let idsToDelete = Array.from(AppState.selectedIds);
-        idsToDelete.forEach(id => { const s = AppState.stops.find(st => String(st.id) === String(id)); if (s && isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); });
-        let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete }; if (!Config.isManagerView) payload.routeId = Config.routeId;
+        let affectedDrivers = new Set();
         
-        await apiFetch(payload); AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); AppState.selectedIds.clear(); 
+        idsToDelete.forEach(id => { 
+            const s = AppState.stops.find(st => String(st.id) === String(id)); 
+            if (s) {
+                if (s.driverId) affectedDrivers.add(String(s.driverId));
+                if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
+            }
+        });
+        
+        let payload = { action: 'deleteMultipleOrders', rowIds: idsToDelete }; 
+        if (!Config.isManagerView) payload.routeId = Config.routeId;
+        
+        await apiFetch(payload); 
+        AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); 
+        AppState.selectedIds.clear(); 
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
-        UI.updateInspectorDropdown(); UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
-    } catch (err) { UI.hideOverlay(); await UI.customAlert("Error deleting orders. Please try again."); } finally { UI.hideOverlay(); }
+        UI.updateInspectorDropdown(); 
+        UI.reorderStopsFromDOM(); 
+        triggerFullRender(); 
+        UI.updateRouteTimes(); 
+        
+        if (affectedDrivers.size > 0) {
+            affectedDrivers.forEach(dId => silentSaveRouteState(dId));
+        } else {
+            silentSaveRouteState();
+        }
+    } catch (err) { 
+        UI.hideOverlay(); await UI.customAlert("Error deleting orders. Please try again."); 
+    } finally { UI.hideOverlay(); }
 }
 
 export async function triggerBulkUnroute() { 
@@ -543,10 +570,13 @@ export async function triggerBulkUnroute() {
 
     try {
         let updatesArray = [];
+        let affectedDrivers = new Set();
+        
         Array.from(AppState.selectedIds).forEach(id => {
             const idx = AppState.stops.findIndex(s => String(s.id) === String(id)); let dId = null;
             if (idx > -1) {
                 dId = AppState.stops[idx].driverId;
+                if (dId) affectedDrivers.add(String(dId));
                 if (isRouteAssigned(AppState.stops[idx].status)) markRouteDirty(AppState.stops[idx].driverId, AppState.stops[idx].cluster);
                 AppState.stops[idx].status = 'Pending'; AppState.stops[idx].cluster = 'X'; AppState.stops[idx].manualCluster = false; AppState.stops[idx].eta = ''; AppState.stops[idx].dist = 0; AppState.stops[idx].durationSecs = 0;
                 if (Config.viewMode === 'inspector') AppState.stops[idx].hiddenInInspector = true; 
@@ -557,10 +587,22 @@ export async function triggerBulkUnroute() {
         let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
-        await apiFetch(payload); AppState.selectedIds.clear(); 
+        await apiFetch(payload); 
+        AppState.selectedIds.clear(); 
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
-        UI.reorderStopsFromDOM(); triggerFullRender(); UI.updateRouteTimes(); silentSaveRouteState();
-    } catch (err) { UI.hideOverlay(); await UI.customAlert("Error removing orders from the route. Please try again."); } finally { UI.hideOverlay(); }
+        
+        UI.reorderStopsFromDOM(); 
+        triggerFullRender(); 
+        UI.updateRouteTimes(); 
+        
+        if (affectedDrivers.size > 0) {
+            affectedDrivers.forEach(dId => silentSaveRouteState(dId));
+        } else {
+            silentSaveRouteState();
+        }
+    } catch (err) { 
+        UI.hideOverlay(); await UI.customAlert("Error removing orders from the route. Please try again."); 
+    } finally { UI.hideOverlay(); }
 }
 
 export async function handleStartOver() {
@@ -599,7 +641,7 @@ export async function handleStartOver() {
         UI.reorderStopsFromDOM(); 
         triggerFullRender(); 
         UI.updateRouteTimes(); 
-        silentSaveRouteState();
+        silentSaveRouteState(targetDriverId);
     } catch (err) { 
         UI.hideOverlay(); 
         await UI.customAlert("Error starting over. Please try again."); 
@@ -720,10 +762,15 @@ export function setRoutes(num) {
 }
 
 export function moveSelectedToRoute(cIdx) {
-    pushToHistory(); let movedStops = []; const hasActiveRoutes = AppState.stops.some(st => isRouteAssigned(st.status));
+    pushToHistory(); 
+    let movedStops = []; 
+    const hasActiveRoutes = AppState.stops.some(st => isRouteAssigned(st.status));
+    let affectedDrivers = new Set();
+    
     AppState.selectedIds.forEach(id => {
         const s = AppState.stops.find(st => String(st.id) === String(id));
         if (s) {
+            if(s.driverId) affectedDrivers.add(String(s.driverId));
             if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
             s.cluster = cIdx; s.manualCluster = true; 
             if (hasActiveRoutes) { s.status = 'Routed'; s.routeState = 'Staging'; markRouteDirty(s.driverId, s.cluster); }
@@ -731,8 +778,18 @@ export function moveSelectedToRoute(cIdx) {
         }
     });
     
-    AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); AppState.stops.push(...movedStops); AppState.selectedIds.clear();
-    triggerFullRender(); updateRouteTimes(); silentSaveRouteState();
+    AppState.stops = AppState.stops.filter(s => !AppState.selectedIds.has(s.id)); 
+    AppState.stops.push(...movedStops); 
+    AppState.selectedIds.clear();
+    
+    triggerFullRender(); 
+    updateRouteTimes(); 
+    
+    if (affectedDrivers.size > 0) {
+        affectedDrivers.forEach(dId => silentSaveRouteState(dId));
+    } else {
+        silentSaveRouteState();
+    }
 }
 
 export function liveClusterUpdate() {
