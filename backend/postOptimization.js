@@ -1,9 +1,8 @@
 /**
  * postOptimization.js
- * VERSION: V15.4
+ * VERSION: V15.5
  * * CHANGES:
- * V15.4 - Re-architected dispatchRoute to a strict "Hard Fail" flow: It now attempts the ZeptoMail dispatch FIRST. If the email fails, it aborts the process entirely, preserving the activeStaging data. 
- * V15.4 - Removed mapBase64 from being saved into the Dispatch document to prevent crashing against Firestore's strict 1MB document size limit.
+ * V15.5 - Implemented Transaction Rollback for dispatchRoute. It now saves to the Dispatch document FIRST. If ZeptoMail fails, it deletes the newly created Dispatch document (rollback) and throws an error to the frontend, leaving the User's activeStaging perfectly intact so they can try again.
  */
 
 const { safeJsonParse } = require('./helpers');
@@ -164,18 +163,9 @@ async function dispatchRoute(payload, res, db, admin) {
     const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
     const baselinePolys = driverData.activeStaging?.polylines || "{}";
 
-    // --- 1. ATTEMPT EMAIL FIRST (Strict Transactional Hard Fail Flow) ---
-    try {
-        await sendRouteEmail(db, payload, routeId, driverData);
-    } catch (emailError) {
-        console.error("ZeptoMail failed. Aborting route dispatch:", emailError);
-        // Returns a 400 error. Firestore is completely untouched. Frontend modal stays open.
-        return res.status(400).json({ error: "Email failed to send: " + emailError.message });
-    }
-
-    // --- 2. EMAIL SUCCESSFUL - COMMIT TO FIRESTORE ---
     const dispatchRef = db.collection('Dispatch').doc(routeId);
 
+    // --- 1. WRITE TO DISPATCH DOCUMENT FIRST ---
     await dispatchRef.set({
         routeId: routeId,
         driverId: payload.driverId || "",
@@ -185,7 +175,6 @@ async function dispatchRoute(payload, res, db, admin) {
         originalRoute: stagingJsonStr,
         polylines: baselinePolys, 
         currentPolylines: baselinePolys, 
-        // Notice: mapBase64 is intentionally omitted here to prevent hitting the 1MB Firestore limit.
         customBody: payload.customBody || "",
         ccCompany: payload.ccCompany || false,
         addCc: payload.addCc || "",
@@ -195,6 +184,20 @@ async function dispatchRoute(payload, res, db, admin) {
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
+    // --- 2. ATTEMPT EMAIL DISPATCH ---
+    try {
+        await sendRouteEmail(db, payload, routeId, driverData);
+    } catch (emailError) {
+        console.error("ZeptoMail failed. Initiating database rollback:", emailError);
+        
+        // --- 3A. ROLLBACK: DELETE THE DISPATCH DOCUMENT ---
+        await dispatchRef.delete();
+        
+        // Return error to frontend so the modal stays open and Staging is untouched
+        return res.status(400).json({ error: "Email failed to send. Route reverted to Staging. Error: " + emailError.message });
+    }
+
+    // --- 3B. EMAIL SUCCESSFUL - CLEAR STAGING FROM USERS ---
     await driverRef.update({
         lockedBy: null,
         'activeStaging.orders': '[]',
