@@ -1,9 +1,7 @@
-/* Dashboard - V18.21 */
+/* Dashboard - V18.22 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Removed brittle regex fallback for parsing polylines in loadData, handleGenerateRoute, and handleCalculate, replacing it with a safe try/catch wrapper that degrades gracefully on malformed payloads. */
-/* 2. Upgraded pushToHistory() to deep clone current endpoints (start and end). */
-/* 3. Upgraded undoLastAction() to compare history endpoints against current endpoints and silently fire a background sync to the backend to maintain UI-Database harmony. */
+/* 1. Implemented "Polyline Detox" inside silentSaveRouteState(). It now intercepts AppState.polylines, filters out other inspectors' data, and permanently strips all Driver ID prefixes from the keys (eradicating the infinite string loop bug) before saving the clean data back to Firestore. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -361,7 +359,22 @@ export function silentSaveRouteState() {
     else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
     
-    let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState, polylines: AppState.polylines };
+    // POLYLINE DETOX SCRIPT
+    // Filters out other inspectors and aggressively scrubs Driver IDs from keys
+    let sanitizedPolylines = {};
+    if (AppState.polylines) {
+        Object.keys(AppState.polylines).forEach(key => {
+            const strKey = String(key);
+            const routeNum = strKey.split('_').pop(); // Safely pops off all prefixes, leaving just "1", "2", etc.
+            
+            // Only keep it if it belongs to the current inspector (has their ID) OR has no ID prefix at all
+            if (!strKey.includes('_') || strKey.includes(String(inspId))) {
+                sanitizedPolylines[routeNum] = AppState.polylines[key];
+            }
+        });
+    }
+    
+    let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState, polylines: sanitizedPolylines };
     if (!Config.isManagerView) payload.routeId = Config.routeId;
     apiFetch(payload).catch(e => console.log(e));
 }
