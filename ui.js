@@ -6,9 +6,8 @@
 /* 3. Fixed the Inspector State Memory bug in handleInspectorFilterChange by scanning the newly selected inspector's saved orders, calculating their maxCluster, and explicitly updating the global AppState.currentRouteCount and UI buttons to match their specific state. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
-import { isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
+import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
-
 // --- Overlays & Modals ---
 
 export function showOverlay(title = "Processing...", subtext = "Syncing data with the server") {
