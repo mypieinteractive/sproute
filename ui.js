@@ -157,7 +157,10 @@ export function updateInspectorDropdown() {
 
     const validInspectorIds = new Set();
     AppState.stops.forEach(s => {
-        if (s.driverId) validInspectorIds.add(String(s.driverId));
+        // CRITICAL FIX: Only add their ID if they actually have ACTIVE orders!
+        if (s.driverId && isActiveStop(s, Config.isManagerView)) {
+            validInspectorIds.add(String(s.driverId));
+        }
     });
 
     if (AppState.currentInspectorFilter !== 'all' && !validInspectorIds.has(String(AppState.currentInspectorFilter))) {
