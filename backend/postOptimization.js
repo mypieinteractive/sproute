@@ -1,8 +1,9 @@
 /**
  * postOptimization.js
- * VERSION: V15.3
+ * VERSION: V15.4
  * * CHANGES:
- * V15.3 - Updated dispatchRoute to explicitly capture and store `driverName` into the Dispatch document.
+ * V15.4 - Re-architected dispatchRoute to a strict "Hard Fail" flow: It now attempts the ZeptoMail dispatch FIRST. If the email fails, it aborts the process entirely, preserving the activeStaging data. 
+ * V15.4 - Removed mapBase64 from being saved into the Dispatch document to prevent crashing against Firestore's strict 1MB document size limit.
  */
 
 const { safeJsonParse } = require('./helpers');
@@ -161,9 +162,19 @@ async function dispatchRoute(payload, res, db, admin) {
 
     const routeId = new Date().getTime().toString();
     const dashboardLink = `https://mypieinteractive.github.io/Sproute/?id=${routeId}`;
-    const dispatchRef = db.collection('Dispatch').doc(routeId);
-    
     const baselinePolys = driverData.activeStaging?.polylines || "{}";
+
+    // --- 1. ATTEMPT EMAIL FIRST (Strict Transactional Hard Fail Flow) ---
+    try {
+        await sendRouteEmail(db, payload, routeId, driverData);
+    } catch (emailError) {
+        console.error("ZeptoMail failed. Aborting route dispatch:", emailError);
+        // Returns a 400 error. Firestore is completely untouched. Frontend modal stays open.
+        return res.status(400).json({ error: "Email failed to send: " + emailError.message });
+    }
+
+    // --- 2. EMAIL SUCCESSFUL - COMMIT TO FIRESTORE ---
+    const dispatchRef = db.collection('Dispatch').doc(routeId);
 
     await dispatchRef.set({
         routeId: routeId,
@@ -174,7 +185,7 @@ async function dispatchRoute(payload, res, db, admin) {
         originalRoute: stagingJsonStr,
         polylines: baselinePolys, 
         currentPolylines: baselinePolys, 
-        mapBase64: payload.mapBase64 || "",
+        // Notice: mapBase64 is intentionally omitted here to prevent hitting the 1MB Firestore limit.
         customBody: payload.customBody || "",
         ccCompany: payload.ccCompany || false,
         addCc: payload.addCc || "",
@@ -190,13 +201,7 @@ async function dispatchRoute(payload, res, db, admin) {
         'activeStaging.status': null
     });
 
-    try {
-        await sendRouteEmail(db, payload, routeId, driverData);
-        return res.status(200).json({ success: true, routeId: routeId });
-    } catch (emailError) {
-        console.error("Failed to send ZeptoMail, but route was saved:", emailError);
-        return res.status(200).json({ success: true, routeId: routeId, warning: "Route saved, but email failed to send." });
-    }
+    return res.status(200).json({ success: true, routeId: routeId });
 }
 
 module.exports = { saveRoute, recreateOrders, restoreOriginalRoute, resetRoute, dispatchRoute };
