@@ -200,10 +200,16 @@ async function dispatchRoute(payload, res, db, admin) {
     }
 
     // --- 3B. EMAIL SUCCESSFUL - CLEAR STAGING FROM USERS ---
+    // But keep the 'Pending' and 'Validation Failed' stops so they stay in the manager's dashboard
+    let preservedPending = stagingJson.filter(s => {
+        let stat = String(Array.isArray(s) ? s[11] : (s.status || s.s)).trim().toUpperCase();
+        return stat === 'P' || stat === 'PENDING' || stat === 'V' || stat === 'VALIDATION FAILED';
+    });
+
     await driverRef.update({
         lockedBy: null,
-        'activeStaging.orders': '[]',
-        'activeStaging.status': null,
+        'activeStaging.orders': JSON.stringify(preservedPending),
+        'activeStaging.status': preservedPending.length > 0 ? 'Pending' : null,
         'activeStaging.polylines': '{}'
     });
 
