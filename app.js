@@ -617,7 +617,8 @@ export async function handleStartOver() {
         routedStops.forEach(s => {
             markRouteDirty(s.driverId, s.cluster);
             s.status = 'Pending'; 
-            s.cluster = 0; // Fixes 'X' limbo state
+            s.routeState = 'Pending';
+            s.cluster = 'X';
             s.manualCluster = false; 
             s.eta = ''; 
             s.dist = 0; 
@@ -627,16 +628,13 @@ export async function handleStartOver() {
         });
         
         if (updatesArray.length > 0) {
-            // Save routeNum 1 to backend to match cluster 0
-            let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 1 }, adminId: Config.adminParam };
+            let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
             if (!Config.isManagerView) payload.routeId = Config.routeId;
             await apiFetch(payload); 
         }
         
         AppState.selectedIds.clear(); 
-        
-        // Use setRoutes(1) to safely sync math and UI together for Route 1
-        setRoutes(1);
+        if (!Config.isManagerView) AppState.isAlteredRoute = true;
 
         UI.reorderStopsFromDOM(); 
         triggerFullRender(); 
