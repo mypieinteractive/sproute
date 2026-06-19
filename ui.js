@@ -936,18 +936,26 @@ export function updateSelectionUI() {
     const mBtnUnroute = document.getElementById('mobile-bulk-unroute-btn');
     if (mBtnUnroute) mBtnUnroute.style.display = (hasRouted && AppState.PERMISSION_MODIFY) ? 'block' : 'none'; 
 
+    let hasUnrouted = false;
+    AppState.selectedIds.forEach(id => {
+        const s = AppState.stops.find(st => String(st.id) === String(id));
+        if (s && !isRouteAssigned(s.status)) hasUnrouted = true;
+    });
+
     for(let i=1; i<=3; i++) {
         const btn = document.getElementById(`move-r${i}-btn`);
         const mBtn = document.getElementById(`mobile-move-r${i}-btn`);
         let showMove = 'none';
         
-        if(Config.isManagerView && AppState.currentInspectorFilter !== 'all' && has && i <= AppState.currentRouteCount && AppState.currentRouteCount > 1) {
-            let allInTargetRoute = true;
-            AppState.selectedIds.forEach(id => {
-                const s = AppState.stops.find(st => String(st.id) === String(id));
-                if (s && s.cluster !== (i - 1)) allInTargetRoute = false;
-            });
-            showMove = allInTargetRoute ? 'none' : 'block';
+        if(Config.isManagerView && AppState.currentInspectorFilter !== 'all' && has && i <= AppState.currentRouteCount) {
+            if (AppState.currentRouteCount > 1 || (AppState.currentRouteCount === 1 && hasUnrouted)) {
+                let allInTargetRoute = true;
+                AppState.selectedIds.forEach(id => {
+                    const s = AppState.stops.find(st => String(st.id) === String(id));
+                    if (s && s.cluster !== (i - 1)) allInTargetRoute = false;
+                });
+                showMove = allInTargetRoute ? 'none' : 'block';
+            }
         } 
         
         if (btn) btn.style.display = showMove;
@@ -1108,7 +1116,53 @@ export function initSortable() {
         
         if (unroutedEl) {
             sortableUnrouted = Sortable.create(unroutedEl, {
-                group: 'manager-routes', sort: false, delay: 200, delayOnTouchOnly: false, filter: '.list-subheading', animation: 150, onStart: () => pushToHistory()
+                group: 'manager-routes', sort: false, delay: 200, delayOnTouchOnly: false, filter: '.list-subheading', animation: 150, onStart: () => pushToHistory(),
+                onEnd: async (evt) => {
+                    const hasActiveRoutes = AppState.stops.some(st => isRouteAssigned(st.status));
+                    const stopId = evt.item.id.replace('item-', '');
+                    const stop = AppState.stops.find(s => String(s.id) === String(stopId));
+
+                    if (stop) {
+                        const dId = stop.driverId;
+                        let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
+                        if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
+
+                        let matchNew = evt.to.id.match(/(routed|driver)-list-(\d+)/);
+                        if (matchNew) {
+                            stop.cluster = parseInt(matchNew[2]);
+                            stop.manualCluster = true;
+                            if (hasActiveRoutes) {
+                                stop.status = 'Routed'; stop.routeState = 'Staging';
+                                markRouteDirty(dId, stop.cluster);
+                            }
+                        }
+                    }
+
+                    if (evt.to.id === 'unrouted-list') {
+                        const idx = AppState.stops.findIndex(s => String(s.id) === String(stopId));
+                        let dId = null;
+                        if (idx > -1) {
+                            dId = AppState.stops[idx].driverId;
+                            AppState.stops[idx].status = 'Pending'; AppState.stops[idx].routeState = 'Pending';
+                            AppState.stops[idx].cluster = 'X'; AppState.stops[idx].manualCluster = false;
+                            AppState.stops[idx].eta = ''; AppState.stops[idx].dist = 0; AppState.stops[idx].durationSecs = 0;
+                            if (Config.viewMode === 'inspector') AppState.stops[idx].hiddenInInspector = true;
+                        }
+
+                        showOverlay();
+                        try {
+                            let unroutePayload = {
+                                action: 'updateOrder', rowId: stopId, driverId: dId,
+                                updates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam
+                            };
+                            if (!Config.isManagerView) unroutePayload.routeId = Config.routeId;
+                            await apiFetch(unroutePayload);
+                        } catch (e) { console.error(e); }
+                        finally { hideOverlay(); }
+                    }
+
+                    reorderStopsFromDOM(); triggerFullRender(); updateRouteTimes(); silentSaveRouteState();
+                }
             });
         }
     } else if (!Config.isManagerView) {
