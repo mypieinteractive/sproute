@@ -25,13 +25,18 @@
 
 <div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box; position: relative;">
     
-    <div id="insp-name" class="inspector-only"></div>
-    <div id="insp-dispatch-date" class="inspector-only"></div>
+    <div id="inspector-header-left" class="inspector-only" style="display: flex; align-items: center; height: 100%;">
+        <div id="insp-logo-container" style="height: 100%; display: flex; align-items: center;"></div>
+        <div style="display: flex; flex-direction: column; justify-content: center; margin-left: 10px;">
+            <div id="insp-name" style="font-weight: 600; color: var(--text-main); font-size: 16px; line-height: 1;"></div>
+            <div id="insp-dispatch-date" style="color: var(--text-muted); font-size: clamp(10px, 3.5vw, 13px); line-height: 1; margin-top: 4px;"></div>
+        </div>
+    </div>
 
     <div id="header-map-zone" style="flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; transition: opacity 0.2s;">
         <div id="header-action-container" style="display: flex; gap: 8px;">
-            <button id="btn-inspector-reset" class="header-action-btn danger-btn inspector-only" onclick="handleRestoreOriginal()" style="display: none;" title="Reset Route">
-                <i class="fa-solid fa-clock-rotate-left"></i> <span>Reset</span>
+            <button id="btn-inspector-reset" class="header-action-btn inspector-only" onclick="handleRestoreOriginal()" style="display: none;" title="Restore Route">
+                <i class="fa-solid fa-clock-rotate-left"></i> <span>Restore</span>
             </button>
             <button id="btn-undo-incremental" class="header-action-btn" onclick="undoLastAction()" disabled title="Undo" style="background: transparent; font-weight: 400; border-radius: 6px;">
                 <i class="fa-solid fa-arrow-rotate-left" style="color: var(--global-hdr-icon);"></i> <span class="hide-inspector" style="color: var(--global-hdr-text);">Undo</span>
@@ -218,6 +223,15 @@
     <div id="resizer"></div>
 
     <div id="sidebar" style="display: flex; flex-direction: column; min-height: 0;">
+
+        <div id="inspector-action-bar" class="inspector-only" style="display: none; align-items: center; justify-content: space-between; padding: 10px 15px; background: var(--sidebar-bg); border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+            <div style="flex: 1; margin-right: 15px; position: relative; height: 32px;">
+                <input type="text" id="inspector-search-input" placeholder="Search address or client..." oninput="filterListDOM(this.value)" class="address-header-input" style="height: 100%; border: 1px solid var(--border-color) !important; background: var(--bg-base) !important; border-radius: 6px; padding: 0 12px; font-size: 13px;">
+                <i class="fa-solid fa-xmark clear-search-icon" id="inspector-clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); z-index: 5;"></i>
+            </div>
+            <div id="inspector-action-buttons-zone" style="display: flex; align-items: center; gap: 15px;"></div>
+        </div>
+
         <div id="route-view-toggles" style="display: none;">
             <button class="route-view-btn active" id="view-rall-btn" onclick="setRouteViewFilter('all')">All Routes</button>
             <button class="route-view-btn" id="view-r0-btn" onclick="setRouteViewFilter(0)">Route 1</button>
