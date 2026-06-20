@@ -141,20 +141,24 @@ body.view-inspector .list-subheading {
     border-top: 1px solid var(--row-border);
 }
 
-/* --- Inspector Header Reorganization via CSS Grid --- */
+/* --- Inspector Header Reorganization --- */
 body.view-inspector #global-header {
-    display: grid !important;
-    grid-template-columns: 1fr auto auto;
-    grid-template-rows: auto auto;
-    padding: 10px 15px !important;
-    height: auto !important;
-    gap: 10px 8px;
+    display: flex !important;
+    padding: 0 15px !important;
+    height: 58px !important;
+    justify-content: space-between !important;
+}
+
+body.view-inspector #inspector-header-left {
+    display: flex !important;
 }
 
 body.view-inspector #header-map-zone,
 body.view-inspector #header-list-zone,
 body.view-inspector #header-list-zone > div:first-child {
-    display: contents !important;
+    display: flex !important;
+    flex: none !important;
+    padding: 0 !important;
 }
 
 body.view-inspector #header-resizer-gap,
@@ -164,14 +168,8 @@ body.view-inspector .add-dropdown-menu {
     display: none !important;
 }
 
-/* Row 1: Inspector Name & Date */
-body.view-inspector #insp-name { grid-column: 1; grid-row: 1; justify-self: start; align-self: center; font-weight: 600; color: var(--text-main); font-size: 16px; display: flex; align-items: center; line-height: 1; }
-body.view-inspector #insp-dispatch-date { grid-column: 2 / span 2; grid-row: 1; justify-self: end; align-self: center; color: var(--text-muted); font-size: clamp(10px, 3.5vw, 13px); white-space: nowrap; line-height: 1; }
-
-/* Row 2: Rocker & Action Buttons */
-body.view-inspector #contextual-rocker-wrapper { grid-column: 1; grid-row: 2; justify-self: start; align-self: center; height: 30px; margin: 0 !important; }
-body.view-inspector #header-action-container { grid-column: 2; grid-row: 2; justify-self: end; align-self: center; display: flex; gap: 8px; margin: 0 !important; }
-body.view-inspector #header-right-controls { grid-column: 3; grid-row: 2; justify-self: end; align-self: center; margin: 0 !important; }
+/* Show the Inspector action bar */
+body.view-inspector #inspector-action-bar { display: flex !important; }
 
 /* Hide text in action buttons to save space on Inspector view */
 body.view-inspector .hide-inspector { display: none !important; }
@@ -185,6 +183,21 @@ body.view-inspector #add-menu-wrapper .header-action-btn {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+body.view-inspector #inspector-action-bar #btn-undo-incremental {
+    border: none !important;
+    font-size: 20px;
+}
+body.view-inspector #inspector-action-bar #btn-undo-incremental i {
+    color: var(--text-muted) !important;
+}
+
+body.view-inspector #inspector-action-bar #contextual-rocker-wrapper {
+    width: 140px !important;
+    height: 32px !important;
+    display: flex !important;
+    margin: 0 !important;
 }
 
 body.view-inspector #btn-undo-incremental i,
@@ -545,6 +558,10 @@ body.view-managersmall .module-action-btn { min-height: 38px; }
 .module-action-btn.danger-btn, .header-action-btn.danger-btn { border: 1px solid var(--red) !important; color: var(--red) !important; background: transparent !important; }
 .module-action-btn.danger-btn:hover:not(:disabled), .header-action-btn.danger-btn:hover:not(:disabled) { background: rgba(231, 76, 60, 0.1) !important; }
 .header-action-btn.danger-btn i { color: var(--red) !important; }
+
+#btn-inspector-reset { border: 1px solid #1D92D6 !important; color: #1D92D6 !important; background: transparent !important; }
+#btn-inspector-reset:hover:not(:disabled) { background: rgba(29, 146, 214, 0.1) !important; }
+#btn-inspector-reset i { color: #1D92D6 !important; }
 
 .module-action-btn.filled-green { border: 1px solid var(--accent) !important; background: var(--accent); color: white; }
 .module-action-btn.filled-green:hover { background: var(--accent-hover) !important; border-color: var(--accent-hover) !important; }

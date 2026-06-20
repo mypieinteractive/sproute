@@ -104,11 +104,11 @@ export function updateHeaderUI() {
         const resetBtn = document.getElementById('btn-inspector-reset');
         
         if (inspNameEl) {
-            let logoHtml = '';
-            if (AppState.companyLogo) {
-                logoHtml = `<img src="${AppState.companyLogo}" style="max-height: 24px; border-radius: 4px; object-fit: contain; margin-right: 10px;">`;
+            let logoContainer = document.getElementById('insp-logo-container');
+            if (logoContainer && AppState.companyLogo) {
+                logoContainer.innerHTML = `<img src="${AppState.companyLogo}" style="height: 38px; border-radius: 4px; object-fit: contain;">`;
             }
-            inspNameEl.innerHTML = `${logoHtml}<span>${AppState.displayName || AppState.driverName || 'Inspector'}</span>`;
+            inspNameEl.innerHTML = `<span>${AppState.displayName || AppState.driverName || 'Inspector'}</span>`;
         }
         
         if (inspDateEl) {
@@ -134,7 +134,7 @@ export function updateHeaderUI() {
                     });
                     
                     let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
-                    isStructurallyAltered = (JSON.stringify(minified) !== AppState.originalRouteJson);
+                    isStructurallyAltered = (JSON.stringify(minified) !== JSON.stringify(JSON.parse(AppState.originalRouteJson)));
                 }
             } catch(e) {}
             
@@ -356,25 +356,6 @@ export function updateRoutingUI() {
         if (!AppState.PERMISSION_REOPTIMIZE) {
             if (routingControls) routingControls.style.display = 'none';
         } else {
-            let isStructurallyAltered = false;
-            try {
-                if (AppState.originalRouteJson) {
-                    const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
-                    let routedStops = AppState.stops.filter(s => { 
-                        if (!isRouteAssigned(s.status)) return false; 
-                        if (Config.isManagerView) return String(s.driverId) === String(inspId); 
-                        return s.routeTargetId === String(Config.routeId); 
-                    });
-                    let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
-                    isStructurallyAltered = (JSON.stringify(minified) !== AppState.originalRouteJson);
-                }
-            } catch(e) {}
-
-            if (isStructurallyAltered && currentState === 'Ready') {
-                currentState = 'Staging';
-                if (routingControls) routingControls.setAttribute('data-state', currentState);
-            }
-
             if (currentState === 'Staging') {
                 if (routingControls) routingControls.style.display = 'flex';
                 if (actionBtns) actionBtns.style.width = '100%';
@@ -425,6 +406,16 @@ export function render() {
     document.body.classList.toggle('empty-state-active', Config.isManagerView && activeStops.length === 0);
     document.body.classList.toggle('has-orders', activeStops.length > 0);
     
+    if (Config.viewMode === 'inspector') {
+        const rocker = document.getElementById('contextual-rocker-wrapper');
+        const undo = document.getElementById('btn-undo-incremental');
+        const zone = document.getElementById('inspector-action-buttons-zone');
+        if (rocker && undo && zone) {
+            if (rocker.parentElement !== zone) zone.appendChild(rocker);
+            if (undo.parentElement !== zone) zone.appendChild(undo);
+        }
+    }
+
     const addMenuWrapper = document.getElementById('add-menu-wrapper');
     if (addMenuWrapper) {
         if (Config.viewMode === 'inspector') {
@@ -489,6 +480,13 @@ export function render() {
             const glassIcon = document.getElementById('search-glass-icon');
             if (clearIcon) clearIcon.style.display = window.lastAddressSearchValue ? 'block' : 'none';
             if (glassIcon) glassIcon.style.display = window.lastAddressSearchValue ? 'none' : 'block';
+        }
+    } else {
+        const inspSearchInput = document.getElementById('inspector-search-input');
+        if (inspSearchInput && window.lastAddressSearchValue) {
+            inspSearchInput.value = window.lastAddressSearchValue;
+            const inspClearIcon = document.getElementById('inspector-clear-search-icon');
+            if (inspClearIcon) inspClearIcon.style.display = window.lastAddressSearchValue ? 'block' : 'none';
         }
     }
 
@@ -574,8 +572,8 @@ export function render() {
                 </div>
                 <div class="due-date-container ${urgencyClass}">${dueFmt}</div>
                 <div class="stop-actions">
-                    <i class="fa-solid fa-circle-check icon-btn" style="color:var(--accent)" onclick="toggleComplete(event, '${s.id}')"></i>
-                    <i class="fa-solid fa-location-arrow icon-btn" style="color:var(--accent)" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
+                    <i class="${s.status.toLowerCase() === 'completed' ? 'fa-solid' : 'fa-regular'} fa-circle-check icon-btn" style="color:var(--accent)" onclick="toggleComplete(event, '${s.id}')"></i>
+                    <i class="fa-solid fa-location-arrow icon-btn" style="color:#1D92D6" onclick="openNav(event, '${s.lat}','${s.lng}', '${(s.address || '').replace(/'/g, "\\'")}')"></i>
                 </div>
             `;
         }
@@ -1768,15 +1766,19 @@ window.filterListDOM = function(val) {
     });
     const clearIcon = document.getElementById('clear-search-icon');
     const glassIcon = document.getElementById('search-glass-icon');
+    const inspClearIcon = document.getElementById('inspector-clear-search-icon');
     if(clearIcon) clearIcon.style.display = q ? 'block' : 'none';
     if(glassIcon) glassIcon.style.display = q ? 'none' : 'block';
+    if(inspClearIcon) inspClearIcon.style.display = q ? 'block' : 'none';
     filterMarkersMap(q);
 };
 
 window.clearAddressSearch = function() {
     window.lastAddressSearchValue = '';
     const inp = document.getElementById('address-search-input');
+    const inspInp = document.getElementById('inspector-search-input');
     if(inp) inp.value = '';
+    if(inspInp) inspInp.value = '';
     window.filterListDOM('');
 };
 
