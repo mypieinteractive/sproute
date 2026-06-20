@@ -1,10 +1,7 @@
-/* Dashboard - V20.9 */
+/* Dashboard - V20.10 */
 /* FILE: styles.css */
 /* Changes: */
-/* 1. Implemented Grid structure for body.view-inspector #global-header to construct a 3-column, 2-row layout perfectly centered. */
-/* 2. Scaled Reset, Undo, and Add buttons symmetrically with exactly 30px height in Inspector View. */
-/* 3. Hid text on Undo/Add buttons via .hide-inspector specifically for Inspector view to prevent wrapping. */
-/* 4. Added custom WebKit scrollbar rules targeted to .view-managersmall #email-body-text (overflow-y: hidden) for auto-expanding. */
+/* 1. Added flex: 1 and min-width: 0 to body.view-inspector #inspector-header-left to allow the text wrapper to expand and push right-side buttons to the edge. */
 
 :root { 
     /* Base / Accent */
@@ -151,6 +148,8 @@ body.view-inspector #global-header {
 
 body.view-inspector #inspector-header-left {
     display: flex !important;
+    flex: 1 !important;
+    min-width: 0 !important;
 }
 
 body.view-inspector #header-map-zone,
@@ -825,5 +824,3 @@ body.view-manager #resizer { display: block; border-top: none; }
     background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;
 }
 .mapboxgl-touch-pan-blocker { color: transparent !important; }
-
-}
