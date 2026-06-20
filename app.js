@@ -550,7 +550,6 @@ export async function triggerBulkDelete() {
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
         UI.updateInspectorDropdown(); 
-        UI.reorderStopsFromDOM(); 
         triggerFullRender(); 
         UI.updateRouteTimes(); 
         
@@ -591,7 +590,6 @@ export async function triggerBulkUnroute() {
         AppState.selectedIds.clear(); 
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
         
-        UI.reorderStopsFromDOM(); 
         triggerFullRender(); 
         UI.updateRouteTimes(); 
         
@@ -628,7 +626,7 @@ export async function handleStartOver() {
         });
         
         if (updatesArray.length > 0) {
-            let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
+            let payload = { action: 'updateMultipleOrders', updatesList: updatesArray, sharedUpdates: { driverId: targetDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X' }, adminId: Config.adminParam };
             if (!Config.isManagerView) payload.routeId = Config.routeId;
             await apiFetch(payload); 
         }
@@ -636,7 +634,14 @@ export async function handleStartOver() {
         AppState.selectedIds.clear(); 
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
 
-        UI.reorderStopsFromDOM(); 
+        // Reset current route count since there are no routes
+        AppState.currentRouteCount = 1;
+        document.body.setAttribute('data-route-count', 1);
+        for(let i=1; i<=3; i++) {
+            const btn = document.getElementById(`rbtn-${i}`);
+            if(btn) btn.classList.toggle('active', i === 1);
+        }
+
         triggerFullRender(); 
         UI.updateRouteTimes(); 
         silentSaveRouteState(targetDriverId);
