@@ -1,6 +1,6 @@
 {
   "name": "sproute-webhook-sync",
-  "version": "1.9.5",
+  "version": "1.9.6",
   "description": "Core Sproute API engine: Syncs Glide Admin changes, parses CSV ingestion, and handles optimization routing.",
   "main": "index.js",
   "scripts": {
@@ -23,6 +23,7 @@
   "overrides": {
     "protobufjs": "^7.5.6",
     "protobufjs-cli": "^1.2.1",
-    "@grpc/grpc-js": "^1.14.4"
+    "@grpc/grpc-js": "^1.14.4",
+    "undici": "^6.27.0"
   }
 }
