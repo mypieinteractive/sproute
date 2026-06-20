@@ -26,10 +26,10 @@
 <div id="global-header" style="padding: 0 1px; background: var(--global-hdr-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; z-index: 100; flex-shrink: 0; height: 58px; box-sizing: border-box; position: relative;">
     
     <div id="inspector-header-left" class="inspector-only" style="display: flex; align-items: center; height: 100%;">
-        <div id="insp-logo-container" style="height: 100%; display: flex; align-items: center;"></div>
-        <div style="display: flex; flex-direction: column; justify-content: center; margin-left: 10px;">
-            <div id="insp-name" style="font-weight: 600; color: var(--text-main); font-size: 16px; line-height: 1;"></div>
-            <div id="insp-dispatch-date" style="color: var(--text-muted); font-size: clamp(10px, 3.5vw, 13px); line-height: 1; margin-top: 4px;"></div>
+        <div id="insp-logo-container" style="height: 100%; display: flex; align-items: center; flex-shrink: 0;"></div>
+        <div style="display: flex; flex-direction: column; justify-content: center; margin-left: 10px; flex: 1; min-width: 0;">
+            <div id="insp-name" style="font-weight: 600; color: var(--text-main); font-size: 16px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            <div id="insp-dispatch-date" style="color: var(--text-muted); font-size: clamp(10px, 3.5vw, 13px); line-height: 1; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
         </div>
     </div>
 
