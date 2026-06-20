@@ -1,9 +1,11 @@
-/* Dashboard - V20.13 */
+/* Dashboard - V20.14 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Fixed the "Ghost Name" dropdown bug by removing the zero-order filter in updateInspectorDropdown, ensuring all inspectors always appear. */
-/* 2. Fixed the "-- hrs" bug in updateRouteTimes by using a type-safe string comparison (String(s.cluster) === String(i)) so the math loop catches cluster indices formatted as strings. */
-/* 3. Fixed the Inspector State Memory bug in handleInspectorFilterChange by scanning the newly selected inspector's saved orders, calculating their maxCluster, and explicitly updating the global AppState.currentRouteCount and UI buttons to match their specific state. */
+/* 1. Added precalculatedIndexes in render() to map stop numbers sequentially before splitting completed orders. */
+/* 2. Segregated completed orders into their own 'completed-list' container with a 'COMPLETED ORDERS' subheading. */
+/* 3. Added auto-scrolling logic on initial load to scroll past the completed list and start the viewport at the Start Endpoint. */
+/* 4. Included scroll position memory during re-renders to prevent jarring jumps when toggling checkmarks. */
+/* 5. Updated reorderStopsFromDOM to safely preserve completed order IDs during Sortable drag/drop actions. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -156,7 +158,6 @@ export function updateInspectorDropdown() {
 
     const validInspectorIds = new Set();
     AppState.stops.forEach(s => {
-        // CRITICAL FIX: Only add their ID if they actually have ACTIVE orders!
         if (s.driverId && isActiveStop(s, Config.isManagerView)) {
             validInspectorIds.add(String(s.driverId));
         }
@@ -395,6 +396,7 @@ export function render() {
     document.body.classList.add(`display-${AppState.currentDisplayMode || 'detailed'}`);
     
     const listContainer = document.getElementById('stop-list');
+    const previousScrollTop = listContainer.scrollTop || 0;
     listContainer.innerHTML = ''; 
     
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -490,12 +492,17 @@ export function render() {
         }
     }
 
+    const precalculatedIndexes = new Map();
     const clusterCounts = {};
-    const getDisplayIndex = (s) => {
+    activeStops.forEach(s => {
         const key = `${s.driverId || 'unassigned'}_${s.cluster}`;
         if (!clusterCounts[key]) clusterCounts[key] = 0;
         clusterCounts[key]++;
-        return clusterCounts[key];
+        precalculatedIndexes.set(s.id, clusterCounts[key]);
+    });
+
+    const getDisplayIndex = (s) => {
+        return precalculatedIndexes.get(s.id) || 1;
     };
 
     const processStop = (s, passedDisplayIndex) => {
@@ -613,11 +620,28 @@ export function render() {
     };
 
     if (isSingleInspector || !Config.isManagerView) {
-        const unroutedStops = activeStops.filter(s => !isRouteAssigned(s.status));
-        const routedStops = activeStops.filter(s => isRouteAssigned(s.status));
+        const completedStops = activeStops.filter(s => s.status.toLowerCase() === 'completed');
+        const unroutedStops = activeStops.filter(s => !isRouteAssigned(s.status) && s.status.toLowerCase() !== 'completed');
+        const routedStops = activeStops.filter(s => isRouteAssigned(s.status) && s.status.toLowerCase() !== 'completed');
         let eps = getActiveEndpoints();
 
-        listContainer.appendChild(createEndpointRow('start', eps.start));
+        if (completedStops.length > 0) {
+            const completedDiv = document.createElement('div');
+            completedDiv.id = 'completed-list'; 
+            completedDiv.className = 'completed-group-container';
+            completedDiv.style.minHeight = '30px'; 
+            listContainer.appendChild(completedDiv);
+            
+            const compSub = document.createElement('div');
+            compSub.className = 'list-subheading';
+            compSub.innerHTML = `<span>COMPLETED ORDERS</span><span class="route-summary-text">${completedStops.length} stops</span>`;
+            completedDiv.appendChild(compSub); 
+            completedStops.forEach((s) => { completedDiv.appendChild(processStop(s)); });
+        }
+
+        const startRow = createEndpointRow('start', eps.start);
+        startRow.id = 'start-endpoint-row';
+        listContainer.appendChild(startRow);
 
         if (unroutedStops.length > 0) {
             const unroutedDiv = document.createElement('div');
@@ -712,6 +736,19 @@ export function render() {
                 fab.innerHTML = isMapMode ? '<i class="fa-solid fa-list"></i>' : '<i class="fa-solid fa-map"></i>';
             }
         }
+
+        if (window.isFirstLoadCompletedScroll === undefined) window.isFirstLoadCompletedScroll = true;
+        
+        if (window.isFirstLoadCompletedScroll && document.getElementById('completed-list')) {
+            const scrollTarget = document.getElementById('start-endpoint-row');
+            if (scrollTarget) {
+                listContainer.scrollTop = scrollTarget.offsetTop;
+            }
+            window.isFirstLoadCompletedScroll = false;
+        } else if (previousScrollTop > 0) {
+            listContainer.scrollTop = previousScrollTop;
+        }
+
     }, 20); 
 }
 
@@ -1192,8 +1229,10 @@ export function initSortable() {
 }
 
 export function reorderStopsFromDOM() {
-    let unroutedIds = []; let routedIds = [];
+    let unroutedIds = []; let routedIds = []; let completedIds = [];
     if (document.getElementById('unrouted-list')) unroutedIds = Array.from(document.getElementById('unrouted-list').children).map(el => el.id.replace('item-', '')).filter(Boolean);
+    if (document.getElementById('completed-list')) completedIds = Array.from(document.getElementById('completed-list').children).map(el => el.id.replace('item-', '')).filter(Boolean);
+    
     document.querySelectorAll('.routed-group-container').forEach(cont => {
         const rIds = Array.from(cont.children).map(el => el.id.replace('item-', '')).filter(Boolean);
         routedIds = routedIds.concat(rIds);
@@ -1201,11 +1240,15 @@ export function reorderStopsFromDOM() {
     if (unroutedIds.length === 0 && routedIds.length === 0 && document.getElementById('main-list-container')) {
         routedIds = Array.from(document.getElementById('main-list-container').children).map(el => el.id.replace('item-', '')).filter(Boolean);
     }
-    const visibleIds = new Set([...unroutedIds, ...routedIds]);
+    
+    const visibleIds = new Set([...unroutedIds, ...routedIds, ...completedIds]);
     const otherStops = AppState.stops.filter(s => !visibleIds.has(s.id));
+    
     const newUnrouted = unroutedIds.map(id => AppState.stops.find(s => String(s.id) === String(id))).filter(Boolean);
     const newRouted = routedIds.map(id => AppState.stops.find(s => String(s.id) === String(id))).filter(Boolean);
-    AppState.stops = [...otherStops, ...newUnrouted, ...newRouted];
+    const newCompleted = completedIds.map(id => AppState.stops.find(s => String(s.id) === String(id))).filter(Boolean);
+    
+    AppState.stops = [...otherStops, ...newCompleted, ...newUnrouted, ...newRouted];
 }
 
 let geocodeTimeout;
