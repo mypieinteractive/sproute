@@ -405,7 +405,7 @@ export function silentSaveRouteState(explicitDriverId = null) {
     let macroState = 'Ready';
     
     if (routedStops.length === 0) macroState = 'Pending';
-    else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint';
+    else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
     
     // POLYLINE DETOX SCRIPT
