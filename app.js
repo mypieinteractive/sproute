@@ -500,7 +500,12 @@ export async function handleGenerateRoute() {
                 if (cA !== cB) return cA - cB; return timeToMins(a.eta) - timeToMins(b.eta);
             });
 
-            AppState.isPollingForRoute = false; AppState.dirtyRoutes.clear(); triggerFullRender(); silentSaveRouteState(); 
+            AppState.isPollingForRoute = false;
+            AppState.dirtyRoutes.clear();
+            if (!Config.isManagerView) AppState.isAltered = false;
+            triggerFullRender();
+            silentSaveRouteState();
+            UI.hideOverlay();
         } else if (data.status === 'queued' || data.success) {
             let pqPayload = { action: 'processQueue', driverId: insp?.id || Config.driverParam };
             if (!Config.isManagerView) pqPayload.routeId = Config.routeId;
@@ -561,7 +566,7 @@ export async function handleCalculate() {
         }
 
         AppState.stops = AppState.stops.map(s => returnedStopsMap.has(String(s.id)) ? returnedStopsMap.get(String(s.id)) : s);
-        if (!Config.isManagerView) AppState.isAltered = true;
+        if (!Config.isManagerView) AppState.isAltered = false;
         AppState.historyStack = []; AppState.dirtyRoutes.clear(); AppState.originalStops = JSON.parse(JSON.stringify(AppState.stops)); 
         
         triggerFullRender(); silentSaveRouteState();
