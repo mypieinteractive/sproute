@@ -21,7 +21,8 @@ async function saveRoute(payload, res, db) {
         if (dispatchDoc.exists) {
             let updates = { 
                 currentRoute: JSON.stringify(payload.stops),
-                isAltered: true // Flag the route as modified
+                isAltered: true, // Flag the route as modified
+                showReset: true
             };
             if (payload.polylines) updates.currentPolylines = JSON.stringify(payload.polylines);
             await dispatchRef.update(updates);
@@ -81,7 +82,8 @@ async function recreateOrders(payload, res, db) {
             await dispatchRef.update({ 
                 currentRoute: JSON.stringify(sandboxArr), 
                 originalRoute: JSON.stringify(originalArr),
-                isAltered: true // Adding a stop back means the route is altered
+                isAltered: true, // Adding a stop back means the route is altered
+                showReset: true
             });
             return res.status(200).json({ success: true });
         }
@@ -115,7 +117,8 @@ async function restoreOriginalRoute(payload, res, db) {
             await dispatchRef.update({ 
                 currentRoute: origJson, 
                 currentPolylines: origPolys,
-                isAltered: false // Route is back to original
+                isAltered: false, // Route is back to original
+                showReset: false
             });
             return res.status(200).json({ success: true });
         }
@@ -193,6 +196,7 @@ async function dispatchRoute(payload, res, db, admin) {
         endpointsObj: driverData.endpoints || {},
         dashboardLink: dashboardLink,
         isAltered: false, // Freshly dispatched, so it is unaltered
+        showReset: false,
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
