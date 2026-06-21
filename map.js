@@ -267,7 +267,11 @@ export function drawRouteMap(params) {
             let usePolyline = false;
 
             if (!isDirty && AppState.polylines) {
-                let polylineData = AppState.polylines[`${dId}_${routeKeyNum}`] || AppState.polylines[routeKeyNum] || AppState.polylines[String(routeKeyNum)];
+                let fallbackDriverId = window.Config?.driverParam || dId;
+                let polylineData = AppState.polylines[`${dId}_${routeKeyNum}`]
+                                || AppState.polylines[`${fallbackDriverId}_${routeKeyNum}`]
+                                || AppState.polylines[routeKeyNum]
+                                || AppState.polylines[String(routeKeyNum)];
                 
                 if (polylineData) {
                     let polylineArray = Array.isArray(polylineData) ? polylineData : [polylineData];
