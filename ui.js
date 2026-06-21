@@ -1,10 +1,9 @@
-/* Dashboard - V20.15 */
+/* Dashboard - V20.16 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Updated updateHeaderUI to dynamically show the Restore button ONLY when there are structural sequence changes, safely ignoring Completed orders. */
-/* 2. Modified initSortable to unconditionally fire markRouteDirty on Inspector drag-and-drop, properly switching the UI to 'Staging' to reveal the Re-Calculate/Re-Optimize buttons. */
-/* 3. Updated the manager search input placeholder to "Search address or client...". */
-/* 4. Forked createEndpointRow to provide an Inspector-specific layout (Home/Flag icons, no ETA text, left-aligned input field). */
+/* 1. Ripped out the complex JSON sequence parsing in updateHeaderUI and replaced it with a clean check against AppState.isAltered. */
+/* 2. Modified updateRoutingUI to explicitly force the "Staging" state (revealing Re-Calc/Re-Opt buttons) whenever AppState.isAltered is true. */
+/* 3. Injected Config.driverParam fallback into initSortable drag-and-drop events to ensure markRouteDirty always has a valid ID payload. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -123,35 +122,8 @@ export function updateHeaderUI() {
         }
 
         if (resetBtn) {
-            let isStructurallyAltered = false;
-            try {
-                if (AppState.originalRouteJson) {
-                    const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
-                    
-                    // A. Extract currently routed IDs (excluding completed)
-                    let currentActiveIds = AppState.stops.filter(s => { 
-                        if (!isRouteAssigned(s.status) || s.status.toLowerCase() === 'completed') return false; 
-                        if (Config.isManagerView) return String(s.driverId) === String(inspId); 
-                        return s.routeTargetId === String(Config.routeId); 
-                    }).map(s => String(s.id));
-                    
-                    // B. Extract originally routed IDs (excluding completed)
-                    let originalParsed = JSON.parse(AppState.originalRouteJson);
-                    let originalActiveIds = originalParsed.filter(s => {
-                        let cur = AppState.stops.find(c => String(c.id) === String(s[0]));
-                        return !cur || cur.status.toLowerCase() !== 'completed';
-                    }).map(s => String(s[0]));
-
-                    // C. Compare Sequence
-                    isStructurallyAltered = (currentActiveIds.join(',') !== originalActiveIds.join(','));
-
-                    // D. Fallbacks
-                    if (AppState.isAlteredRoute) isStructurallyAltered = true;
-                    if (AppState.dirtyRoutes.has('endpoints_0') || AppState.dirtyRoutes.has('endpoints')) isStructurallyAltered = true;
-                }
-            } catch(e) {}
-            
-            resetBtn.style.display = isStructurallyAltered ? 'flex' : 'none';
+            // Clean Boolean Check for Restore Visibility
+            resetBtn.style.display = AppState.isAltered ? 'flex' : 'none';
         }
     }
 
@@ -186,6 +158,7 @@ export function updateInspectorDropdown() {
     AppState.inspectors.forEach((i, idx) => { 
         if (validInspectorIds.has(String(i.id)) && isTrueInspector(i.isInspector)) {
             const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
+            filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 400;"></option>`; 
             filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 400;">${i.name}</option>`; 
         }
     });
@@ -311,6 +284,11 @@ export function updateRoutingUI() {
         }
     }
 
+    // Explicit fallback checking for Inspector View changes
+    if (!Config.isManagerView && AppState.isAltered) {
+        isDirty = true;
+    }
+
     let currentState = 'Ready';
     if (unroutedCount === targetStops.length) {
         currentState = 'Pending';
@@ -362,7 +340,7 @@ export function updateRoutingUI() {
             if (actionBtns) actionBtns.style.width = '100%';
             if (btnReady) btnReady.style.display = 'flex';
             const restoreBtn = document.getElementById('btn-header-restore');
-            if (restoreBtn) restoreBtn.style.display = AppState.isAlteredRoute ? 'flex' : 'none';
+            if (restoreBtn) restoreBtn.style.display = AppState.isAltered ? 'flex' : 'none';
         }
     } else {
         if (!AppState.PERMISSION_REOPTIMIZE) {
@@ -863,7 +841,6 @@ export function updateRouteTimes() {
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return;
     const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.cluster !== 'X');
     for(let i=0; i<3; i++) {
-        // FIX: Type safe cluster comparison
         const clusterStops = activeStops.filter(s => String(s.cluster) === String(i));
         let totalSecs = 0;
         clusterStops.forEach(s => totalSecs += parseFloat(s.durationSecs || 0));
@@ -1036,7 +1013,6 @@ export function updateSelectionUI() {
             if (hasSelection) {
                 if (window.lastSelectionSize === undefined) window.lastSelectionSize = 0;
                 
-                // If selection increased, automatically jump to the newest item at the end
                 if (AppState.selectedIds.size > window.lastSelectionSize) {
                     window.mobilePreviewIndex = AppState.selectedIds.size - 1;
                 }
@@ -1239,9 +1215,9 @@ export function initSortable() {
                     const stopId = evt.item.id.replace('item-', '');
                     const stop = AppState.stops.find(s => String(s.id) === String(stopId));
                     if (stop) {
-                        const dId = stop.driverId;
+                        // Failsafe: Ensure we ALWAYS have a driverId in Inspector view so the backend payload doesn't die.
+                        const dId = stop.driverId || (!Config.isManagerView ? Config.driverParam : null);
                         
-                        // FIX: Ensure dragging inside the same route STILL registers a sequence change
                         markRouteDirty(dId, stop.cluster);
 
                         let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
