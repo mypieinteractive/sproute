@@ -158,7 +158,6 @@ export function updateInspectorDropdown() {
     AppState.inspectors.forEach((i, idx) => { 
         if (validInspectorIds.has(String(i.id)) && isTrueInspector(i.isInspector)) {
             const color = MASTER_PALETTE[idx % MASTER_PALETTE.length];
-            filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 400;"></option>`; 
             filterHtml += `<option value="${i.id}" style="color: ${color}; font-weight: 400;">${i.name}</option>`; 
         }
     });
