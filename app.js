@@ -1,8 +1,9 @@
-/* Dashboard - V18.23 */
+/* Dashboard - V18.24 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Updated silentSaveRouteState to accept an explicit explicitDriverId parameter, allowing it to bypass the UI dropdown filter guard. */
-/* 2. Modified triggerBulkDelete, triggerBulkUnroute, handleStartOver, and moveSelectedToRoute to capture a Set of affected driver IDs before UI updates, explicitly calling silentSaveRouteState for each affected driver to guarantee polylines are erased even if the UI auto-switches to "All Inspectors". */
+/* 1. Added AppState.isAltered to capture the new database boolean for UI sync. */
+/* 2. Force-normalized driverId to Config.driverParam across all stops in loadData() when in Inspector mode. */
+/* 3. Added failsafes to markRouteDirty and silentSaveRouteState to guarantee they fall back to Config.driverParam if triggered without an ID. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -58,6 +59,7 @@ export const AppState = {
     originalRouteJson: "[]",
     ccCompanyDefault: true,
     isAlteredRoute: false,
+    isAltered: false,
     unmatchedAddressesQueue: [],
     currentUnmatchedIndex: 0,
     currentUploadDriverId: null,
@@ -166,10 +168,12 @@ export async function loadData() {
         AppState.isFreshGlideRefresh = false; 
         if (!data.uploadError && !data.confirmHijack) sessionStorage.setItem('sproute_snapshot', currentSnapshot);
         if (data.routeId) Config.routeId = data.routeId;
+        
         if (data.needsRecalculation) { AppState.isAlteredRoute = true; AppState.dirtyRoutes.add('all'); }
 
         AppState.routeStart = data.routeStart || null; AppState.routeEnd = data.routeEnd || null;
         if (data.isAlteredRoute) AppState.isAlteredRoute = true;
+        if (typeof data.isAltered !== 'undefined') AppState.isAltered = !!data.isAltered;
 
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? AppState.currentInspectorFilter : Config.driverParam);
@@ -198,9 +202,11 @@ export async function loadData() {
             let fetchedMap = new Map();
             rawStops.forEach(s => {
                 let exp = expandStop(s);
+                let safeDriverId = !Config.isManagerView ? Config.driverParam : (exp.driverId || s.driverId || globalDriverId);
+                
                 fetchedMap.set(String(exp.rowId || exp.id), {
                     ...exp, id: exp.rowId || exp.id, status: getStatusText(exp.status), cluster: exp.cluster, manualCluster: false, hiddenInInspector: false,
-                    routeState: exp.routeState || s.routeState || globalRouteState, driverId: exp.driverId || s.driverId || globalDriverId, routeTargetId: Config.routeId || null
+                    routeState: exp.routeState || s.routeState || globalRouteState, driverId: safeDriverId, routeTargetId: Config.routeId || null
                 });
             });
 
@@ -218,7 +224,9 @@ export async function loadData() {
         } else {
             AppState.stops = rawStops.map(s => {
                 let exp = expandStop(s);
-                return { ...exp, id: exp.rowId || exp.id, status: getStatusText(exp.status), cluster: exp.cluster, manualCluster: false, hiddenInInspector: false, routeState: exp.routeState || s.routeState || globalRouteState, driverId: exp.driverId || s.driverId || globalDriverId, routeTargetId: Config.routeId || null };
+                let safeDriverId = !Config.isManagerView ? Config.driverParam : (exp.driverId || s.driverId || globalDriverId);
+                
+                return { ...exp, id: exp.rowId || exp.id, status: getStatusText(exp.status), cluster: exp.cluster, manualCluster: false, hiddenInInspector: false, routeState: exp.routeState || s.routeState || globalRouteState, driverId: safeDriverId, routeTargetId: Config.routeId || null };
             });
             AppState.stops.forEach(s => { if ((s.routeState === 'Staging' || s.routeState === 'Staging-endpoint') && s.driverId) markRouteDirty(s.driverId, s.cluster); });
         }
@@ -282,7 +290,7 @@ export async function loadData() {
 export function triggerFullRender() { UI.render(); UI.drawRoute(); UI.updateSummary(); UI.initSortable(); }
 
 export function markRouteDirty(driverId, clusterIdx) { 
-    const dId = driverId || 'unassigned';
+    const dId = driverId || (!Config.isManagerView ? Config.driverParam : 'unassigned');
     const cIdx = clusterIdx === 'X' ? 0 : (clusterIdx || 0);
     AppState.dirtyRoutes.add(`${dId}_${cIdx}`); 
     
@@ -349,7 +357,7 @@ export async function undoLastAction() {
 }
 
 export function silentSaveRouteState(explicitDriverId = null) {
-    const inspId = explicitDriverId || (Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam);
+    const inspId = explicitDriverId || (!Config.isManagerView ? Config.driverParam : AppState.currentInspectorFilter);
     if (inspId === 'all' || !inspId) return;
     
     let routedStops = AppState.stops.filter(s => { 
