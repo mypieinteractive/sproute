@@ -71,6 +71,7 @@ async function getDashboardInit(req, res, db) {
                 displayName: dispName,
                 isAlteredRoute: isAlteredRoute,
                 isAltered: dData.isAltered === true,
+                showReset: typeof dData.showReset !== 'undefined' ? dData.showReset === true : dData.isAltered === true,
                 needsRecalculation: false,
                 csvTypes: [], 
                 ccCompanyDefault: companyData.ccCompanyDefault === true || String(companyData.ccCompanyDefault).toLowerCase() === 'true'

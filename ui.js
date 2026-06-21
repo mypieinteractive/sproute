@@ -123,7 +123,7 @@ export function updateHeaderUI() {
 
         if (resetBtn) {
             // Clean Boolean Check for Restore Visibility
-            resetBtn.style.display = AppState.isAltered ? 'flex' : 'none';
+            resetBtn.style.display = AppState.showReset ? 'flex' : 'none';
         }
     }
 
@@ -282,11 +282,6 @@ export function updateRoutingUI() {
         for (let i = 0; i <= AppState.currentRouteCount; i++) {
             if (AppState.dirtyRoutes.has(`${inspKey}_${i}`)) isDirty = true;
         }
-    }
-
-    // Explicit fallback checking for Inspector View changes
-    if (!Config.isManagerView && AppState.isAltered) {
-        isDirty = true;
     }
 
     let currentState = 'Ready';
