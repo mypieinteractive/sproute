@@ -54,6 +54,7 @@ async function getDashboardInit(req, res, db) {
 
             return res.status(200).json({
                 routeId: explicitRouteId,
+                driverId: dispatchDriverId,
                 stops: activeStops,
                 originalRoute: originalRoute, 
                 polylines: interceptPolys, 
@@ -69,6 +70,7 @@ async function getDashboardInit(req, res, db) {
                 permissions: { modify: inspectorModify, reoptimize: inspectorReoptimize, useExactApi: companyData.useExactApi }, 
                 displayName: dispName,
                 isAlteredRoute: isAlteredRoute,
+                isAltered: dData.isAltered === true,
                 needsRecalculation: false,
                 csvTypes: [], 
                 ccCompanyDefault: companyData.ccCompanyDefault === true || String(companyData.ccCompanyDefault).toLowerCase() === 'true'

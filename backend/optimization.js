@@ -311,6 +311,63 @@ async function generateRoute(payload, res, db) {
 
     let routingMethod = entCalls > 0 ? `Enterprise Route Optimization API (${entCalls} calls)` : `Standard Directions API (${stdCalls} calls)`;
     
+    if (payload.routeId) {
+        let responseBay = finalBay
+            .map(s => {
+                let isTuple = Array.isArray(s);
+                let statChar = String(isTuple ? s[11] : (s.status || s.s)).trim().toUpperCase();
+                let fullStatus = statChar === 'R' ? 'Routed' : (statChar === 'P' ? 'Pending' : (statChar === 'V' ? 'Validation Failed' : statChar));
+
+                let rNum = isTuple ? s[1] : (s.routeNum || s.R || s.cluster);
+
+                return {
+                    rowId: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                    id: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                    r: String(isTuple ? s[0] : (s.rowId || s.id || s.r)),
+                    routeNum: rNum,
+                    R: rNum,
+                    cluster: rNum,
+                    address: String(isTuple ? s[2] : (s.address || s.a)),
+                    a: String(isTuple ? s[2] : (s.address || s.a)),
+                    client: String(isTuple ? s[3] : (s.client || s.c)),
+                    c: String(isTuple ? s[3] : (s.client || s.c)),
+                    app: String(isTuple ? s[4] : (s.app || s.p)),
+                    p: String(isTuple ? s[4] : (s.app || s.p)),
+                    dueDate: String(isTuple ? s[5] : (s.dueDate || s.d)),
+                    d: String(isTuple ? s[5] : (s.dueDate || s.d)),
+                    type: String(isTuple ? s[6] : (s.type || s.t)),
+                    t: String(isTuple ? s[6] : (s.type || s.t)),
+                    eta: String(isTuple ? s[7] : s.eta),
+                    e: String(isTuple ? s[7] : s.eta),
+                    dist: Number(isTuple ? s[8] : (s.dist || s.D)),
+                    D: Number(isTuple ? s[8] : (s.dist || s.D)),
+                    lat: Number(isTuple ? s[9] : (s.lat || s.l)),
+                    l: Number(isTuple ? s[9] : (s.lat || s.l)),
+                    lng: Number(isTuple ? s[10] : (s.lng || s.g)),
+                    g: Number(isTuple ? s[10] : (s.lng || s.g)),
+                    status: fullStatus,
+                    s: fullStatus,
+                    durationSecs: Number(isTuple ? s[12] : s.durationSecs),
+                    driverId: String(payload.driverId),
+                    routeState: nextState,
+                    routeTargetId: String(payload.driverId)
+                };
+            });
+
+        let formattedPolys = {};
+        for (let rNum in polylines) {
+            formattedPolys[`${payload.driverId}_${rNum}`] = polylines[rNum];
+        }
+
+        return res.status(200).json({
+            success: true,
+            updatedStops: responseBay,
+            polylines: formattedPolys,
+            processUsed: routingMethod,
+            backendVersion: 'V15.4'
+        });
+    }
+
     return res.status(200).json({ 
         success: true, 
         status: 'queued',
