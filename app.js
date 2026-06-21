@@ -1,9 +1,11 @@
-/* Dashboard - V18.24 */
+/* Dashboard - V18.25 */
 /* FILE: app.js */
 /* Changes: */
-/* 1. Added AppState.isAltered to capture the new database boolean for UI sync. */
-/* 2. Force-normalized driverId to Config.driverParam across all stops in loadData() when in Inspector mode. */
-/* 3. Added failsafes to markRouteDirty and silentSaveRouteState to guarantee they fall back to Config.driverParam if triggered without an ID. */
+/* 1. loadData(): Enforces strict boolean parsing of data.isAltered to fix the persistent Restore button. */
+/* 2. markRouteDirty(): Forces AppState.isAltered = true and triggers a universal dirty UI state for Inspector View to wipe ETAs and dash polylines. */
+/* 3. silentSaveRouteState(): Removed restrictive routeTargetId filtering to ensure Inspector moves successfully update the DB currentRoute. */
+/* 4. handleCalculate() & handleGenerateRoute(): Bypassed string-matching requirements for Inspector View so the module buttons work reliably. */
+/* 5. handleRestoreOriginal(): Cleared local dirty states before pulling the clean overwrite from the server. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -173,7 +175,13 @@ export async function loadData() {
 
         AppState.routeStart = data.routeStart || null; AppState.routeEnd = data.routeEnd || null;
         if (data.isAlteredRoute) AppState.isAlteredRoute = true;
-        if (typeof data.isAltered !== 'undefined') AppState.isAltered = !!data.isAltered;
+        
+        // ISSUE #2 FIX: Force strict parsing of the backend boolean so the Restore button hides on load
+        if (typeof data.isAltered !== 'undefined') {
+            AppState.isAltered = (data.isAltered === true || String(data.isAltered).toLowerCase() === 'true');
+        } else {
+            AppState.isAltered = false;
+        }
 
         let globalRouteState = data.routeState || 'Pending';
         let globalDriverId = data.driverId || (Config.isManagerView && AppState.currentInspectorFilter !== 'all' ? AppState.currentInspectorFilter : Config.driverParam);
@@ -298,6 +306,12 @@ export function markRouteDirty(driverId, clusterIdx) {
     delete AppState.polylines[`${dId}_${routeKeyNum}`];
     delete AppState.polylines[routeKeyNum];
     delete AppState.polylines[String(routeKeyNum)];
+    
+    // ISSUES #1 & #5 FIX: Explicitly flag UI as altered and wipe ETAs/Polylines
+    if (!Config.isManagerView) {
+        AppState.isAltered = true;
+        AppState.dirtyRoutes.add('all'); 
+    }
 }
 
 export function pushToHistory() { 
@@ -360,17 +374,18 @@ export function silentSaveRouteState(explicitDriverId = null) {
     const inspId = explicitDriverId || (!Config.isManagerView ? Config.driverParam : AppState.currentInspectorFilter);
     if (inspId === 'all' || !inspId) return;
     
+    // ISSUE #4 FIX: Ensure all stops save by lifting routeTargetId constraint in Inspector View
     let routedStops = AppState.stops.filter(s => { 
         if (!isRouteAssigned(s.status)) return false; 
         if (Config.isManagerView) return String(s.driverId) === String(inspId); 
-        return s.routeTargetId === String(Config.routeId); 
+        return true; 
     });
     
     let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
     let macroState = 'Ready';
     
     if (routedStops.length === 0) macroState = 'Pending';
-    else if (AppState.dirtyRoutes.has('endpoints_0')) macroState = 'Staging-endpoint'; 
+    else if (AppState.dirtyRoutes.has('endpoints_0') || AppState.isAltered) macroState = 'Staging-endpoint'; 
     else if (AppState.dirtyRoutes.size > 0) macroState = 'Staging';
     
     // POLYLINE DETOX SCRIPT
@@ -387,7 +402,8 @@ export function silentSaveRouteState(explicitDriverId = null) {
     }
     
     let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState, polylines: sanitizedPolylines };
-    if (!Config.isManagerView) payload.routeId = Config.routeId;
+    if (!Config.isManagerView && Config.routeId) payload.routeId = Config.routeId;
+    
     apiFetch(payload).catch(e => console.log(e));
 }
 
@@ -407,16 +423,20 @@ export function getActiveEndpoints() {
 export async function handleGenerateRoute() {
     if (AppState.currentInspectorFilter === 'all') return;
     const insp = AppState.inspectors.find(i => String(i.id) === String(AppState.currentInspectorFilter));
-    if (!insp) return;
+    if (!insp && Config.isManagerView) return;
     UI.showOverlay();
 
     let stopsToOptimize = []; const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status));
-    if (isEndpointsDirty) {
-        stopsToOptimize = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat && String(s.driverId) === String(insp.id));
+    
+    // ISSUE #6 FIX: Unconditional Inspector View filtering
+    if (!Config.isManagerView && AppState.isAltered) {
+        stopsToOptimize = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat && s.cluster !== 'X');
+    } else if (isEndpointsDirty) {
+        stopsToOptimize = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat && String(s.driverId) === String(insp?.id || Config.driverParam));
         if (hasActiveRoutes) stopsToOptimize = stopsToOptimize.filter(s => s.cluster !== 'X');
     } else {
         stopsToOptimize = AppState.stops.filter(s => {
-            if (!isActiveStop(s, Config.isManagerView) || !s.lng || !s.lat || String(s.driverId) !== String(insp.id)) return false;
+            if (!isActiveStop(s, Config.isManagerView) || !s.lng || !s.lat || String(s.driverId) !== String(insp?.id || Config.driverParam)) return false;
             if (hasActiveRoutes && s.cluster === 'X') return false;
             const routeKey = `${s.driverId}_${s.cluster === 'X' ? 'X' : (s.cluster || 0)}`; return AppState.dirtyRoutes.has(routeKey) || !isRouteAssigned(s.status);
         });
@@ -427,7 +447,7 @@ export async function handleGenerateRoute() {
     const eps = getActiveEndpoints(); stopsToOptimize.forEach(s => s.routeState = 'Queued'); UI.render(); 
 
     try {
-        let payload = { action: 'generateRoute', inspectorName: insp.name, driverId: insp.id, stops: flatStopsPayload, startAddr: eps.start?.address || '', endAddr: eps.end?.address || '', routeState: 'Queued' };
+        let payload = { action: 'generateRoute', inspectorName: insp?.name || Config.driverParam, driverId: insp?.id || Config.driverParam, stops: flatStopsPayload, startAddr: eps.start?.address || '', endAddr: eps.end?.address || '', routeState: 'Queued' };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
 
         const res = await apiFetch(payload);
@@ -469,7 +489,7 @@ export async function handleGenerateRoute() {
 
             AppState.isPollingForRoute = false; AppState.dirtyRoutes.clear(); triggerFullRender(); silentSaveRouteState(); 
         } else if (data.status === 'queued' || data.success) {
-            let pqPayload = { action: 'processQueue', driverId: insp.id };
+            let pqPayload = { action: 'processQueue', driverId: insp?.id || Config.driverParam };
             if (!Config.isManagerView) pqPayload.routeId = Config.routeId;
             apiFetch(pqPayload).catch(err => console.log(err));
             
@@ -485,7 +505,10 @@ export async function handleCalculate() {
         const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status));
         let stopsToCalculate = [];
 
-        if (isEndpointsDirty) {
+        // ISSUE #6 FIX: Unconditional Inspector View filtering
+        if (!Config.isManagerView && AppState.isAltered) {
+            stopsToCalculate = activeStops.filter(s => isRouteAssigned(s.status) && s.cluster !== 'X');
+        } else if (isEndpointsDirty) {
             stopsToCalculate = activeStops; if (hasActiveRoutes) stopsToCalculate = stopsToCalculate.filter(s => s.cluster !== 'X');
         } else {
             stopsToCalculate = activeStops.filter(s => {
@@ -663,8 +686,19 @@ export async function handleRestoreOriginal() {
     try {
         let payload = { action: 'restoreOriginalRoute', driverId: Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
-        await apiFetch(payload); await loadData(); 
-    } catch(e) { UI.hideOverlay(); await UI.customAlert("Error restoring the route. Please try again."); } finally { UI.hideOverlay(); }
+        
+        // ISSUE #3 FIX: Clean local state instantly so the UI knows the restore was successful before pulling fresh data
+        AppState.isAltered = false;
+        AppState.dirtyRoutes.clear();
+        
+        await apiFetch(payload); 
+        await loadData(); 
+    } catch(e) { 
+        UI.hideOverlay(); 
+        await UI.customAlert("Error restoring the route. Please try again."); 
+    } finally { 
+        UI.hideOverlay(); 
+    }
 }
 
 export async function toggleComplete(e, id) {
@@ -739,7 +773,6 @@ export function sortTable(col) {
         if (valA < valB) return AppState.currentSort.asc ? -1 : 1;
         if (valA > valB) return AppState.currentSort.asc ? 1 : -1;
 
-        // Secondary sort if primary matches (especially for Inspector column to group by Route -> Sequence)
         let cA = a.cluster === 'X' ? 999 : (a.cluster || 0);
         let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
         if (cA !== cB) return cA - cB;
