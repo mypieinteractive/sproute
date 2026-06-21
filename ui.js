@@ -1,17 +1,16 @@
-/* Dashboard - V20.14 */
+/* Dashboard - V20.15 */
 /* FILE: ui.js */
 /* Changes: */
-/* 1. Added precalculatedIndexes in render() to map stop numbers sequentially before splitting completed orders. */
-/* 2. Segregated completed orders into their own 'completed-list' container with a 'COMPLETED ORDERS' subheading. */
-/* 3. Added auto-scrolling logic on initial load to scroll past the completed list and start the viewport at the Start Endpoint. */
-/* 4. Included scroll position memory during re-renders to prevent jarring jumps when toggling checkmarks. */
-/* 5. Updated reorderStopsFromDOM to safely preserve completed order IDs during Sortable drag/drop actions. */
+/* 1. Updated updateHeaderUI to dynamically show the Restore button ONLY when there are structural sequence changes, safely ignoring Completed orders. */
+/* 2. Modified initSortable to unconditionally fire markRouteDirty on Inspector drag-and-drop, properly switching the UI to 'Staging' to reveal the Re-Calculate/Re-Optimize buttons. */
+/* 3. Updated the manager search input placeholder to "Search address or client...". */
+/* 4. Forked createEndpointRow to provide an Inspector-specific layout (Home/Flag icons, no ETA text, left-aligned input field). */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
-// --- Overlays & Modals ---
 
+// --- Overlays & Modals ---
 export function showOverlay(title = "Processing...", subtext = "Syncing data with the server") {
     const overlay = document.getElementById('processing-overlay');
     if (overlay) {
@@ -46,7 +45,6 @@ export function customAlert(msg) {
     });
 }
 
-// A safe overlay alert that will not destroy existing modal HTML
 export function nonDestructiveAlert(msg) {
     return new Promise(resolve => {
         const alertDiv = document.createElement('div');
@@ -129,14 +127,27 @@ export function updateHeaderUI() {
             try {
                 if (AppState.originalRouteJson) {
                     const inspId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
-                    let routedStops = AppState.stops.filter(s => { 
-                        if (!isRouteAssigned(s.status)) return false; 
+                    
+                    // A. Extract currently routed IDs (excluding completed)
+                    let currentActiveIds = AppState.stops.filter(s => { 
+                        if (!isRouteAssigned(s.status) || s.status.toLowerCase() === 'completed') return false; 
                         if (Config.isManagerView) return String(s.driverId) === String(inspId); 
                         return s.routeTargetId === String(Config.routeId); 
-                    });
+                    }).map(s => String(s.id));
                     
-                    let minified = routedStops.map(s => minifyStop(s, s.cluster === 'X' ? 'X' : (s.cluster || 0) + 1));
-                    isStructurallyAltered = (JSON.stringify(minified) !== JSON.stringify(JSON.parse(AppState.originalRouteJson)));
+                    // B. Extract originally routed IDs (excluding completed)
+                    let originalParsed = JSON.parse(AppState.originalRouteJson);
+                    let originalActiveIds = originalParsed.filter(s => {
+                        let cur = AppState.stops.find(c => String(c.id) === String(s[0]));
+                        return !cur || cur.status.toLowerCase() !== 'completed';
+                    }).map(s => String(s[0]));
+
+                    // C. Compare Sequence
+                    isStructurallyAltered = (currentActiveIds.join(',') !== originalActiveIds.join(','));
+
+                    // D. Fallbacks
+                    if (AppState.isAlteredRoute) isStructurallyAltered = true;
+                    if (AppState.dirtyRoutes.has('endpoints_0') || AppState.dirtyRoutes.has('endpoints')) isStructurallyAltered = true;
                 }
             } catch(e) {}
             
@@ -454,7 +465,7 @@ export function render() {
             
             <div class="col-addr" style="display:flex; align-items:center; flex-direction:row; padding-left:8px; padding-right:6px; flex:1 1 auto; min-width:0;">
                 <div class="address-search-wrapper" style="position:relative; flex: 1; display:flex; align-items:center; height:30px;">
-                    <input type="text" id="address-search-input" placeholder="ADDRESS" oninput="filterListDOM(this.value)" class="address-header-input">
+                    <input type="text" id="address-search-input" placeholder="Search address or client..." oninput="filterListDOM(this.value)" class="address-header-input">
                     <i class="fa-solid fa-magnifying-glass search-icon" id="search-glass-icon" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
                     <i class="fa-solid fa-xmark clear-search-icon" id="clear-search-icon" onclick="clearAddressSearch()" style="display:none; position: absolute; right: 8px; z-index: 5;"></i>
                     <div class="custom-tooltip">Click to search orders</div>
@@ -887,16 +898,35 @@ export function createRouteSubheading(clusterNum, clusterStops) {
 export function createEndpointRow(type, endpointData) {
     const displayAddr = endpointData && endpointData.address ? endpointData.address : '';
     const placeholder = type === 'start' ? 'Search Start Address...' : 'Search End Address...';
-    const icon = type === 'start' ? '<i class="fa-solid fa-location-dot"></i>' : '<i class="fa-solid fa-flag-checkered"></i>';
-    const labelText = type === 'start' ? 'START' : 'END';
-    
-    const isAllInspectors = Config.isManagerView && AppState.currentInspectorFilter === 'all';
-    const dummySort = isAllInspectors ? '<i class="fa-solid fa-sort" style="margin-left:4px;"></i>' : '';
     const disabledAttr = (Config.viewMode === 'inspector' && !AppState.PERMISSION_MODIFY) ? 'disabled' : '';
     
     const el = document.createElement('div');
-    el.className = 'stop-item static-endpoint';
     
+    if (!Config.isManagerView) {
+        const icon = type === 'start' ? '<i class="fa-solid fa-house"></i>' : '<i class="fa-solid fa-flag-checkered"></i>';
+        el.className = 'stop-item static-endpoint';
+        el.innerHTML = `
+            <div class="stop-sidebar" style="background-color: transparent; color: var(--row-text-muted); font-size: 16px;">
+                ${icon}
+            </div>
+            <div class="csv-box" style="border: none; margin: 0; width: 0; padding: 0;"></div>
+            <div class="stop-content" style="padding-left: 12px; overflow: visible;">
+                <div style="position:relative; display:flex; align-items:center; height:30px; width: 100%;">
+                    <input type="text" id="input-endpoint-${type}" class="endpoint-input" data-nodrag="true" value="${displayAddr}" placeholder="${placeholder}" ${disabledAttr} onfocus="this.select()" oninput="handleEndpointInput(event, '${type}')" onkeydown="handleEndpointKeyDown(event, '${type}')" onblur="handleEndpointBlur('${type}', this)" style="padding-left: 0; background: transparent !important; font-size: 15px; font-weight: 400; color: var(--row-text-main) !important;">
+                    <i class="fa-solid fa-pencil" style="position: absolute; right: 8px; color: var(--row-text-muted); font-size: 12px; pointer-events: none;"></i>
+                </div>
+            </div>
+            <div class="due-date-container"></div>
+            <div class="stop-actions" style="width: 58px;"></div>
+        `;
+        return el;
+    }
+
+    const icon = type === 'start' ? '<i class="fa-solid fa-location-dot"></i>' : '<i class="fa-solid fa-flag-checkered"></i>';
+    const labelText = type === 'start' ? 'START' : 'END';
+    const isAllInspectors = Config.isManagerView && AppState.currentInspectorFilter === 'all';
+    
+    el.className = 'stop-item static-endpoint';
     el.innerHTML = `
         <div class="col-num" style="display:flex; justify-content:center; align-items:center; color:var(--row-text-muted); font-size:16px;">
             ${icon}
@@ -1210,6 +1240,10 @@ export function initSortable() {
                     const stop = AppState.stops.find(s => String(s.id) === String(stopId));
                     if (stop) {
                         const dId = stop.driverId;
+                        
+                        // FIX: Ensure dragging inside the same route STILL registers a sequence change
+                        markRouteDirty(dId, stop.cluster);
+
                         let matchOld = evt.from.id.match(/(routed|driver)-list-(\d+)/);
                         if (matchOld) markRouteDirty(dId, parseInt(matchOld[2]));
                         
