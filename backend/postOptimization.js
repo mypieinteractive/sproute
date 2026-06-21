@@ -1,9 +1,12 @@
 /**
  * postOptimization.js
- * VERSION: V15.6
+ * VERSION: V15.7
  * * CHANGES:
+ * V15.7 - Added `isAltered` boolean lifecycle tracking to Dispatch documents. 
+ * Initializes as `false` on dispatch, flags to `true` on saves/undos, and resets 
+ * to `false` when the original route is restored.
  * V15.6 - Fixed "ghost" polylines bug: explicitly clear 'activeStaging.polylines' by setting it to '{}' in both resetRoute and dispatchRoute to prevent long-term data bloat in the Users collection.
- * V15.5 - Implemented Transaction Rollback for dispatchRoute. It now saves to the Dispatch document FIRST. If ZeptoMail fails, it deletes the newly created Dispatch document (rollback) and throws an error to the frontend, leaving the User's activeStaging perfectly intact so they can try again.
+ * V15.5 - Implemented Transaction Rollback for dispatchRoute.
  */
 
 const { safeJsonParse } = require('./helpers');
@@ -16,7 +19,10 @@ async function saveRoute(payload, res, db) {
         const dispatchRef = db.collection('Dispatch').doc(String(payload.routeId));
         const dispatchDoc = await dispatchRef.get();
         if (dispatchDoc.exists) {
-            let updates = { currentRoute: JSON.stringify(payload.stops) };
+            let updates = { 
+                currentRoute: JSON.stringify(payload.stops),
+                isAltered: true // Flag the route as modified
+            };
             if (payload.polylines) updates.currentPolylines = JSON.stringify(payload.polylines);
             await dispatchRef.update(updates);
             return res.status(200).json({ success: true });
@@ -73,7 +79,9 @@ async function recreateOrders(payload, res, db) {
             });
             
             await dispatchRef.update({ 
-                currentRoute: JSON.stringify(sandboxArr), originalRoute: JSON.stringify(originalArr)
+                currentRoute: JSON.stringify(sandboxArr), 
+                originalRoute: JSON.stringify(originalArr),
+                isAltered: true // Adding a stop back means the route is altered
             });
             return res.status(200).json({ success: true });
         }
@@ -106,7 +114,8 @@ async function restoreOriginalRoute(payload, res, db) {
             
             await dispatchRef.update({ 
                 currentRoute: origJson, 
-                currentPolylines: origPolys 
+                currentPolylines: origPolys,
+                isAltered: false // Route is back to original
             });
             return res.status(200).json({ success: true });
         }
@@ -183,6 +192,7 @@ async function dispatchRoute(payload, res, db, admin) {
         ccEmail: payload.ccEmail || "",
         endpointsObj: driverData.endpoints || {},
         dashboardLink: dashboardLink,
+        isAltered: false, // Freshly dispatched, so it is unaltered
         timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
