@@ -334,7 +334,7 @@ export function updateRoutingUI() {
             if (actionBtns) actionBtns.style.width = '100%';
             if (btnReady) btnReady.style.display = 'flex';
             const restoreBtn = document.getElementById('btn-header-restore');
-            if (restoreBtn) restoreBtn.style.display = AppState.isAltered ? 'flex' : 'none';
+            if (restoreBtn) restoreBtn.style.display = Config.isManagerView ? (AppState.isAltered ? 'flex' : 'none') : (AppState.showReset ? 'flex' : 'none');
         }
     } else {
         if (!AppState.PERMISSION_REOPTIMIZE) {
