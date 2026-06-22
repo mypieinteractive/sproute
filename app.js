@@ -422,7 +422,14 @@ export function silentSaveRouteState(explicitDriverId = null) {
     }
     
     let payload = { action: 'saveRoute', driverId: inspId, stops: minified, routeState: macroState, polylines: sanitizedPolylines };
-    if (!Config.isManagerView) payload.routeId = Config.routeId;
+    if (!Config.isManagerView) {
+        payload.routeId = Config.routeId;
+        if (AppState.showReset) {
+            payload.forceShowReset = true;
+        } else {
+            payload.forceShowReset = false;
+        }
+    }
     
     apiFetch(payload).catch(e => console.log(e));
 }
@@ -512,7 +519,7 @@ export async function handleGenerateRoute() {
             apiFetch(pqPayload).catch(err => console.log(err));
             
             AppState.isPollingForRoute = true; AppState.pollRetries = 0; setTimeout(loadData, 5000);
-        } else { await loadData(); UI.hideOverlay(); }
+        } else { await loadData(); }
     } catch (e) { UI.hideOverlay(); await UI.customAlert("Generation encountered an error. Please wait a moment and try again."); } 
 }
 
