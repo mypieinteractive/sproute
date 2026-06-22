@@ -113,7 +113,7 @@ body.empty-state-active #mobile-fab-toggle, body.drag-override-empty #mobile-fab
 
 /* Inspector Unique Elements Isolation */
 .inspector-only { display: none !important; }
-body.view-inspector .inspector-only { display: block !important; }
+body.view-inspector .inspector-only.static-visible { display: block !important; }
 
 /* --- Inspector View Shell Layout --- */
 body.view-inspector { 
