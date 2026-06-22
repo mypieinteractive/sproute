@@ -20,10 +20,17 @@ async function saveRoute(payload, res, db) {
         const dispatchDoc = await dispatchRef.get();
         if (dispatchDoc.exists) {
             let updates = { 
-                currentRoute: JSON.stringify(payload.stops),
-                isAltered: true, // Flag the route as modified
-                showReset: true
+                currentRoute: JSON.stringify(payload.stops)
             };
+            
+            if (typeof payload.forceShowReset !== 'undefined') {
+                updates.isAltered = payload.forceShowReset;
+                updates.showReset = payload.forceShowReset;
+            } else {
+                updates.isAltered = true; // Fallback
+                updates.showReset = true; // Fallback
+            }
+
             if (payload.polylines) updates.currentPolylines = JSON.stringify(payload.polylines);
             await dispatchRef.update(updates);
             return res.status(200).json({ success: true });
