@@ -123,7 +123,13 @@ export function updateHeaderUI() {
 
         if (resetBtn) {
             // Clean Boolean Check for Restore Visibility
-            resetBtn.style.display = AppState.showReset ? 'flex' : 'none';
+            if (AppState.showReset) {
+                resetBtn.style.display = 'flex';
+                resetBtn.classList.add('static-visible');
+            } else {
+                resetBtn.style.display = 'none';
+                resetBtn.classList.remove('static-visible');
+            }
         }
     }
 
