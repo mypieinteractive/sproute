@@ -1,10 +1,12 @@
-/* Dashboard - V18.27 */
+/* Dashboard - V18.28 */
 /* FILE: app.js */
 /* Changes: */
 /* 1. Root Cause 1: Dynamically injects Config.driverParam from the Dispatch document to prevent Inspector save/calc payloads from aborting. */
 /* 2. Root Cause 2: Wraps the 'Staging' auto-dirty loop in loadData() with an 'if (Config.isManagerView)' check so the Inspector dashboard stops instantly re-dirtying itself upon Restore. */
 /* 3. Updated silentSaveRouteState to fully support saving payloads without strict Manager driver ID checks. */
 /* 4. Bug Fix 2: Updated handleStartOver to explicitly call setRoutes(1), clear out AppState.dirtyRoutes, and removed the premature UI.reorderStopsFromDOM() call. */
+/* 5. Bug Fix 3: Scoped hasActiveRoutes in handleGenerateRoute and handleCalculate strictly to the current inspector so optimization doesn't ignore stops for newly assigned drivers. */
+/* 6. Bug Fix 4: Added missing UI. prefixes to updateRouteTimes() inside setRoutes, moveSelectedToRoute, and liveClusterUpdate to prevent crashes. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -454,7 +456,10 @@ export async function handleGenerateRoute() {
     if (Config.isManagerView && !insp) return;
     UI.showOverlay();
 
-    let stopsToOptimize = []; const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status));
+    let stopsToOptimize = []; const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); 
+    
+    // BUG FIX: Strictly scope hasActiveRoutes to the active inspector
+    const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status) && String(s.driverId) === String(insp?.id || Config.driverParam));
     
     if (isEndpointsDirty) {
         stopsToOptimize = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat && String(s.driverId) === String(insp?.id || Config.driverParam));
@@ -528,7 +533,12 @@ export async function handleCalculate() {
     UI.showOverlay();
     try {
         const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat);
-        const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status));
+        const isEndpointsDirty = AppState.dirtyRoutes.has('endpoints_0'); 
+        
+        // BUG FIX: Strictly scope hasActiveRoutes to the active inspector
+        const activeDriverId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+        const hasActiveRoutes = AppState.stops.some(s => isRouteAssigned(s.status) && String(s.driverId) === String(activeDriverId));
+        
         let stopsToCalculate = [];
 
         if (isEndpointsDirty) {
@@ -821,7 +831,7 @@ export function setRoutes(num) {
     if(activeStops.length > 0) {
         calculateClusters(activeStops, num, parseInt(document.getElementById('slider-priority')?.value || 0));
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
-        updateRouteTimes();
+        UI.updateRouteTimes();
     }
     UI.updateSelectionUI(); 
     UI.updatePrioritySliderUI();
@@ -849,7 +859,7 @@ export function moveSelectedToRoute(cIdx) {
     AppState.selectedIds.clear();
     
     triggerFullRender(); 
-    updateRouteTimes(); 
+    UI.updateRouteTimes(); 
     
     if (affectedDrivers.size > 0) {
         affectedDrivers.forEach(dId => silentSaveRouteState(dId));
@@ -863,7 +873,7 @@ export function liveClusterUpdate() {
     if(activeStops.length > 0 && AppState.currentRouteCount > 1) {
         calculateClusters(activeStops, AppState.currentRouteCount, parseInt(document.getElementById('slider-priority')?.value || 0));
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
-        updateRouteTimes();
+        UI.updateRouteTimes();
         UI.render();
     }
 }
