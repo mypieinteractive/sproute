@@ -1784,7 +1784,13 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
         // Append mutated stops to the bottom of the array
         AppState.stops.push(...movedStops);
 
-        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
+     // Map the old IDs to their newly minted counterparts so the backend knows what to rename them to
+        let updatesListPayload = idsToUpdate.map((oldId, index) => {
+             const matchingStop = movedStops.find(s => String(s.id).endsWith(`-${index}`)); // Target the specific suffix we minted
+             return { rowId: oldId, newRowId: matchingStop ? matchingStop.id : null };
+        });
+
+        let payload = { action: 'updateMultipleOrders', updatesList: updatesListPayload, sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); 
