@@ -1,9 +1,10 @@
-/* Dashboard - V20.16 */
+/* Dashboard - V20.17 */
 /* FILE: ui.js */
 /* Changes: */
 /* 1. Ripped out the complex JSON sequence parsing in updateHeaderUI and replaced it with a clean check against AppState.isAltered. */
 /* 2. Modified updateRoutingUI to explicitly force the "Staging" state (revealing Re-Calc/Re-Opt buttons) whenever AppState.isAltered is true. */
 /* 3. Injected Config.driverParam fallback into initSortable drag-and-drop events to ensure markRouteDirty always has a valid ID payload. */
+/* 4. Modified handleInspectorChange to extract reassigned orders and append them to the end of AppState.stops, fixing index numbering for newly assigned unrouted orders. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -1760,14 +1761,21 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     affectedDrivers.add(String(newDriverId)); 
     
     try { 
+        let movedStops = [];
         idsToUpdate.forEach(id => {
             const s = AppState.stops.find(st => String(st.id) === String(id));
             if (s) {
                 if (s.driverId) affectedDrivers.add(String(s.driverId)); 
                 if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
                 s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
+                movedStops.push(s);
             }
         });
+        
+        // Reorder AppState.stops to append reassigned stops to the bottom
+        AppState.stops = AppState.stops.filter(s => !idsToUpdate.includes(String(s.id)));
+        AppState.stops.push(...movedStops);
+
         let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
