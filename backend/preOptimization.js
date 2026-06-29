@@ -574,25 +574,22 @@ async function updateMultipleOrders(payload, res, db) {
                 }
             }
 
-            let destDriverId = newDriverId || foundSourceId;
+    let destDriverId = newDriverId || foundSourceId;
             if (destDriverId && usersData[destDriverId]) {
+                
+                // BUG FIX: The frontend now mints unique Reassigned IDs. 
+                // The backend must NOT attempt to generate new maxSeq IDs when moving drivers, 
+                // otherwise it causes ID desyncs and database duplication during optimization.
                 if (destDriverId !== foundSourceId) {
-                    let maxSeq = 0;
-                    usersData[destDriverId].bay.forEach(s => {
-                        let idStr = String(Array.isArray(s) ? s[0] : (s.rowId || s.id));
-                        let parts = idStr.split('-');
-                        if(parts.length === 2) {
-                            let seq = parseInt(parts[1]);
-                            if(!isNaN(seq) && seq > maxSeq) maxSeq = seq;
-                        }
-                    });
-                    let newRowId = `${destDriverId}-${maxSeq + 1}`;
-                    if (Array.isArray(orderTuple)) {
-                        orderTuple[0] = newRowId;
-                    } else {
-                        orderTuple.rowId = newRowId;
-                        orderTuple.r = newRowId;
-                        orderTuple.id = newRowId;
+                    // Update the rowId if the frontend passed a newly minted one in the updateReq
+                    if (updateReq.newRowId) {
+                         if (Array.isArray(orderTuple)) {
+                             orderTuple[0] = String(updateReq.newRowId);
+                         } else {
+                             orderTuple.rowId = String(updateReq.newRowId);
+                             orderTuple.r = String(updateReq.newRowId);
+                             orderTuple.id = String(updateReq.newRowId);
+                         }
                     }
                 }
                 
