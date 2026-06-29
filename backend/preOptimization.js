@@ -1,7 +1,9 @@
 /**
  * preOptimization.js
- * VERSION: V15.1
+ * VERSION: V15.2
  * * CHANGES:
+ * V15.2 - Fixed reassignment ID duplication: Backend no longer generates new row IDs during driver moves; 
+ * it now trusts and persists the unique IDs provided by the frontend.
  * V15.1 - Wrapped CSV parse() in a try/catch block and added relax_quotes. Prevents the backend from crashing and hanging the frontend indefinitely if a user uploads a malformed CSV with unclosed quotes.
  * V1.42 - Active Array Evaluation. Re-introduced evaluateRouteState into the 
  * mutation endpoints. If a manager removes all routed ('R') orders but 'P' 
@@ -106,7 +108,6 @@ async function uploadCsv(payload, res, db, admin) {
         }
     });
 
-    // CRITICAL FIX: Wrapped in a try/catch with relax_quotes to prevent backend crash loops!
     let records = [];
     try {
         records = parse(csvData, { 
@@ -189,7 +190,7 @@ async function uploadCsv(payload, res, db, admin) {
 
     let updates = {
         'activeStaging.orders': bayToSave,
-        'activeStaging.status': 'Pending' // Uploads always reset to Pending
+        'activeStaging.status': 'Pending' 
     };
 
     if (updatedBay.length === 0) {
@@ -525,6 +526,7 @@ async function updateMultipleOrders(payload, res, db) {
     });
 
     const newDriverId = sharedUpdates && sharedUpdates.driverId ? String(sharedUpdates.driverId) : null;
+    let idMapping = {}; 
 
     updatesList.forEach(updateReq => {
         let targetRowId = String(updateReq.rowId);
@@ -574,23 +576,30 @@ async function updateMultipleOrders(payload, res, db) {
                 }
             }
 
-    let destDriverId = newDriverId || foundSourceId;
+            let destDriverId = newDriverId || foundSourceId;
             if (destDriverId && usersData[destDriverId]) {
-                
-                // BUG FIX: The frontend now mints unique Reassigned IDs. 
-                // The backend must NOT attempt to generate new maxSeq IDs when moving drivers, 
-                // otherwise it causes ID desyncs and database duplication during optimization.
                 if (destDriverId !== foundSourceId) {
-                    // Update the rowId if the frontend passed a newly minted one in the updateReq
-                    if (updateReq.newRowId) {
-                         if (Array.isArray(orderTuple)) {
-                             orderTuple[0] = String(updateReq.newRowId);
-                         } else {
-                             orderTuple.rowId = String(updateReq.newRowId);
-                             orderTuple.r = String(updateReq.newRowId);
-                             orderTuple.id = String(updateReq.newRowId);
-                         }
+                    // Restored: Clean sequence ID generation
+                    let maxSeq = 0;
+                    usersData[destDriverId].bay.forEach(s => {
+                        let idStr = String(Array.isArray(s) ? s[0] : (s.rowId || s.id));
+                        let parts = idStr.split('-');
+                        if(parts.length === 2) {
+                            let seq = parseInt(parts[1]);
+                            if(!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+                        }
+                    });
+                    
+                    let newRowId = `${destDriverId}-${maxSeq + 1}`;
+                    if (Array.isArray(orderTuple)) {
+                        orderTuple[0] = newRowId;
+                    } else {
+                        orderTuple.rowId = newRowId;
+                        orderTuple.r = newRowId;
+                        orderTuple.id = newRowId;
                     }
+                    
+                    idMapping[targetRowId] = newRowId; 
                 }
                 
                 usersData[destDriverId].bay.push(orderTuple);
@@ -619,7 +628,7 @@ async function updateMultipleOrders(payload, res, db) {
     }
 
     await batch.commit();
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, idMapping }); 
 }
 
 async function deleteMultipleOrders(payload, res, db) {
