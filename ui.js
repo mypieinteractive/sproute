@@ -1761,45 +1761,28 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     affectedDrivers.add(String(newDriverId)); 
     
     try { 
-let movedStops = [];
-        const originalStopsToMove = AppState.stops.filter(s => idsToUpdate.includes(String(s.id)));
-        
-        // Strip them out of the main array using their old IDs
-        AppState.stops = AppState.stops.filter(s => !idsToUpdate.includes(String(s.id)));
-
-        originalStopsToMove.forEach((s) => {
-            if (s.driverId) affectedDrivers.add(String(s.driverId)); 
-            if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
-            s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
-            movedStops.push(s);
+try { 
+        // Only mark source routes dirty if the moved stop was ACTIVELY routed
+        idsToUpdate.forEach(id => {
+            const s = AppState.stops.find(st => String(st.id) === String(id));
+            if (s) {
+                if (s.driverId) affectedDrivers.add(String(s.driverId)); 
+                if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
+            }
         });
         
-        // Append mutated stops to the bottom of the array
-        AppState.stops.push(...movedStops);
-
         let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
-        const res = await apiFetch(payload); 
-        const data = await res.json();
-        
-        // NEW: Apply the clean IDs sent back from the server!
-        if (data.idMapping) {
-            AppState.stops.forEach(s => {
-                if (data.idMapping[s.id]) {
-                    const newId = data.idMapping[s.id];
-                    s.id = newId;
-                    s.rowId = newId;
-                }
-            });
-        }
-
+        await apiFetch(payload); 
         AppState.selectedIds.clear(); 
         updateInspectorDropdown(); 
-        triggerFullRender();
+        
+        // Mirror CSV Upload: Fetch the pure, truthful state directly from the backend
+        await loadData();
         
         affectedDrivers.forEach(dId => silentSaveRouteState(dId));
-    } catch (err) { 
+    } catch (err) {
         hideOverlay(); await customAlert("Error reassigning orders. Please try again."); 
     } finally { 
         hideOverlay(); 
