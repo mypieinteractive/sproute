@@ -1776,13 +1776,16 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
         AppState.stops = AppState.stops.filter(s => !idsToUpdate.includes(String(s.id)));
         AppState.stops.push(...movedStops);
 
-        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
+let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); 
         AppState.selectedIds.clear(); 
         updateInspectorDropdown(); 
-        triggerFullRender(); 
+        
+        // BUG FIX: Force a data refresh so the frontend instantly drops the old Row IDs 
+        // and adopts the freshly minted Row IDs from the backend.
+        await loadData();
         
         affectedDrivers.forEach(dId => silentSaveRouteState(dId));
     } catch (err) { 
