@@ -1761,31 +1761,38 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     affectedDrivers.add(String(newDriverId)); 
     
     try { 
-        let movedStops = [];
-        idsToUpdate.forEach(id => {
-            const s = AppState.stops.find(st => String(st.id) === String(id));
-            if (s) {
-                if (s.driverId) affectedDrivers.add(String(s.driverId)); 
-                if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
-                s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
-                movedStops.push(s);
-            }
+ let movedStops = [];
+        // Extract the stops to move before altering their IDs
+        const originalStopsToMove = AppState.stops.filter(s => idsToUpdate.includes(String(s.id)));
+        
+        // Strip them out of the main array using their old IDs
+        AppState.stops = AppState.stops.filter(s => !idsToUpdate.includes(String(s.id)));
+
+        originalStopsToMove.forEach((s, index) => {
+            if (s.driverId) affectedDrivers.add(String(s.driverId)); 
+            if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
+            s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
+            
+            // BUG FIX: Mint a unique ID locally to prevent map desync, duplicate backend IDs, and stuck optimizations
+            const mintedId = `${newDriverId}-Reassigned-${Date.now()}-${index}`;
+            s.id = mintedId;
+            s.rowId = mintedId;
+            
+            movedStops.push(s);
         });
         
-        // Reorder AppState.stops to append reassigned stops to the bottom
-        AppState.stops = AppState.stops.filter(s => !idsToUpdate.includes(String(s.id)));
+        // Append mutated stops to the bottom of the array
         AppState.stops.push(...movedStops);
 
-let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
+        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); 
         AppState.selectedIds.clear(); 
         updateInspectorDropdown(); 
         
-        // BUG FIX: Force a data refresh so the frontend instantly drops the old Row IDs 
-        // and adopts the freshly minted Row IDs from the backend.
-        await loadData();
+        // Trigger UI rendering locally instead of forcing a full data reload
+        triggerFullRender();
         
         affectedDrivers.forEach(dId => silentSaveRouteState(dId));
     } catch (err) { 
