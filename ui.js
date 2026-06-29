@@ -1761,43 +1761,41 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     affectedDrivers.add(String(newDriverId)); 
     
     try { 
- let movedStops = [];
-        // Extract the stops to move before altering their IDs
+let movedStops = [];
         const originalStopsToMove = AppState.stops.filter(s => idsToUpdate.includes(String(s.id)));
         
         // Strip them out of the main array using their old IDs
         AppState.stops = AppState.stops.filter(s => !idsToUpdate.includes(String(s.id)));
 
-        originalStopsToMove.forEach((s, index) => {
+        originalStopsToMove.forEach((s) => {
             if (s.driverId) affectedDrivers.add(String(s.driverId)); 
             if (isRouteAssigned(s.status)) markRouteDirty(s.driverId, s.cluster); 
             s.driverName = newDriverName; s.driverId = newDriverId; s.status = 'Pending'; s.routeState = 'Pending'; s.cluster = 'X'; s.manualCluster = false; s.eta = ''; s.dist = 0; s.durationSecs = 0;
-            
-            // BUG FIX: Mint a unique ID locally to prevent map desync, duplicate backend IDs, and stuck optimizations
-            const mintedId = `${newDriverId}-Reassigned-${Date.now()}-${index}`;
-            s.id = mintedId;
-            s.rowId = mintedId;
-            
             movedStops.push(s);
         });
         
         // Append mutated stops to the bottom of the array
         AppState.stops.push(...movedStops);
 
-     // Map the old IDs to their newly minted counterparts so the backend knows what to rename them to
-        let updatesListPayload = idsToUpdate.map((oldId, index) => {
-             const matchingStop = movedStops.find(s => String(s.id).endsWith(`-${index}`)); // Target the specific suffix we minted
-             return { rowId: oldId, newRowId: matchingStop ? matchingStop.id : null };
-        });
-
-        let payload = { action: 'updateMultipleOrders', updatesList: updatesListPayload, sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
+        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
-        await apiFetch(payload); 
+        const res = await apiFetch(payload); 
+        const data = await res.json();
+        
+        // NEW: Apply the clean IDs sent back from the server!
+        if (data.idMapping) {
+            AppState.stops.forEach(s => {
+                if (data.idMapping[s.id]) {
+                    const newId = data.idMapping[s.id];
+                    s.id = newId;
+                    s.rowId = newId;
+                }
+            });
+        }
+
         AppState.selectedIds.clear(); 
         updateInspectorDropdown(); 
-        
-        // Trigger UI rendering locally instead of forcing a full data reload
         triggerFullRender();
         
         affectedDrivers.forEach(dId => silentSaveRouteState(dId));
