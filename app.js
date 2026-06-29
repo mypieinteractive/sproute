@@ -1,9 +1,10 @@
-/* Dashboard - V18.26 */
+/* Dashboard - V18.27 */
 /* FILE: app.js */
 /* Changes: */
 /* 1. Root Cause 1: Dynamically injects Config.driverParam from the Dispatch document to prevent Inspector save/calc payloads from aborting. */
 /* 2. Root Cause 2: Wraps the 'Staging' auto-dirty loop in loadData() with an 'if (Config.isManagerView)' check so the Inspector dashboard stops instantly re-dirtying itself upon Restore. */
 /* 3. Updated silentSaveRouteState to fully support saving payloads without strict Manager driver ID checks. */
+/* 4. Bug Fix 2: Updated handleStartOver to explicitly call setRoutes(1), clear out AppState.dirtyRoutes, and removed the premature UI.reorderStopsFromDOM() call. */
 
 import { 
     expandStop, minifyStop, getStatusCode, getStatusText, isRouteAssigned, 
@@ -667,7 +668,6 @@ export async function handleStartOver() {
         const routedStops = AppState.stops.filter(s => String(s.driverId) === String(targetDriverId) && isRouteAssigned(s.status));
         
         routedStops.forEach(s => {
-            markRouteDirty(s.driverId, s.cluster);
             s.status = 'Pending'; 
             s.routeState = 'Pending';
             s.cluster = 'X';
@@ -686,11 +686,11 @@ export async function handleStartOver() {
         }
         
         AppState.selectedIds.clear(); 
+        AppState.dirtyRoutes.clear();
         if (!Config.isManagerView) AppState.isAlteredRoute = true;
-
-        UI.reorderStopsFromDOM(); 
+        
+        setRoutes(1);
         triggerFullRender(); 
-        UI.updateRouteTimes(); 
         silentSaveRouteState(targetDriverId);
     } catch (err) { 
         UI.hideOverlay(); 
