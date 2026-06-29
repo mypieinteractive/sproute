@@ -98,12 +98,13 @@ async function uploadCsv(payload, res, db, admin) {
 
     if (overrideLock) existingBay = []; 
 
-    let maxSeq = 0;
+   let maxSeq = 0;
     existingBay.forEach(s => {
         let idStr = String(Array.isArray(s) ? s[0] : (s.rowId || ""));
         let parts = idStr.split('-');
-        if (parts.length === 2) {
-            let seqNum = parseInt(parts[1]);
+        // BUG FIX: Allow Inspector IDs that contain internal hyphens
+        if (parts.length > 1) {
+            let seqNum = parseInt(parts[parts.length - 1]);
             if (!isNaN(seqNum) && seqNum > maxSeq) maxSeq = seqNum;
         }
     });
@@ -580,16 +581,16 @@ async function updateMultipleOrders(payload, res, db) {
             if (destDriverId && usersData[destDriverId]) {
                 if (destDriverId !== foundSourceId) {
                     // Restored: Clean sequence ID generation
-                    let maxSeq = 0;
+         let maxSeq = 0;
                     usersData[destDriverId].bay.forEach(s => {
                         let idStr = String(Array.isArray(s) ? s[0] : (s.rowId || s.id));
                         let parts = idStr.split('-');
-                        if(parts.length === 2) {
-                            let seq = parseInt(parts[1]);
-                            if(!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+                        // BUG FIX: Allow Inspector IDs that contain internal hyphens
+                        if (parts.length > 1) {
+                            let seq = parseInt(parts[parts.length - 1]);
+                            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
                         }
                     });
-                    
                     let newRowId = `${destDriverId}-${maxSeq + 1}`;
                     if (Array.isArray(orderTuple)) {
                         orderTuple[0] = newRowId;
