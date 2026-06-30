@@ -4,7 +4,7 @@
 /* 1. Ripped out the complex JSON sequence parsing in updateHeaderUI and replaced it with a clean check against AppState.isAltered. */
 /* 2. Modified updateRoutingUI to explicitly force the "Staging" state (revealing Re-Calc/Re-Opt buttons) whenever AppState.isAltered is true. */
 /* 3. Injected Config.driverParam fallback into initSortable drag-and-drop events to ensure markRouteDirty always has a valid ID payload. */
-/* 4. Modified handleInspectorChange to extract reassigned orders and append them to the end of AppState.stops, fixing index numbering for newly assigned unrouted orders. */
+/* 4. Completely gutted local array mutation in handleInspectorChange. It now strictly uses the backend and loadData() to mirror CSV uploads and prevent ID/Map desyncs. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -1761,7 +1761,6 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
     affectedDrivers.add(String(newDriverId)); 
     
     try { 
-try { 
         // Only mark source routes dirty if the moved stop was ACTIVELY routed
         idsToUpdate.forEach(id => {
             const s = AppState.stops.find(st => String(st.id) === String(id));
@@ -1782,7 +1781,7 @@ try {
         await loadData();
         
         affectedDrivers.forEach(dId => silentSaveRouteState(dId));
-    } catch (err) {
+    } catch (err) { 
         hideOverlay(); await customAlert("Error reassigning orders. Please try again."); 
     } finally { 
         hideOverlay(); 
