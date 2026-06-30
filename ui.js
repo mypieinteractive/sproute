@@ -5,6 +5,7 @@
 /* 2. Modified updateRoutingUI to explicitly force the "Staging" state (revealing Re-Calc/Re-Opt buttons) whenever AppState.isAltered is true. */
 /* 3. Injected Config.driverParam fallback into initSortable drag-and-drop events to ensure markRouteDirty always has a valid ID payload. */
 /* 4. Completely gutted local array mutation in handleInspectorChange. It now strictly uses the backend and loadData() to mirror CSV uploads and prevent ID/Map desyncs. */
+/* 5. Fixed Reassignment Optimization Crash by setting routeNum to 1 (mirroring uploadCsv default) instead of 'X'. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
 import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
@@ -1770,7 +1771,9 @@ window.handleInspectorChange = async function(e, rowId, selectEl) {
             }
         });
         
-        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 'X', cluster: 'X' }, adminId: Config.adminParam };
+        // BUG FIX: Set routeNum to 1 and cluster to 0, exactly like a CSV upload. 
+        // The backend optimizer crashes if it receives 'X' for a fresh optimization.
+        let payload = { action: 'updateMultipleOrders', updatesList: idsToUpdate.map(id => ({ rowId: id })), sharedUpdates: { driverName: newDriverName, driverId: newDriverId, status: 'P', eta: '', dist: 0, durationSecs: 0, routeNum: 1, cluster: 0 }, adminId: Config.adminParam };
         if (!Config.isManagerView) payload.routeId = Config.routeId;
         
         await apiFetch(payload); 
