@@ -220,12 +220,16 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
     });
 
     // K-MEANS++ INITIALIZATION: Pick initial centroids based on maximum geographic distance
+    // DETERMINISTIC K-MEANS++ INITIALIZATION:
+    // Find absolute North-most point to serve as the absolute first centroid rather than relying on list order.
     let centroids = [];
     if (unroutedStops.length > 0) {
-        // 1. Pick the first stop as the very first centroid
-        centroids.push({ lat: unroutedStops[0].lat, lng: unroutedStops[0].lng });
+        let northMost = unroutedStops[0];
+        unroutedStops.forEach(s => {
+            if (s.lat > northMost.lat) northMost = s;
+        });
+        centroids.push({ lat: northMost.lat, lng: northMost.lng });
 
-        // 2. Pick subsequent centroids by finding the point furthest away from all existing centroids
         for (let i = 1; i < k; i++) {
             let maxMinDist = -1;
             let candidate = null;
@@ -356,6 +360,33 @@ export function getDistMi(lat1, lon1, lat2, lon2) {
               Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
+}
+
+export function estimateTSP(startGeo, stopsArr) {
+    if (stopsArr.length === 0) return 0;
+
+    let totalDist = 0;
+    let currentGeo = startGeo && startGeo.lat ? startGeo : { lat: stopsArr[0].lat, lng: stopsArr[0].lng };
+    let unvisited = [...stopsArr];
+
+    while (unvisited.length > 0) {
+        let nearestIdx = 0;
+        let minDist = Infinity;
+
+        for (let i = 0; i < unvisited.length; i++) {
+            let d = getDistMi(currentGeo.lat, currentGeo.lng, unvisited[i].lat, unvisited[i].lng);
+            if (d < minDist) {
+                minDist = d;
+                nearestIdx = i;
+            }
+        }
+
+        totalDist += minDist;
+        currentGeo = { lat: unvisited[nearestIdx].lat, lng: unvisited[nearestIdx].lng };
+        unvisited.splice(nearestIdx, 1);
+    }
+
+    return totalDist;
 }
 
 export function sortStops(stopsArr, col, asc) {

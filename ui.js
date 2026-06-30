@@ -8,7 +8,7 @@
 /* 5. Fixed Reassignment Optimization Crash by setting routeNum to 1 (mirroring uploadCsv default) instead of 'X'. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
-import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop, getDistMi } from './logic.js';
+import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop, getDistMi, estimateTSP } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
 
 // --- Overlays & Modals ---
@@ -799,19 +799,19 @@ export function updateSummary() {
     const eps = getActiveEndpoints();
     let prevGeo = eps.start || null;
 
+    let uncalculatedStops = [];
+
     active.forEach(s => {
         const distVal = parseFloat(s.dist || 0);
         if (!isNaN(distVal)) totalMi += distVal;
 
         let dur = parseFloat(s.durationSecs || 0);
-        if (dur === 0) {
-            if (prevGeo && prevGeo.lat && prevGeo.lng && s.lat && s.lng) {
-                let d = getDistMi(prevGeo.lat, prevGeo.lng, s.lat, s.lng);
-                dur = (d / 25) * 3600;
-            }
+        if (dur > 0) {
+            totalSecs += dur;
+            prevGeo = { lat: s.lat, lng: s.lng };
+        } else if (s.lat && s.lng) {
+            uncalculatedStops.push(s);
         }
-        totalSecs += dur;
-        prevGeo = { lat: s.lat, lng: s.lng };
         
         if(s.dueDate) {
             const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
@@ -819,6 +819,12 @@ export function updateSummary() {
             else if(dueTime.getTime() === today.getTime()) dueToday++;
         }
     });
+
+    if (uncalculatedStops.length > 0) {
+        let optimizedDist = estimateTSP(prevGeo, uncalculatedStops);
+        totalSecs += (optimizedDist / 25) * 3600;
+        totalMi += optimizedDist;
+    }
     
     let totalHrs = active.length > 0 ? ((totalSecs + (active.length * AppState.COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
     
@@ -852,25 +858,33 @@ export function updateSummary() {
 
 export function updateRouteTimes() {
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return;
-    const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.cluster !== 'X');
+
+    // BUG FIX #1: If AppState.currentRouteCount is 1, treat unassigned stops ('X') as belonging to Route 1.
+    const allowUnassigned = AppState.currentRouteCount === 1;
+    const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && (s.cluster !== 'X' || allowUnassigned));
     const eps = getActiveEndpoints();
 
     for(let i=0; i<3; i++) {
-        const clusterStops = activeStops.filter(s => String(s.cluster) === String(i));
+        const clusterStops = activeStops.filter(s => String(s.cluster) === String(i) || (i === 0 && allowUnassigned && s.cluster === 'X'));
         let totalSecs = 0;
         let prevGeo = eps.start || null;
 
+        let uncalculatedStops = [];
+
         clusterStops.forEach(s => {
             let dur = parseFloat(s.durationSecs || 0);
-            if (dur === 0) {
-                if (prevGeo && prevGeo.lat && prevGeo.lng && s.lat && s.lng) {
-                    let d = getDistMi(prevGeo.lat, prevGeo.lng, s.lat, s.lng);
-                    dur = (d / 25) * 3600;
-                }
+            if (dur > 0) {
+                totalSecs += dur;
+                prevGeo = { lat: s.lat, lng: s.lng };
+            } else if (s.lat && s.lng) {
+                uncalculatedStops.push(s);
             }
-            totalSecs += dur;
-            prevGeo = { lat: s.lat, lng: s.lng };
         });
+
+        if (uncalculatedStops.length > 0) {
+            let optimizedDist = estimateTSP(prevGeo, uncalculatedStops);
+            totalSecs += (optimizedDist / 25) * 3600;
+        }
 
         const hrs = clusterStops.length > 0 ? ((totalSecs + (clusterStops.length * AppState.COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
         if(document.getElementById(`rtime-${i+1}`)) document.getElementById(`rtime-${i+1}`).innerText = clusterStops.length > 0 ? `${hrs} hrs` : '-- hrs';
