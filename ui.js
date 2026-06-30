@@ -8,7 +8,7 @@
 /* 5. Fixed Reassignment Optimization Crash by setting routeNum to 1 (mirroring uploadCsv default) instead of 'X'. */
 
 import { AppState, Config, pushToHistory, triggerFullRender, markRouteDirty, silentSaveRouteState, apiFetch, getActiveEndpoints, loadData } from './app.js';
-import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop } from './logic.js';
+import { isActiveStop, isStopVisible, getVisualStyle, MASTER_PALETTE, isRouteAssigned, isTrueInspector, minifyStop, getDistMi } from './logic.js';
 import { drawRouteMap, resizeMap, focusMapPin, resetMapBounds, getMapInstance, renderMapMarkers, filterMarkersMap, updateMapSelectionStyles } from './map.js';
 
 // --- Overlays & Modals ---
@@ -796,11 +796,22 @@ export function updateSummary() {
 
     let totalMi = 0, totalSecs = 0, dueToday = 0, pastDue = 0;
     const today = new Date(); today.setHours(0, 0, 0, 0);
+    const eps = getActiveEndpoints();
+    let prevGeo = eps.start || null;
 
     active.forEach(s => {
         const distVal = parseFloat(s.dist || 0);
         if (!isNaN(distVal)) totalMi += distVal;
-        totalSecs += parseFloat(s.durationSecs || 0);
+
+        let dur = parseFloat(s.durationSecs || 0);
+        if (dur === 0) {
+            if (prevGeo && prevGeo.lat && prevGeo.lng && s.lat && s.lng) {
+                let d = getDistMi(prevGeo.lat, prevGeo.lng, s.lat, s.lng);
+                dur = (d / 25) * 3600;
+            }
+        }
+        totalSecs += dur;
+        prevGeo = { lat: s.lat, lng: s.lng };
         
         if(s.dueDate) {
             const dueTime = new Date(s.dueDate); dueTime.setHours(0, 0, 0, 0);
@@ -842,10 +853,25 @@ export function updateSummary() {
 export function updateRouteTimes() {
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return;
     const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && s.cluster !== 'X');
+    const eps = getActiveEndpoints();
+
     for(let i=0; i<3; i++) {
         const clusterStops = activeStops.filter(s => String(s.cluster) === String(i));
         let totalSecs = 0;
-        clusterStops.forEach(s => totalSecs += parseFloat(s.durationSecs || 0));
+        let prevGeo = eps.start || null;
+
+        clusterStops.forEach(s => {
+            let dur = parseFloat(s.durationSecs || 0);
+            if (dur === 0) {
+                if (prevGeo && prevGeo.lat && prevGeo.lng && s.lat && s.lng) {
+                    let d = getDistMi(prevGeo.lat, prevGeo.lng, s.lat, s.lng);
+                    dur = (d / 25) * 3600;
+                }
+            }
+            totalSecs += dur;
+            prevGeo = { lat: s.lat, lng: s.lng };
+        });
+
         const hrs = clusterStops.length > 0 ? ((totalSecs + (clusterStops.length * AppState.COMPANY_SERVICE_DELAY * 60)) / 3600).toFixed(1) : '--';
         if(document.getElementById(`rtime-${i+1}`)) document.getElementById(`rtime-${i+1}`).innerText = clusterStops.length > 0 ? `${hrs} hrs` : '-- hrs';
     }

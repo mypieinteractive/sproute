@@ -825,13 +825,24 @@ export function setRoutes(num) {
     const headerGenBtnText = document.getElementById('btn-header-generate-text');
     if (headerGenBtnText) headerGenBtnText.innerText = "Optimize";
     
-    AppState.stops.forEach(s => s.manualCluster = false); 
+    const activeDriverId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+
+    AppState.stops.forEach(s => {
+        if (String(s.driverId) === String(activeDriverId) && isActiveStop(s, Config.isManagerView)) {
+            s.manualCluster = false;
+            // Ghost ETA fix: Unassign any stops in routes beyond the new current route count
+            if (s.cluster !== 'X' && s.cluster >= num) {
+                s.cluster = 'X';
+            }
+        }
+    });
     
-    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat);
+    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && String(s.driverId) === String(activeDriverId) && s.lng && s.lat);
     if(activeStops.length > 0) {
         calculateClusters(activeStops, num, parseInt(document.getElementById('slider-priority')?.value || 0));
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
         UI.updateRouteTimes();
+        UI.render();
     }
     UI.updateSelectionUI(); 
     UI.updatePrioritySliderUI();
@@ -869,7 +880,8 @@ export function moveSelectedToRoute(cIdx) {
 }
 
 export function liveClusterUpdate() {
-    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && s.lng && s.lat);
+    const activeDriverId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
+    const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && String(s.driverId) === String(activeDriverId) && s.lng && s.lat);
     if(activeStops.length > 0 && AppState.currentRouteCount > 1) {
         calculateClusters(activeStops, AppState.currentRouteCount, parseInt(document.getElementById('slider-priority')?.value || 0));
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
