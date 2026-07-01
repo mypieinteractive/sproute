@@ -235,25 +235,96 @@ export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
     // Sort radially around the depot
     autoStops.sort((a, b) => a._angle - b._angle);
 
-    // 2. Divide into `k` contiguous angular chunks
-    // This perfectly isolates routes radially, preventing crossing paths.
-    const baseCapacity = Math.floor(autoStops.length / k);
-    let remainder = autoStops.length % k;
-    let currentIdx = 0;
+    // 2. Divide into `k` contiguous angular chunks, but balanced by geographic distance
+    // instead of strict array capacity limits, ensuring better geographic grouping.
+    let chunks = Array.from({ length: k }, () => []);
 
-    let chunks = [];
-    for (let i = 0; i < k; i++) {
-        let chunkCapacity = baseCapacity + (remainder > 0 ? 1 : 0);
-        if (remainder > 0) remainder--;
+    if (k > 1) {
+        // Find optimal split indices to initialize K-Means
+        let splitIndices = [];
+        let baseCapacity = Math.floor(autoStops.length / k);
+        let remainder = autoStops.length % k;
+        let currentIdx = 0;
 
-        let chunk = autoStops.slice(currentIdx, currentIdx + chunkCapacity);
-        chunks.push(chunk);
-        currentIdx += chunkCapacity;
+        for (let i = 0; i < k - 1; i++) {
+            let chunkCapacity = baseCapacity + (remainder > 0 ? 1 : 0);
+            if (remainder > 0) remainder--;
+            currentIdx += chunkCapacity;
+            splitIndices.push(currentIdx);
+        }
+        splitIndices.push(autoStops.length); // The end
+
+        // Build initial chunks based on even split
+        currentIdx = 0;
+        for (let i = 0; i < k; i++) {
+            let endIdx = splitIndices[i];
+            chunks[i] = autoStops.slice(currentIdx, endIdx);
+            currentIdx = endIdx;
+        }
+
+        // We run a relaxed K-Means initialized with the angular centroids.
+        let centroids = chunks.map(chunk => {
+            if (chunk.length === 0) return {lat: originLat, lng: originLng};
+            let sumLat = 0, sumLng = 0;
+            chunk.forEach(s => { sumLat += s.lat; sumLng += s.lng; });
+            return { lat: sumLat / chunk.length, lng: sumLng / chunk.length };
+        });
+
+        let changed = true;
+        let iterations = 0;
+        let maxIterations = 20; // Prevent infinite loops
+
+        while (changed && iterations < maxIterations) {
+            changed = false;
+            iterations++;
+
+            // Re-assign stops to the closest centroid
+            let newChunks = Array.from({ length: k }, () => []);
+
+            autoStops.forEach(s => {
+                let bestCluster = 0;
+                let minDist = Infinity;
+
+                for (let i = 0; i < k; i++) {
+                    let d = getDistMi(s.lat, s.lng, centroids[i].lat, centroids[i].lng);
+                    if (d < minDist) {
+                        minDist = d;
+                        bestCluster = i;
+                    }
+                }
+                newChunks[bestCluster].push(s);
+            });
+
+            // Check if chunks changed
+            for (let i = 0; i < k; i++) {
+                if (chunks[i].length !== newChunks[i].length) changed = true;
+                else {
+                    for (let j = 0; j < chunks[i].length; j++) {
+                        if (chunks[i][j].id !== newChunks[i][j].id) {
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+                if (changed) break;
+            }
+
+            if (changed) {
+                chunks = newChunks;
+                // Update centroids
+                centroids = chunks.map(chunk => {
+                    if (chunk.length === 0) return {lat: originLat, lng: originLng};
+                    let sumLat = 0, sumLng = 0;
+                    chunk.forEach(s => { sumLat += s.lat; sumLng += s.lng; });
+                    return { lat: sumLat / chunk.length, lng: sumLng / chunk.length };
+                });
+            }
+        }
+    } else {
+        chunks[0] = autoStops;
     }
 
-    // 3. Optional: apply slight K-Means shifting to the boundary nodes if we want,
-    // but a pure angular sweep guarantees perfectly balanced capacities + no crossing.
-    // We will assign a temporary cluster ID to these chunks.
+    // 3. We will assign a temporary cluster ID to these chunks.
     for (let i = 0; i < chunks.length; i++) {
         chunks[i].forEach(s => s._tempCluster = i);
     }
