@@ -197,7 +197,7 @@ export function getVisualStyle(stopData, isManagerView, currentInspectorFilter, 
     return { bg: bgFinal, border: borderHex, text: textHex, line: borderHex };
 }
 
-export function calculateClusters(unroutedStops, k, priorityWeight) {
+export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
     if (unroutedStops.length === 0) return;
 
     if (k === 1) {
@@ -219,135 +219,77 @@ export function calculateClusters(unroutedStops, k, priorityWeight) {
         }
     });
 
-    // K-MEANS++ INITIALIZATION: Pick initial centroids based on maximum geographic distance
-    // DETERMINISTIC K-MEANS++ INITIALIZATION:
-    // Find absolute North-most point to serve as the absolute first centroid rather than relying on list order.
-    let centroids = [];
-    if (unroutedStops.length > 0) {
-        let northMost = unroutedStops[0];
-        unroutedStops.forEach(s => {
-            if (s.lat > northMost.lat) northMost = s;
-        });
-        centroids.push({ lat: northMost.lat, lng: northMost.lng });
+    // 1. Angular Sweep Algorithm
+    // Calculate angle of each stop relative to the start point (depot)
+    let originLat = startGeo && startGeo.lat ? startGeo.lat : unroutedStops[0].lat;
+    let originLng = startGeo && startGeo.lng ? startGeo.lng : unroutedStops[0].lng;
 
-        for (let i = 1; i < k; i++) {
-            let maxMinDist = -1;
-            let candidate = null;
+    let manualStops = unroutedStops.filter(s => s.manualCluster);
+    let autoStops = unroutedStops.filter(s => !s.manualCluster);
 
-            unroutedStops.forEach(s => {
-                let minDistToAnyCentroid = Infinity;
-                centroids.forEach(c => {
-                    let d = Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2);
-                    if (d < minDistToAnyCentroid) minDistToAnyCentroid = d;
-                });
-
-                if (minDistToAnyCentroid > maxMinDist) {
-                    maxMinDist = minDistToAnyCentroid;
-                    candidate = { lat: s.lat, lng: s.lng };
-                }
-            });
-
-            if (candidate) {
-                centroids.push(candidate);
-            } else {
-                centroids.push({ lat: unroutedStops[i % unroutedStops.length].lat, lng: unroutedStops[i % unroutedStops.length].lng });
-            }
-        }
-    }
-
-    // Standard K-Means Loop
-    for(let iter=0; iter<5; iter++) {
-        unroutedStops.forEach(s => {
-            let bestD = Infinity, bestC = 0;
-            centroids.forEach((c, cIdx) => {
-                let d = Math.sqrt(Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2));
-                if (d < bestD) { bestD = d; bestC = cIdx; }
-            });
-            s._tempCluster = bestC;
-        });
-        for(let i=0; i<k; i++) {
-            let cStops = unroutedStops.filter(s => s._tempCluster === i);
-            if(cStops.length > 0) {
-                centroids[i].lat = cStops.reduce((sum, s) => sum + s.lat, 0) / cStops.length;
-                centroids[i].lng = cStops.reduce((sum, s) => sum + s.lng, 0) / cStops.length;
-            }
-        }
-    }
-
-    let clusterUrgency = new Array(k).fill(0);
-    unroutedStops.forEach(s => { clusterUrgency[s._tempCluster] += s._urgency; });
-    let bestClusterIdx = 0, maxUrg = -1;
-    for(let i=0; i<k; i++) {
-        if (clusterUrgency[i] > maxUrg) { maxUrg = clusterUrgency[i]; bestClusterIdx = i; }
-    }
-    let temp = centroids[0];
-    centroids[0] = centroids[bestClusterIdx];
-    centroids[bestClusterIdx] = temp;
-
-    let capacity = Math.ceil(unroutedStops.length / k);
-    
-    let maxGeoDist = 0.0001;
-    unroutedStops.forEach(s => {
-        centroids.forEach(c => {
-            let d = Math.sqrt(Math.pow(s.lat - c.lat, 2) + Math.pow(s.lng - c.lng, 2));
-            if (d > maxGeoDist) maxGeoDist = d;
-        });
+    autoStops.forEach(s => {
+        // Calculate angle from -PI to PI
+        s._angle = Math.atan2(s.lng - originLng, s.lat - originLat);
     });
 
-    const pullMultiplier = maxGeoDist * 2.5; 
+    // Sort radially around the depot
+    autoStops.sort((a, b) => a._angle - b._angle);
 
-    unroutedStops.forEach(s => {
-        if (s.manualCluster) return;
+    // 2. Divide into `k` contiguous angular chunks
+    // This perfectly isolates routes radially, preventing crossing paths.
+    const baseCapacity = Math.floor(autoStops.length / k);
+    let remainder = autoStops.length % k;
+    let currentIdx = 0;
 
-        let dist0 = Math.sqrt(Math.pow(s.lat - centroids[0].lat, 2) + Math.pow(s.lng - centroids[0].lng, 2));
-        let bestAltDist = Infinity;
-        let bestAltIdx = 0;
+    let chunks = [];
+    for (let i = 0; i < k; i++) {
+        let chunkCapacity = baseCapacity + (remainder > 0 ? 1 : 0);
+        if (remainder > 0) remainder--;
 
-        for(let i=1; i<k; i++) {
-            let d = Math.sqrt(Math.pow(s.lat - centroids[i].lat, 2) + Math.pow(s.lng - centroids[i].lng, 2));
-            if (d < bestAltDist) { bestAltDist = d; bestAltIdx = i; }
-        }
+        let chunk = autoStops.slice(currentIdx, currentIdx + chunkCapacity);
+        chunks.push(chunk);
+        currentIdx += chunkCapacity;
+    }
 
-        let effectiveDist0 = dist0 - ((s._urgency / 2) * w * pullMultiplier);
-        s._dist0 = dist0;
-        s._bestAltDist = bestAltDist;
-        s._bestAltIdx = bestAltIdx;
-        s._effectiveDist0 = effectiveDist0;
-        s._affinity0 = bestAltDist - effectiveDist0;
-    });
+    // 3. Optional: apply slight K-Means shifting to the boundary nodes if we want,
+    // but a pure angular sweep guarantees perfectly balanced capacities + no crossing.
+    // We will assign a temporary cluster ID to these chunks.
+    for (let i = 0; i < chunks.length; i++) {
+        chunks[i].forEach(s => s._tempCluster = i);
+    }
 
-    let sortedStops = [...unroutedStops].filter(s => !s.manualCluster).sort((a, b) => b._affinity0 - a._affinity0);
+    // 4. Urgency-Based Route Numbering
+    // We want Route 1 (cluster 0) to ALWAYS have the most urgency, Route 2 (cluster 1) the second, etc.
+    // Calculate total urgency for each chunk
+    let chunkStats = [];
+    for (let i = 0; i < k; i++) {
+        let urgencySum = 0;
+        let cStops = unroutedStops.filter(s => s._tempCluster === i);
+        cStops.forEach(s => urgencySum += s._urgency);
 
-    let route0Count = 0;
-    let altCounts = new Array(k).fill(0);
+        // Slightly bias the urgency by the priorityWeight slider to allow user control.
+        // If slider is 0, we still sort strictly by urgency.
+        let finalUrgency = urgencySum + (w * urgencySum);
 
-    sortedStops.forEach(s => {
-        let wants0 = s._affinity0 > 0;
-        if (wants0) {
-            if (route0Count < capacity) {
-                s.cluster = 0;
-                route0Count++;
-            } else if (s._effectiveDist0 < 0) {
-                s.cluster = 0;
-                route0Count++;
-            } else {
-                s.cluster = s._bestAltIdx;
-                altCounts[s._bestAltIdx]++;
-            }
-        } else {
-            s.cluster = s._bestAltIdx;
-            altCounts[s._bestAltIdx]++;
-        }
-    });
+        chunkStats.push({ tempId: i, urgency: finalUrgency });
+    }
 
+    // Sort chunks descending by urgency
+    chunkStats.sort((a, b) => b.urgency - a.urgency);
+
+    // Map the sorted chunks to final cluster IDs (0 to k-1)
+    for (let newClusterId = 0; newClusterId < k; newClusterId++) {
+        let oldTempId = chunkStats[newClusterId].tempId;
+        unroutedStops.filter(s => s._tempCluster === oldTempId).forEach(s => {
+            s.cluster = newClusterId;
+        });
+    }
+
+    // Clean up temporary variables
     unroutedStops.forEach(s => {
         delete s._urgency;
         delete s._tempCluster;
-        delete s._dist0;
-        delete s._bestAltDist;
-        delete s._bestAltIdx;
-        delete s._effectiveDist0;
-        delete s._affinity0;
+        delete s._angle;
     });
 }
 

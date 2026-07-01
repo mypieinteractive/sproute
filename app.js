@@ -838,8 +838,9 @@ export function setRoutes(num) {
     });
     
     const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && String(s.driverId) === String(activeDriverId) && s.lng && s.lat);
+    const eps = getActiveEndpoints();
     if(activeStops.length > 0) {
-        calculateClusters(activeStops, num, parseInt(document.getElementById('slider-priority')?.value || 0));
+        calculateClusters(activeStops, num, parseInt(document.getElementById('slider-priority')?.value || 0), eps.start);
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
         UI.updateRouteTimes();
         UI.render();
@@ -882,8 +883,9 @@ export function moveSelectedToRoute(cIdx) {
 export function liveClusterUpdate() {
     const activeDriverId = Config.isManagerView ? AppState.currentInspectorFilter : Config.driverParam;
     const activeStops = AppState.stops.filter(s => isActiveStop(s, Config.isManagerView) && String(s.driverId) === String(activeDriverId) && s.lng && s.lat);
+    const eps = getActiveEndpoints();
     if(activeStops.length > 0 && AppState.currentRouteCount > 1) {
-        calculateClusters(activeStops, AppState.currentRouteCount, parseInt(document.getElementById('slider-priority')?.value || 0));
+        calculateClusters(activeStops, AppState.currentRouteCount, parseInt(document.getElementById('slider-priority')?.value || 0), eps.start);
         updateMarkerColorsMap(AppState.stops, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.inspectors);
         UI.updateRouteTimes();
         UI.render();
