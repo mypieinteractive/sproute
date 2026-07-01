@@ -484,12 +484,9 @@ export function render() {
     }
 
     const precalculatedIndexes = new Map();
-    const clusterCounts = {};
-    activeStops.forEach(s => {
-        const key = `${s.driverId || 'unassigned'}_${s.cluster}`;
-        if (!clusterCounts[key]) clusterCounts[key] = 0;
-        clusterCounts[key]++;
-        precalculatedIndexes.set(s.id, clusterCounts[key]);
+    // Using a stable visual index across cluster views based on their sorted order
+    activeStops.forEach((s, idx) => {
+        precalculatedIndexes.set(s.id, idx + 1);
     });
 
     const getDisplayIndex = (s) => {
@@ -859,8 +856,9 @@ export function updateSummary() {
 export function updateRouteTimes() {
     if (Config.isManagerView && AppState.currentInspectorFilter === 'all') return;
 
-    // BUG FIX #1: If AppState.currentRouteCount is 1, treat unassigned stops ('X') as belonging to Route 1.
-    const allowUnassigned = AppState.currentRouteCount === 1;
+    // BUG FIX #1 & #3: If AppState.currentRouteCount is 1, treat unassigned stops ('X') as belonging to Route 1.
+    // Ensure all unassigned stops default to Route 1 for estimation on initial load
+    const allowUnassigned = AppState.currentRouteCount === 1 || AppState.currentRouteCount === undefined;
     const activeStops = AppState.stops.filter(s => isStopVisible(s, false, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteViewFilter) && (s.cluster !== 'X' || allowUnassigned));
     const eps = getActiveEndpoints();
 

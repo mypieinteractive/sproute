@@ -316,7 +316,7 @@ export async function loadData() {
     finally { if (!AppState.isPollingForRoute && !AppState.isFreshGlideRefresh) UI.hideOverlay(); UI.updateUndoUI(); }
 }
 
-export function triggerFullRender() { UI.render(); UI.drawRoute(); UI.updateSummary(); UI.initSortable(); }
+export function triggerFullRender() { UI.render(); UI.drawRoute(); UI.updateSummary(); UI.initSortable(); UI.updateRouteTimes(); }
 
 export function markRouteDirty(driverId, clusterIdx) { 
     const dId = driverId || (!Config.isManagerView ? Config.driverParam : 'unassigned');
