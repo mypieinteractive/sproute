@@ -483,14 +483,8 @@ export function render() {
         }
     }
 
-    const precalculatedIndexes = new Map();
-    // Using a stable visual index across cluster views based on their sorted order
-    activeStops.forEach((s, idx) => {
-        precalculatedIndexes.set(s.id, idx + 1);
-    });
-
     const getDisplayIndex = (s) => {
-        return precalculatedIndexes.get(s.id) || 1;
+        return s._originalIndex || 1;
     };
 
     const processStop = (s, passedDisplayIndex) => {

@@ -292,11 +292,11 @@ export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
         let iterations = 0;
         let maxIterations = 20; // Prevent infinite loops
 
+        // Phase 1: Pure geographic K-Means
         while (changed && iterations < maxIterations) {
             changed = false;
             iterations++;
 
-            // Re-assign stops to the closest centroid
             let newChunks = Array.from({ length: k }, () => []);
 
             autoStops.forEach(s => {
@@ -305,12 +305,6 @@ export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
 
                 for (let i = 0; i < k; i++) {
                     let d = getDistMi(s.lat, s.lng, centroids[i].lat, centroids[i].lng);
-
-                    // Apply gravitational pull towards the priority centroid if this stop has urgency
-                    if (i === priorityCentroidIndex && s._urgency > 0) {
-                        d = d - ((s._urgency / 2) * w * pullMultiplier);
-                    }
-
                     if (d < minDist) {
                         minDist = d;
                         bestCluster = i;
@@ -335,7 +329,6 @@ export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
 
             if (changed) {
                 chunks = newChunks;
-                // Update centroids
                 centroids = chunks.map(chunk => {
                     if (chunk.length === 0) return {lat: originLat, lng: originLng};
                     let sumLat = 0, sumLng = 0;
@@ -343,6 +336,34 @@ export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
                     return { lat: sumLat / chunk.length, lng: sumLng / chunk.length };
                 });
             }
+        }
+
+        // Phase 2: Post-K-Means Slider Gravitational Pull
+        // We only move urgent orders toward the priority centroid WITHOUT updating centroids further,
+        // preventing a cascading boundary collapse.
+        if (w > 0) {
+            let finalChunks = Array.from({ length: k }, () => []);
+
+            autoStops.forEach(s => {
+                let bestCluster = 0;
+                let minDist = Infinity;
+
+                for (let i = 0; i < k; i++) {
+                    let d = getDistMi(s.lat, s.lng, centroids[i].lat, centroids[i].lng);
+
+                    // Apply pull only in this final pass
+                    if (i === priorityCentroidIndex && s._urgency > 0) {
+                        d = d - ((s._urgency / 2) * w * pullMultiplier);
+                    }
+
+                    if (d < minDist) {
+                        minDist = d;
+                        bestCluster = i;
+                    }
+                }
+                finalChunks[bestCluster].push(s);
+            });
+            chunks = finalChunks;
         }
     } else {
         chunks[0] = autoStops;
