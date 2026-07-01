@@ -265,6 +265,9 @@ export async function loadData() {
             if (cA !== cB) return cA - cB; return timeToMins(a.eta) - timeToMins(b.eta);
         });
 
+        // Add a stable original index based on the initial load order
+        AppState.stops.forEach((s, idx) => { s._originalIndex = idx + 1; });
+
         let maxCluster = 0;
         AppState.stops.forEach(s => { if (s.cluster !== 'X' && s.cluster > maxCluster) maxCluster = s.cluster; });
         AppState.currentRouteCount = Math.max(1, maxCluster + 1);
@@ -581,6 +584,14 @@ export async function handleCalculate() {
         }
 
         AppState.stops = AppState.stops.map(s => returnedStopsMap.has(String(s.id)) ? returnedStopsMap.get(String(s.id)) : s);
+
+        // After an optimization is returned, sort and update the original indices to lock in the new order numbers.
+        AppState.stops.sort((a, b) => {
+            let cA = a.cluster === 'X' ? 999 : (a.cluster || 0); let cB = b.cluster === 'X' ? 999 : (b.cluster || 0);
+            if (cA !== cB) return cA - cB; return timeToMins(a.eta) - timeToMins(b.eta);
+        });
+        AppState.stops.forEach((s, idx) => { s._originalIndex = idx + 1; });
+
         AppState.historyStack = []; AppState.dirtyRoutes.clear(); AppState.originalStops = JSON.parse(JSON.stringify(AppState.stops)); 
         
         triggerFullRender(); silentSaveRouteState();
