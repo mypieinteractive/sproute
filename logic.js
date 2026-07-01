@@ -267,8 +267,26 @@ export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
             if (chunk.length === 0) return {lat: originLat, lng: originLng};
             let sumLat = 0, sumLng = 0;
             chunk.forEach(s => { sumLat += s.lat; sumLng += s.lng; });
-            return { lat: sumLat / chunk.length, lng: sumLng / chunk.length };
+            return { lat: sumLat / chunk.length, lng: sumLng / chunk.length, originalIndex: chunks.indexOf(chunk) };
         });
+
+        // Determine the "Priority Centroid" (the one that naturally has the most urgency)
+        let priorityCentroidIndex = 0;
+        let maxUrgency = -1;
+        chunks.forEach((chunk, idx) => {
+            let u = chunk.reduce((sum, s) => sum + (s._urgency || 0), 0);
+            if (u > maxUrgency) { maxUrgency = u; priorityCentroidIndex = idx; }
+        });
+
+        // Calculate max geographic distance to normalize the pull multiplier
+        let maxGeoDist = 0.0001;
+        autoStops.forEach(s => {
+            centroids.forEach(c => {
+                let d = getDistMi(s.lat, s.lng, c.lat, c.lng);
+                if (d > maxGeoDist) maxGeoDist = d;
+            });
+        });
+        const pullMultiplier = maxGeoDist * 2.5;
 
         let changed = true;
         let iterations = 0;
@@ -287,6 +305,12 @@ export function calculateClusters(unroutedStops, k, priorityWeight, startGeo) {
 
                 for (let i = 0; i < k; i++) {
                     let d = getDistMi(s.lat, s.lng, centroids[i].lat, centroids[i].lng);
+
+                    // Apply gravitational pull towards the priority centroid if this stop has urgency
+                    if (i === priorityCentroidIndex && s._urgency > 0) {
+                        d = d - ((s._urgency / 2) * w * pullMultiplier);
+                    }
+
                     if (d < minDist) {
                         minDist = d;
                         bestCluster = i;
