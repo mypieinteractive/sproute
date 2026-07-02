@@ -551,8 +551,10 @@ export function render() {
             const distFmt = s.dist ? parseFloat(s.dist).toFixed(1) : "0.0";
             const metaDisplay = (!isRoutedStop || AppState.dirtyRoutes.has(routeKey) || AppState.dirtyRoutes.has('all')) ? `-- | ${distFmt} mi` : `${etaTime} | ${distFmt} mi`;
             
+            const style = getVisualStyle(s, Config.isManagerView, AppState.currentInspectorFilter, AppState.currentRouteCount, AppState.stops, AppState.inspectors);
+
             item.innerHTML = `
-                <div class="stop-sidebar ${urgencyClass}">${displayIndex}</div>
+                <div class="stop-sidebar ${urgencyClass}" style="background-color: ${style.bg}; color: ${style.text}; border-left: 3px solid ${style.border};">${displayIndex}</div>
                 <div class="csv-box">${(s.app || "--").substring(0,2).toUpperCase()}</div>
                 <div class="stop-content">
                     <div class="stop-addr-title">${(s.address||'').split(',')[0]}</div>
